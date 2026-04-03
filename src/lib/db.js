@@ -54,7 +54,8 @@ async function getToken() {
 
 // ─── CLAUDE API (via server route — key stays secret) ───
 
-export async function callClaude(prompt, maxTokens = 1000) {
+// Standard call (non-streaming) — used for research, translations, scoring
+export async function callClaude(prompt, maxTokens = 1000, model = "sonnet") {
   const token = await getToken();
   const res = await fetch("/api/claude", {
     method: "POST",
@@ -62,7 +63,7 @@ export async function callClaude(prompt, maxTokens = 1000) {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`,
     },
-    body: JSON.stringify({ prompt, maxTokens }),
+    body: JSON.stringify({ prompt, maxTokens, model }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -70,6 +71,52 @@ export async function callClaude(prompt, maxTokens = 1000) {
   }
   const data = await res.json();
   return data.text;
+}
+
+// Streaming call — used for script generation
+// onChunk(text) called with each new text chunk
+// returns full text when done
+export async function callClaudeStream(prompt, maxTokens = 1000, onChunk) {
+  const token = await getToken();
+  const res = await fetch("/api/claude", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+    body: JSON.stringify({ prompt, maxTokens, stream: true, model: "sonnet" }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `API ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = "";
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop(); // keep incomplete line
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (data === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(data);
+        const chunk = parsed?.delta?.text || "";
+        if (chunk) {
+          fullText += chunk;
+          onChunk(fullText);
+        }
+      } catch {}
+    }
+  }
+  return fullText;
 }
 
 // ─── AUDIT LOG ───

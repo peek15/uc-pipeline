@@ -107,3 +107,5 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible { outline: 1.5px solid var(--t1); outline-offset: 2px; }
+
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }

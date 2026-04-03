@@ -11,6 +11,7 @@ import CalendarView from "@/components/CalendarView";
 import AnalyzeView from "@/components/AnalyzeView";
 import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
+import { ToastContainer, toast } from "@/components/Toast";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -54,11 +55,11 @@ export default function Home() {
   const handleSignIn  = async () => { setAuthLoading(true); setAuthError(null); try { await signInWithGoogle(); } catch (err) { setAuthError(err.message); setAuthLoading(false); } };
   const handleSignOut = async () => { await signOut(); setUser(null); setStories([]); setShowUserMenu(false); };
 
-  const addStories  = useCallback(async (n) => { const saved = await bulkUpsertStories(n); if (saved) { setStories(p => [...saved, ...p]); for (const s of saved) syncToAirtable(s).catch(() => {}); } }, []);
+  const addStories  = useCallback(async (n) => { const saved = await bulkUpsertStories(n); if (saved) { setStories(p => [...saved, ...p]); for (const s of saved) syncToAirtable(s).catch(() => {}); toast(`${saved.length} ${saved.length === 1 ? "story" : "stories"} added`); } }, []);
   const updateStory = useCallback(async (id, c) => { const story = stories.find(s => s.id === id); if (!story) return; const saved = await upsertStory({ ...story, ...c }); if (saved) { setStories(p => p.map(s => s.id === id ? saved : s)); syncToAirtable(saved).catch(() => {}); } }, [stories]);
-  const stageChange = useCallback(async (id, st) => updateStory(id, { status: st }), [updateStory]);
+  const stageChange = useCallback(async (id, st) => { await updateStory(id, { status: st }); toast(`Moved to ${STAGES[st].label}`); }, [updateStory]);
   const bulkAction  = useCallback(async (from, to) => { const up = stories.filter(s => s.status === from).map(s => ({ ...s, status: to })); const saved = await bulkUpsertStories(up); if (saved) { const ids = new Set(saved.map(s => s.id)); setStories(p => p.map(s => ids.has(s.id) ? saved.find(x => x.id === s.id) : s)); } }, [stories]);
-  const handleDelete = useCallback(async (id) => { await dbDelete(id); setStories(p => p.filter(s => s.id !== id)); }, []);
+  const handleDelete = useCallback(async (id) => { await dbDelete(id); setStories(p => p.filter(s => s.id !== id)); toast("Story deleted", "error"); }, []);
 
   const exportCSV = () => {
     const hdr = ["Title","Status","Archetype","Era","Players","Angle","Hook","Script","Script FR","Script ES","Script PT","Views","Completion%","Saves"];
@@ -212,6 +213,7 @@ export default function Home() {
 
       {showUserMenu && <div onClick={() => setShowUserMenu(false)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
+      <ToastContainer />
     </div>
   );
 }

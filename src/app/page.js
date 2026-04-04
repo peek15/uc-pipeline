@@ -13,7 +13,7 @@ import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 
-const VERSION = "2.1";
+const VERSION = "2.2";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -180,15 +180,27 @@ export default function Home() {
               <span style={{ fontSize:11, color:"var(--t3)" }}>Pipeline</span>
               <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 5px", borderRadius:3, border:"1px solid var(--border)", background:"var(--fill2)" }}>v{VERSION}</span>
             </div>
-            <div style={{ display:"flex", gap:4 }}>
-              {["accepted","approved","scripted","produced","published"].map(k => (
-                <div key={k} style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", border:"1px solid var(--border2)" }}>
+            <div style={{ display:"flex", gap:3 }}>
+              {[
+                {k:"accepted",  dot:"#909090"},
+                {k:"approved",  dot:"#5B8FB9"},
+                {k:"scripted",  dot:"#8B7EC8"},
+                {k:"produced",  dot:"#C49A3C"},
+                {k:"published", dot:"#4A9B7F"},
+              ].map(({k, dot}) => (
+                <div key={k} style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", border:"1px solid var(--border2)" }}>
+                  <span style={{ width:6, height:6, borderRadius:"50%", background: (counts[k]||0) > 0 ? dot : "var(--t4)", flexShrink:0, display:"inline-block" }} />
                   <span style={{ fontSize:11, fontWeight:700, color:"var(--t1)", fontFamily:"'DM Mono',monospace" }}>{counts[k]||0}</span>
                   <span style={{ fontSize:10, color:"var(--t3)" }}>{STAGES[k].label}</span>
                 </div>
               ))}
             </div>
-            {bankSize > 0 && <span style={{ fontSize:11, color:"var(--t3)" }}>{bankSize} ready</span>}
+            {bankSize > 0 && (
+              <div style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:99, background:"rgba(74,155,127,0.1)", border:"1px solid rgba(74,155,127,0.2)" }}>
+                <span style={{ width:6, height:6, borderRadius:"50%", background:"#4A9B7F", display:"inline-block" }} />
+                <span style={{ fontSize:10, fontWeight:600, color:"#4A9B7F" }}>{bankSize} ready</span>
+              </div>
+            )}
           </div>
 
           {/* Right */}
@@ -225,11 +237,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div style={{ maxWidth:1200, margin:"0 auto", padding:"0 24px", display:"flex", borderTop:"1px solid var(--border2)" }}>
+        {/* Tab bar - full width */}
+        <div style={{ borderTop:"1px solid var(--border2)", display:"flex" }}>
           {TABS.map((t, i) => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
-              display:"flex", alignItems:"center", gap:6, padding:"10px 16px",
+              flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"10px 0",
               fontSize:13, fontWeight: tab===t.key ? 600 : 400,
               color: tab===t.key ? "var(--t1)" : "var(--t3)",
               background:"transparent", border:"none", cursor:"pointer",
@@ -238,7 +250,7 @@ export default function Home() {
             }}>
               <t.Icon size={14} strokeWidth={tab===t.key ? 2.5 : 1.8} />
               {t.label}
-              <span style={{ fontSize:9, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌘{i+1}</span>
+              <span style={{ fontSize:9, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌘⇧{i+1}</span>
             </button>
           ))}
         </div>

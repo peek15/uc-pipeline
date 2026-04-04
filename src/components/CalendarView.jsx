@@ -85,12 +85,12 @@ export default function CalendarView({ stories, onUpdate }) {
 
       {/* Week nav */}
       <div className="flex justify-between items-center mb-3">
-        <button onClick={() => setWeekOffset(w => w - 1)} className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 text-[14px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>‹</button>
+        <button onClick={() => setWeekOffset(w => w - 1)} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--t3)] text-[14px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>‹</button>
         <div className="text-center">
-          <div className="text-[15px] font-bold font-display text-white" style={{ letterSpacing: "-0.02em" }}>{weekLabel()}</div>
-          {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-[10px] mt-0.5 bg-transparent border-none cursor-pointer" style={{ color: "#5AC8FA" }}>Today</button>}
+          <div className="text-[15px] font-bold font-display text-[var(--t1)]" style={{ letterSpacing: "-0.02em" }}>{weekLabel()}</div>
+          {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-[10px] mt-0.5 bg-transparent border-none cursor-pointer" style={{ color: "var(--t2)" }}>Today</button>}
         </div>
-        <button onClick={() => setWeekOffset(w => w + 1)} className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 text-[14px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>›</button>
+        <button onClick={() => setWeekOffset(w => w + 1)} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--t3)] text-[14px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>›</button>
       </div>
 
       {/* Days */}
@@ -100,12 +100,12 @@ export default function CalendarView({ stories, onUpdate }) {
           const isPast = d < today && !isToday(d);
           const tod = isToday(d);
           return (
-            <div key={di} className="rounded-xl p-2.5" style={{ background: tod ? "rgba(184,134,11,0.06)" : "rgba(255,255,255,0.02)", border: `1px solid ${tod ? "rgba(184,134,11,0.15)" : "rgba(255,255,255,0.04)"}`, opacity: isPast ? 0.5 : 1 }}>
+            <div key={di} className="rounded-xl p-2.5" style={{ background: tod ? "var(--fill2)" : "transparent", border: `1px solid ${tod ? "var(--border-in)" : "var(--border2)"}`, opacity: isPast ? 0.5 : 1 }}>
               <div className="flex justify-between items-center" style={{ marginBottom: items.length > 0 || showAssign === di ? 8 : 0 }}>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[12px] font-bold" style={{ color: tod ? "#B8860B" : "rgba(255,255,255,0.5)" }}>{dayLabel(d)}</span>
+                  <span className="text-[12px] font-bold" style={{ color: tod ? "var(--t1)" : "var(--t3)", fontWeight: tod ? 700 : 600 }}>{dayLabel(d)}</span>
                   <span className="text-[11px] text-[var(--t3)]">{monthDay(d)}</span>
-                  {tod && <span className="text-[9px] font-semibold px-1.5 rounded-full" style={{ color: "#B8860B", background: "rgba(184,134,11,0.1)" }}>Today</span>}
+                  {tod && <span className="text-[9px] font-semibold px-1.5 rounded-full" style={{ color: "var(--t1)", background: "var(--fill2)", border: "1px solid var(--border)" }}>Today</span>}
                 </div>
                 {!isPast && (
                   <button onClick={() => setShowAssign(showAssign === di ? null : di)}
@@ -117,7 +117,7 @@ export default function CalendarView({ stories, onUpdate }) {
               {items.map(s => {
                 const ac = ACCENT[s.archetype] || "#FF9F0A";
                 return (
-                  <div key={s.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg mb-1" style={{ background: `${ac}08`, borderLeft: `3px solid ${ac}` }}>
+                  <div key={s.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg mb-1" style={{ background: `${ac}10`, borderLeft: `3px solid ${ac}`, borderRadius:6 }}>
                     <div className="flex-1 min-w-0">
                       <div className="text-[12px] font-semibold truncate" style={{color:"var(--t1)"}}>{s.title}</div>
                       <div className="text-[9px] text-[var(--t3)] flex items-center gap-1">

@@ -11,9 +11,16 @@ export const STAGES = {
 export const ARCHETYPES = ["Redemption","Rivalry","Sacrifice","Pressure","Loyalty","Betrayal","Underdog","Legacy","Heartbreak","Brotherhood"];
 
 export const ACCENT = {
-  Redemption: "var(--t1)", Rivalry: "var(--t1)", Sacrifice: "var(--t2)", Pressure: "var(--t1)",
-  Loyalty: "var(--t2)", Betrayal: "var(--t1)", Underdog: "var(--t2)", Legacy: "var(--t2)",
-  Heartbreak: "var(--t1)", Brotherhood: "var(--t2)",
+  Redemption:  "#4A9B7F",
+  Rivalry:     "#C0666A",
+  Sacrifice:   "#8B7EC8",
+  Pressure:    "#C49A3C",
+  Loyalty:     "#5B8FB9",
+  Betrayal:    "#B87333",
+  Underdog:    "#7B9E6B",
+  Legacy:      "#9B7B6E",
+  Heartbreak:  "#7B8FA8",
+  Brotherhood: "#5BA8A0",
 };
 
 export const LANGS = [

@@ -1,28 +1,17 @@
 "use client";
 import { useState } from "react";
-import { Search, Check, X, Star } from "lucide-react";
+import { Search, Check, X, Star, Plus } from "lucide-react";
 import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES } from "@/lib/constants";
 import { callClaude } from "@/lib/db";
 
-function ScoreBar({ score, label, max = 10 }) {
+function ScoreBar({ score, label, max = 25 }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-      <span style={{ fontSize:10, color:"var(--t3)", width:80, flexShrink:0 }}>{label}</span>
+    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+      <span style={{ fontSize:10, color:"var(--t3)", width:90, flexShrink:0 }}>{label}</span>
       <div style={{ flex:1, height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden" }}>
-        <div style={{ height:"100%", width:`${(score/max)*100}%`, background:"var(--t1)", borderRadius:2, transition:"width 0.4s ease" }} />
+        <div style={{ height:"100%", width:`${(score/max)*100}%`, background:"var(--t1)", borderRadius:2 }} />
       </div>
-      <span style={{ fontSize:10, fontFamily:"'DM Mono',monospace", color:"var(--t2)", width:16, textAlign:"right" }}>{score}</span>
-    </div>
-  );
-}
-
-function TotalScore({ score }) {
-  const color = score >= 80 ? "var(--t1)" : score >= 60 ? "var(--t2)" : "var(--t3)";
-  return (
-    <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 10px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)" }}>
-      <Star size={11} color={color} fill={score >= 70 ? color : "none"} />
-      <span style={{ fontSize:13, fontWeight:700, color, fontFamily:"'DM Mono',monospace" }}>{score}</span>
-      <span style={{ fontSize:10, color:"var(--t3)" }}>/ 100</span>
+      <span style={{ fontSize:10, fontFamily:"'DM Mono',monospace", color:"var(--t2)", width:20, textAlign:"right" }}>{score}</span>
     </div>
   );
 }
@@ -42,7 +31,7 @@ ${stories.map((s,i) => `${i+1}. "${s.title}" — ${s.angle}`).join("\n")}
 Return a JSON array with objects: { index, emotional_depth, obscurity, visual_potential, hook_strength, total }
 JSON array ONLY. No markdown.`;
 
-  const text = await callFn(prompt, 1000, "haiku");
+  const text = await callFn(prompt, 1500, "haiku");
   const clean = text.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
   let parsed = null;
   try { parsed = JSON.parse(clean); } catch {}
@@ -70,7 +59,6 @@ export default function ResearchView({ stories, onAddStories }) {
       const existing = stories.slice(-30).map(s => s.title).join("; ");
       const prompt   = `You are a story research engine for "Uncle Carter," an NBA storytelling brand. Find ${n} compelling, lesser-known human stories.\n\nReturn JSON objects with: title, archetype (${ARCHETYPES.join("/")}), obscurity (1-5, prefer 3-5), players, era, angle (2-3 sentences human tension), hook (1 sentence opener).\n\nRULES: Human story > highlights. Specific facts. Obscure > well-known. Each DISTINCT.${era ? `\nEra: ${era}.` : ""}${team ? `\nTeam: ${team}.` : ""}${topic ? `\nFocus: "${topic}"` : ""}\n${existing ? `\nALREADY COVERED: ${existing}` : ""}\n\nAngle: "${angle}". Batch #${batch + 1}. JSON array ONLY. No markdown.`;
 
-      // Use Haiku for speed
       const text  = await callClaude(prompt, Math.min(700 + n * 350, 8000), "haiku");
       const clean = text.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
       let parsed  = null;
@@ -85,7 +73,7 @@ export default function ResearchView({ stories, onAddStories }) {
       setResults(fresh);
       setBatch(b => b + 1);
 
-      // Auto-score in background with Haiku
+      // Score in background with Haiku
       if (fresh.length > 0) {
         setScoring(true);
         try {
@@ -97,19 +85,29 @@ export default function ResearchView({ stories, onAddStories }) {
           setScores(scoreMap);
         } catch {} finally { setScoring(false); }
       }
-
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
-  const acceptAll = () => {
-    onAddStories(results.map(s => ({ ...s, id: crypto.randomUUID(), status: "accepted", created_at: new Date().toISOString() })));
+  // Add all remaining to pipeline with scores saved
+  const addAllToPipeline = () => {
+    const toAdd = results.map((s, i) => {
+      const sc = scores[i];
+      return {
+        ...s,
+        id: crypto.randomUUID(),
+        status: "accepted",
+        created_at: new Date().toISOString(),
+        ...(sc ? {
+          score_total:     sc.total,
+          score_emotional: sc.emotional_depth,
+          score_obscurity: sc.obscurity,
+          score_visual:    sc.visual_potential,
+          score_hook:      sc.hook_strength,
+        } : {}),
+      };
+    });
+    onAddStories(toAdd);
     setResults([]); setScores({});
-  };
-
-  const acceptOne = (story, i) => {
-    onAddStories([{ ...story, id: crypto.randomUUID(), status: "accepted", created_at: new Date().toISOString() }]);
-    setResults(r => r.filter((_, idx) => idx !== i));
-    setScores(sc => { const n = {...sc}; delete n[i]; return n; });
   };
 
   const dismiss = (i) => {
@@ -117,8 +115,9 @@ export default function ResearchView({ stories, onAddStories }) {
     setScores(sc => { const n = {...sc}; delete n[i]; return n; });
   };
 
-  // Sort by score desc if scores available
-  const sortedResults = results.map((s, i) => ({ s, i, score: scores[i]?.total ?? null }))
+  // Sort by score desc
+  const sortedResults = results
+    .map((s, i) => ({ s, i, score: scores[i]?.total ?? null }))
     .sort((a, b) => {
       if (a.score == null && b.score == null) return 0;
       if (a.score == null) return 1;
@@ -143,14 +142,14 @@ export default function ResearchView({ stories, onAddStories }) {
           padding:"9px 20px", borderRadius:8, fontSize:13, fontWeight:600,
           background: loading ? "var(--fill2)" : "var(--t1)",
           color: loading ? "var(--t3)" : "var(--bg)",
-          border:"none", cursor: loading ? "not-allowed" : "pointer", transition:"all 0.15s",
+          border:"none", cursor: loading ? "not-allowed" : "pointer",
         }}>
           {loading ? "Finding..." : "Find"}
         </button>
       </div>
 
       {/* Filters */}
-      <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap", alignItems:"center" }}>
         <select value={era} onChange={e=>setEra(e.target.value)} style={{ padding:"6px 10px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color: era ? "var(--t1)" : "var(--t3)", outline:"none" }}>
           <option value="">Any era</option>
           {ERAS.map(e => <option key={e} value={e}>{e}</option>)}
@@ -167,17 +166,19 @@ export default function ResearchView({ stories, onAddStories }) {
         )}
       </div>
 
-      {error && (
-        <div style={{ padding:"10px 14px", borderRadius:8, marginBottom:16, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", fontSize:12 }}>{error}</div>
-      )}
+      {error && <div style={{ padding:"10px 14px", borderRadius:8, marginBottom:16, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", fontSize:12 }}>{error}</div>}
 
       {/* Results */}
       {results.length > 0 && (
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <span style={{ fontSize:13, fontWeight:600, color:"var(--t1)" }}>{results.length} stories found</span>
-            <button onClick={acceptAll} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
-              <Check size={12} /> Accept all
+            <span style={{ fontSize:13, fontWeight:600, color:"var(--t1)" }}>{results.length} stories found {scoring ? "· scoring..." : ""}</span>
+            <button onClick={addAllToPipeline} style={{
+              padding:"7px 16px", borderRadius:7, fontSize:12, fontWeight:600,
+              background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer",
+              display:"flex", alignItems:"center", gap:6,
+            }}>
+              <Plus size={13} /> Add all to Pipeline
             </button>
           </div>
 
@@ -196,7 +197,13 @@ export default function ResearchView({ stories, onAddStories }) {
                       {s.players && <div style={{ fontSize:12, color:"var(--t3)", marginBottom:8 }}>{Array.isArray(s.players) ? s.players.join(", ") : s.players}</div>}
                     </div>
                     <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft:12 }}>
-                      {sc != null && <TotalScore score={sc} />}
+                      {sc != null && (
+                        <div style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 9px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)" }}>
+                          <Star size={11} color={sc >= 70 ? "var(--t1)" : "var(--t3)"} fill={sc >= 70 ? "var(--t1)" : "none"} />
+                          <span style={{ fontSize:12, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{sc}</span>
+                          <span style={{ fontSize:10, color:"var(--t3)" }}>/100</span>
+                        </div>
+                      )}
                       <button onClick={() => dismiss(i)} style={{ width:28, height:28, borderRadius:6, border:"1px solid var(--border)", background:"var(--fill2)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
                         <X size={12} color="var(--t3)" />
                       </button>
@@ -204,25 +211,16 @@ export default function ResearchView({ stories, onAddStories }) {
                   </div>
 
                   <div style={{ fontSize:13, color:"var(--t2)", lineHeight:1.6, marginBottom:8 }}>{s.angle}</div>
-                  <div style={{ fontSize:13, color:"var(--t3)", fontStyle:"italic", paddingLeft:12, borderLeft:"2px solid var(--border)", lineHeight:1.5, marginBottom: scoreData ? 12 : 12 }}>"{s.hook}"</div>
+                  <div style={{ fontSize:13, color:"var(--t3)", fontStyle:"italic", paddingLeft:12, borderLeft:"2px solid var(--border)", lineHeight:1.5, marginBottom: scoreData ? 12 : 0 }}>"{s.hook}"</div>
 
-                  {/* Score breakdown */}
                   {scoreData && (
-                    <div style={{ padding:"10px 12px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginBottom:12, display:"flex", flexDirection:"column", gap:5 }}>
-                      <ScoreBar score={scoreData.emotional_depth} label="Emotional depth" max={25} />
-                      <ScoreBar score={scoreData.obscurity}       label="Obscurity"       max={25} />
-                      <ScoreBar score={scoreData.visual_potential} label="Visual potential" max={25} />
-                      <ScoreBar score={scoreData.hook_strength}   label="Hook strength"   max={25} />
+                    <div style={{ padding:"10px 12px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginTop:12, display:"flex", flexDirection:"column", gap:5 }}>
+                      <ScoreBar score={scoreData.emotional_depth}  label="Emotional depth" />
+                      <ScoreBar score={scoreData.obscurity}        label="Obscurity"        />
+                      <ScoreBar score={scoreData.visual_potential} label="Visual potential" />
+                      <ScoreBar score={scoreData.hook_strength}    label="Hook strength"    />
                     </div>
                   )}
-
-                  <button onClick={() => acceptOne(s, i)} style={{
-                    padding:"7px 14px", borderRadius:7, fontSize:12, fontWeight:600,
-                    background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer",
-                    display:"flex", alignItems:"center", gap:5,
-                  }}>
-                    <Check size={12} /> Accept
-                  </button>
                 </div>
               );
             })}
@@ -241,6 +239,7 @@ export default function ResearchView({ stories, onAddStories }) {
         <div style={{ textAlign:"center", padding:"80px 0", color:"var(--t4)" }}>
           <Search size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }} />
           <div style={{ fontSize:13 }}>Search for NBA stories to get started</div>
+          <div style={{ fontSize:12, marginTop:6, color:"var(--t4)" }}>Stories will be scored automatically and added directly to your Pipeline</div>
         </div>
       )}
     </div>

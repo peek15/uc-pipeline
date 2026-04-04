@@ -78,7 +78,7 @@ export default function CalendarView({ stories, onUpdate }) {
         ].filter(Boolean).map((s, i) => (
           <div key={i} className="shrink-0 px-3 py-2 rounded-xl text-center min-w-[70px]" style={{ background: "var(--card)", border: "1px solid var(--border2)" }}>
             <div className="text-[13px] font-bold font-display" style={{ color: s.color, letterSpacing: "-0.02em" }}>{s.value}</div>
-            <div className="text-[8px] text-[var(--t4)] mt-0.5">{s.label}</div>
+            <div className="text-[8px] text-(--t4) mt-0.5">{s.label}</div>
           </div>
         ))}
       </div>
@@ -104,12 +104,12 @@ export default function CalendarView({ stories, onUpdate }) {
               <div className="flex justify-between items-center" style={{ marginBottom: items.length > 0 || showAssign === di ? 8 : 0 }}>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[12px] font-bold" style={{ color: tod ? "#B8860B" : "rgba(255,255,255,0.5)" }}>{dayLabel(d)}</span>
-                  <span className="text-[11px] text-[var(--t3)]">{monthDay(d)}</span>
+                  <span className="text-[11px] text-(--t3)">{monthDay(d)}</span>
                   {tod && <span className="text-[9px] font-semibold px-1.5 rounded-full" style={{ color: "#B8860B", background: "rgba(184,134,11,0.1)" }}>Today</span>}
                 </div>
                 {!isPast && (
                   <button onClick={() => setShowAssign(showAssign === di ? null : di)}
-                    className="w-6 h-6 rounded-md flex items-center justify-center text-[var(--t3)] text-[16px]"
+                    className="w-6 h-6 rounded-md flex items-center justify-center text-(--t3) text-[16px]"
                     style={{ background: "var(--card)", border: "1px solid var(--border)" }}>+</button>
                 )}
               </div>
@@ -120,7 +120,7 @@ export default function CalendarView({ stories, onUpdate }) {
                   <div key={s.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg mb-1" style={{ background: `${ac}08`, borderLeft: `3px solid ${ac}` }}>
                     <div className="flex-1 min-w-0">
                       <div className="text-[12px] font-semibold truncate" style={{color:"var(--t1)"}}>{s.title}</div>
-                      <div className="text-[9px] text-[var(--t3)] flex items-center gap-1">
+                      <div className="text-[9px] text-(--t3) flex items-center gap-1">
                         <span>{s.archetype} · {s.era}</span>
                         {LANGS.filter(l => l.key === "en" ? s.script : s[`script_${l.key}`]).map(l => (
                           <span key={l.key} className="text-[7px] font-bold px-0.5 rounded" style={{ color: l.color, background: `${l.color}15` }}>{l.label}</span>
@@ -138,8 +138,8 @@ export default function CalendarView({ stories, onUpdate }) {
 
               {showAssign === di && (
                 <div className="mt-1.5 p-2 rounded-lg" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                  <div className="text-[9px] text-[var(--t3)] font-semibold mb-1.5">Assign to {dayLabel(d)} {monthDay(d)}</div>
-                  {!ready.length ? <div className="text-[11px] text-[var(--t4)]">No unscheduled stories</div> : (
+                  <div className="text-[9px] text-(--t3) font-semibold mb-1.5">Assign to {dayLabel(d)} {monthDay(d)}</div>
+                  {!ready.length ? <div className="text-[11px] text-(--t4)">No unscheduled stories</div> : (
                     <div className="flex flex-col gap-0.5 max-h-36 overflow-y-auto">
                       {ready.map(s => {
                         const ac = ACCENT[s.archetype] || "#FF9F0A";
@@ -151,7 +151,7 @@ export default function CalendarView({ stories, onUpdate }) {
                             <div className="w-1 h-5 rounded-sm shrink-0" style={{ background: ac }} />
                             <div className="flex-1 min-w-0">
                               <div className="text-[11px] font-semibold truncate" style={{color:"var(--t1)"}}>{s.title}</div>
-                              <div className="text-[9px] text-[var(--t3)]">{s.archetype}{isSug ? " · Suggested" : ""}</div>
+                              <div className="text-[9px] text-(--t3)">{s.archetype}{isSug ? " · Suggested" : ""}</div>
                             </div>
                           </button>
                         );
@@ -161,7 +161,7 @@ export default function CalendarView({ stories, onUpdate }) {
                 </div>
               )}
 
-              {!items.length && showAssign !== di && !isPast && <div className="text-[10px] text-[var(--t4)] mt-0.5">No episode</div>}
+              {!items.length && showAssign !== di && !isPast && <div className="text-[10px] text-(--t4) mt-0.5">No episode</div>}
             </div>
           );
         })}

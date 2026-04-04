@@ -118,7 +118,7 @@ export default function AnalyzeView({ stories, onUpdate }) {
               { k: "metrics_follows", I: UserPlus, p: "Follows" },
             ].map(({ k, I, p }) => (
               <div key={k} className="relative">
-                <I size={10} className="absolute left-2 top-2 text-[var(--t4)]" />
+                <I size={10} className="absolute left-2 top-2 text-(--t4)" />
                 <input value={form[k] || ""} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
                   placeholder={p} type="number"
                   className="w-[90px] py-1.5 pl-6 pr-2 rounded-lg text-[11px] outline-none"

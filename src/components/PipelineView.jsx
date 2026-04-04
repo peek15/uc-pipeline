@@ -23,7 +23,7 @@ function ScoreDots({ score }) {
 }
 
 function ScoreBar({ score, label, max = 25 }) {
-  if (score == null) return null;
+  if (score == null || score === undefined) return null;
   return (
     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
       <span style={{ fontSize:10, color:"var(--t3)", width:90, flexShrink:0 }}>{label}</span>
@@ -279,13 +279,13 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 return (
                   <div key={s.id} id={`story-${s.id}`} style={{
                     borderRadius:8,
-                    border: isFocused ? "1px solid var(--t2)" : isSelected ? "1px solid var(--t1)" : "1px solid var(--border2)",
+                    borderTop: isFocused ? "1px solid var(--t2)" : isSelected ? "1px solid var(--t1)" : "1px solid var(--border2)",
+                    borderRight: isFocused ? "1px solid var(--t2)" : isSelected ? "1px solid var(--t1)" : "1px solid var(--border2)",
+                    borderBottom: isFocused ? "1px solid var(--t2)" : isSelected ? "1px solid var(--t1)" : "1px solid var(--border2)",
                     borderLeft: `3px solid ${ac}`,
                     background: isSelected ? "var(--fill2)" : "var(--card)",
-                    transition:"border-color 0.1s, background 0.1s",
+                    transition:"background 0.1s",
                     marginBottom:2,
-                    overflow:"visible",
-                    position:"relative",
                   }}>
                     {/* Main row */}
                     <div style={{ display:"grid", gridTemplateColumns:"24px 1fr auto auto", alignItems:"center", gap:10, padding:"10px 12px", cursor:"pointer" }}
@@ -347,27 +347,16 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                         {/* Full score breakdown */}
                         {hasScore && (
                           <div style={{ padding:"12px 14px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginBottom:10 }}>
-                            {/* Total score row */}
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                               <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>AI Score</span>
-                              <div style={{ display:"flex", alignItems:"baseline", gap:3 }}>
-                                <span style={{ fontSize:20, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)", letterSpacing:"-0.03em" }}>{s.score_total}</span>
-                                <span style={{ fontSize:11, color:"var(--t3)" }}>/100</span>
-                              </div>
+                              <span style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{s.score_total}<span style={{fontSize:10,fontWeight:400,color:"var(--t3)"}}>/100</span></span>
                             </div>
-                            {/* Thin total bar */}
-                            <div style={{ height:2, borderRadius:2, background:"var(--bg3)", overflow:"hidden", marginBottom:12 }}>
-                              <div style={{ height:"100%", width:`${s.score_total}%`, background:"var(--t2)", borderRadius:2 }} />
+                            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                              <ScoreBar score={s.score_emotional ?? null} label="Emotional depth" />
+                              <ScoreBar score={s.score_obscurity ?? null} label="Obscurity"       />
+                              <ScoreBar score={s.score_visual    ?? null} label="Visual potential"/>
+                              <ScoreBar score={s.score_hook      ?? null} label="Hook strength"   />
                             </div>
-                            {/* Breakdown bars */}
-                            {s.score_emotional != null && (
-                              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                                <ScoreBar score={s.score_emotional} label="Emotional depth" />
-                                <ScoreBar score={s.score_obscurity} label="Obscurity"       />
-                                <ScoreBar score={s.score_visual}    label="Visual potential"/>
-                                <ScoreBar score={s.score_hook}      label="Hook strength"   />
-                              </div>
-                            )}
                           </div>
                         )}
 

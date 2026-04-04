@@ -114,8 +114,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
       const idx = visibleIds.indexOf(focused);
 
-      if (e.key === "ArrowDown") { e.preventDefault(); const next = visibleIds[Math.min(idx+1, visibleIds.length-1)]; setFocused(next); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(next); return n; }); setTimeout(() => { document.getElementById(`story-${next}`)?.scrollIntoView({ block:"center", behavior:"smooth" }); }, 50); }
-      if (e.key === "ArrowUp")   { e.preventDefault(); const prev = visibleIds[Math.max(idx-1, 0)]; setFocused(prev); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(prev); return n; }); setTimeout(() => { document.getElementById(`story-${prev}`)?.scrollIntoView({ block:"center", behavior:"smooth" }); }, 50); }
+      if (e.key === "ArrowDown") { e.preventDefault(); const next = visibleIds[Math.min(idx+1, visibleIds.length-1)]; setFocused(next); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(next); return n; }); setTimeout(() => { const el = document.getElementById(`story-${next}`); if (el) { const r = el.getBoundingClientRect(); const target = window.scrollY + r.top - window.innerHeight/2 + r.height/2; window.scrollTo({ top: target, behavior:"smooth" }); } }, 50); }
+      if (e.key === "ArrowUp")   { e.preventDefault(); const prev = visibleIds[Math.max(idx-1, 0)]; setFocused(prev); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(prev); return n; }); setTimeout(() => { const el = document.getElementById(`story-${prev}`); if (el) { const r = el.getBoundingClientRect(); const target = window.scrollY + r.top - window.innerHeight/2 + r.height/2; window.scrollTo({ top: target, behavior:"smooth" }); } }, 50); }
       if (e.key === "ArrowRight") { e.preventDefault(); setExpanded(s => { const n = new Set(s); n.add(focused); return n; }); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); setExpanded(s => { const n = new Set(s); n.delete(focused); return n; }); }
       if (e.key === " ") { e.preventDefault(); setSelected(s => { const n = new Set(s); n.has(focused) ? n.delete(focused) : n.add(focused); return n; }); }

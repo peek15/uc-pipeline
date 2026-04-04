@@ -1,24 +1,22 @@
 "use client";
-import { useState } from "react";
-import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap } from "lucide-react";
-import { LANGS, SCRIPT_SYSTEM } from "@/lib/constants";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight } from "lucide-react";
+import { LANGS, SCRIPT_SYSTEM, ACCENT } from "@/lib/constants";
 import { callClaude, callClaudeStream } from "@/lib/db";
 
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
 
-// Progress indicator for multi-step operations
 function ProgressSteps({ steps, current }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+    <div style={{ display:"flex", alignItems:"center", gap:5 }}>
       {steps.map((s, i) => (
-        <div key={i} style={{ display:"flex", alignItems:"center", gap:6 }}>
-          <div style={{
-            display:"flex", alignItems:"center", gap:5,
-            fontSize:11, fontWeight: i === current ? 600 : 400,
+        <div key={i} style={{ display:"flex", alignItems:"center", gap:5 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:11,
+            fontWeight: i === current ? 600 : 400,
             color: i < current ? "var(--t3)" : i === current ? "var(--t1)" : "var(--t4)",
           }}>
-            {i < current && <Check size={10} />}
-            {i === current && <div className="anim-spin" style={{ width:10, height:10, borderRadius:"50%", border:"1.5px solid var(--t4)", borderTopColor:"var(--t1)" }} />}
+            {i < current && <Check size={9} />}
+            {i === current && <div className="anim-spin" style={{ width:9, height:9, borderRadius:"50%", border:"1.5px solid var(--t4)", borderTopColor:"var(--t1)" }} />}
             {s}
           </div>
           {i < steps.length - 1 && <span style={{ color:"var(--t4)", fontSize:10 }}>→</span>}
@@ -29,30 +27,88 @@ function ProgressSteps({ steps, current }) {
 }
 
 export default function ScriptView({ stories, onUpdate }) {
-  const ready = stories.filter(s => s.status === "approved" || (s.status === "scripted" && s.script));
-  const [selId,       setSelId]       = useState(null);
-  const [loading,     setLoading]     = useState(null);
-  const [streaming,   setStreaming]   = useState({});
-  const [error,       setError]       = useState(null);
-  const [copied,      setCopied]      = useState(false);
-  const [viewLang,    setViewLang]    = useState("en");
-  const [batchMode,   setBatchMode]   = useState(false);
-  const [batchDone,   setBatchDone]   = useState(0);
-  const [batchStep,   setBatchStep]   = useState(""); // current step label
-  const [autoTranslate, setAutoTranslate] = useState(true); // auto-translate after EN
+  const ready = stories.filter(s => ["approved","scripted"].includes(s.status));
+  
+  // Navigation state
+  const [focusedIdx,   setFocusedIdx]   = useState(0);
+  const [expandedIds,  setExpandedIds]  = useState(new Set());
+  const [viewLang,     setViewLang]     = useState("en");
+  
+  // Operation state
+  const [loading,      setLoading]      = useState(null);
+  const [streaming,    setStreaming]     = useState({});
+  // Track completed langs locally to fix display bug
+  const [localLangs,   setLocalLangs]   = useState({}); // { [storyId]: { fr: text, es: text, pt: text } }
+  const [error,        setError]        = useState(null);
+  const [copied,       setCopied]       = useState(false);
+  const [batchMode,    setBatchMode]    = useState(false);
+  const [batchDone,    setBatchDone]    = useState(0);
+  const [batchStep,    setBatchStep]    = useState("");
+  const [autoTranslate,setAutoTranslate] = useState(true);
+
+  const focusedStory = ready[focusedIdx] || null;
+
+  // Get script text — check local cache first, then story props
+  const getScript = useCallback((story, lang) => {
+    if (!story) return null;
+    if (lang === "en") return streaming[story.id] ?? story.script;
+    return localLangs[story.id]?.[lang] ?? story[`script_${lang}`];
+  }, [streaming, localLangs]);
+
+  // Get all available langs for a story
+  const getAvailableLangs = useCallback((story) => {
+    return LANGS.filter(l => !!getScript(story, l.key));
+  }, [getScript]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
+      if (!focusedStory) return;
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = e.key === "ArrowDown"
+          ? Math.min(focusedIdx + 1, ready.length - 1)
+          : Math.max(focusedIdx - 1, 0);
+        setFocusedIdx(next);
+        setTimeout(() => {
+          document.getElementById(`script-${ready[next]?.id}`)?.scrollIntoView({ block:"center", behavior:"smooth" });
+        }, 50);
+      }
+      if (e.key === "ArrowRight") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.add(focusedStory.id); return n; }); }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.delete(focusedStory.id); return n; }); }
+      if (e.key === " ") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.has(focusedStory.id) ? n.delete(focusedStory.id) : n.add(focusedStory.id); return n; }); }
+      // Cmd+G = generate/rewrite focused story
+      if (e.metaKey && e.key === "g") { e.preventDefault(); if (!loading) generate(focusedStory); }
+      // Cmd+T = translate all for focused story
+      if (e.metaKey && e.key === "t") { e.preventDefault(); if (!loading && focusedStory.script) translateAll(focusedStory); }
+      // Cmd+C when expanded = copy current lang
+      if (e.metaKey && e.key === "c" && expandedIds.has(focusedStory.id)) {
+        const sc = getScript(focusedStory, viewLang);
+        if (sc) { navigator.clipboard.writeText(sc); setCopied(`${focusedStory.id}-${viewLang}`); setTimeout(()=>setCopied(false),2000); }
+      }
+      // 1-4 keys = switch lang when expanded
+      if (expandedIds.has(focusedStory.id)) {
+        const langMap = { "1":"en","2":"fr","3":"es","4":"pt" };
+        if (langMap[e.key]) { const l = langMap[e.key]; if (getScript(focusedStory, l)) setViewLang(l); }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [focusedIdx, focusedStory, ready, loading, expandedIds, viewLang, getScript]);
 
   const translateLang = async (story, lang, scriptText) => {
     const langName = LANGS.find(l=>l.key===lang)?.name||lang;
     const prompt = `Translate this Uncle Carter sports storytelling script to ${langName}. Keep the same tone: calm, warm, storytelling uncle. Translate "Forty seconds." and the closing line naturally. Same rhythm. 110-150 words.\n\nReturn ONLY the translated script.\n\nOriginal:\n${scriptText}`;
-    const text = await callClaude(prompt, 600);
-    return text;
+    return await callClaude(prompt, 600);
   };
 
   const generate = async (story, withTranslate = autoTranslate) => {
     setLoading(`en-${story.id}`); setError(null);
     setStreaming(s => ({ ...s, [story.id]: "" }));
     try {
-      // Step 1: Generate EN
       const prompt = `${SCRIPT_SYSTEM}\n\n---\n\nWrite an Uncle Carter episode script about:\nStory: ${story.angle||story.title}\nPlayer(s): ${story.players||"Unknown"}\nEra: ${story.era||"Unknown"}\nEmotional angle: ${story.archetype||"Pressure"}\n\n110-150 words. Pure script only.`;
       const enText = await callClaudeStream(prompt, 600, (live) => {
         setStreaming(s => ({ ...s, [story.id]: live }));
@@ -60,13 +116,16 @@ export default function ScriptView({ stories, onUpdate }) {
       setStreaming(s => { const n = {...s}; delete n[story.id]; return n; });
       await onUpdate(story.id, { script: enText, script_version: (story.script_version||0)+1, status: "scripted" });
 
-      // Step 2: Auto-translate all languages
       if (withTranslate) {
+        const newLangs = {};
         for (const lang of ["fr","es","pt"]) {
           setLoading(`${lang}-${story.id}`);
           const translated = await translateLang(story, lang, enText);
+          newLangs[lang] = translated;
+          // Save locally immediately so UI updates
+          setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id]||{}), [lang]: translated } }));
           await onUpdate(story.id, { [`script_${lang}`]: translated });
-          await new Promise(r => setTimeout(r, 400));
+          await new Promise(r => setTimeout(r, 300));
         }
       }
     } catch (err) { setError(err.message); } finally { setLoading(null); }
@@ -77,54 +136,43 @@ export default function ScriptView({ stories, onUpdate }) {
     setBatchMode(true); setBatchDone(0); setError(null);
     for (let i = 0; i < queue.length; i++) {
       const s = queue[i];
-      setBatchStep(`${s.title.slice(0,30)}...`);
+      setBatchStep(s.title.length > 35 ? s.title.slice(0,35)+"..." : s.title);
       await generate(s, autoTranslate);
       setBatchDone(i + 1);
-      if (i < queue.length - 1) await new Promise(r => setTimeout(r, 600));
+      if (i < queue.length - 1) await new Promise(r => setTimeout(r, 500));
     }
     setBatchMode(false); setBatchStep("");
   };
 
   const translateAll = async (story) => {
-    setLoading(`all-${story.id}`); setError(null);
+    setError(null);
     try {
+      const scriptText = story.script;
       for (const lang of ["fr","es","pt"]) {
-        if (story[`script_${lang}`]) continue;
+        if (getScript(story, lang)) continue;
         setLoading(`${lang}-${story.id}`);
-        const translated = await translateLang(story, lang, story.script);
+        const translated = await translateLang(story, lang, scriptText);
+        setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id]||{}), [lang]: translated } }));
         await onUpdate(story.id, { [`script_${lang}`]: translated });
-        await new Promise(r => setTimeout(r, 400));
+        await new Promise(r => setTimeout(r, 300));
       }
     } catch (err) { setError(err.message); } finally { setLoading(null); }
   };
 
-  const getScript = (story, lang) => {
-    if (lang === "en") return streaming[story.id] ?? story.script;
-    return story[`script_${lang}`];
-  };
-
-  // ElevenLabs export — zip with one txt per language
   const exportVoicePack = async (story) => {
-    const files = {};
-    const slug  = story.title.slice(0,30).replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
+    const slug = story.title.slice(0,30).replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
+    const { default: JSZip } = await import("jszip");
+    const zip = new JSZip();
     LANGS.forEach(l => {
       const sc = getScript(story, l.key);
-      if (sc) files[`UC-${slug}_${l.key}.txt`] = sc;
+      if (sc) zip.file(`UC-${slug}_${l.key}.txt`, sc);
     });
-
-    // Simple zip using JSZip via CDN — inline approach
-    const { default: JSZip } = await import("jszip");
-    const zip   = new JSZip();
-    Object.entries(files).forEach(([name, content]) => zip.file(name, content));
-    const blob  = await zip.generateAsync({ type:"blob" });
-    const a     = document.createElement("a");
-    a.href      = URL.createObjectURL(blob);
-    a.download  = `UC-${slug}-voice-pack.zip`;
-    a.click();
+    const blob = await zip.generateAsync({ type:"blob" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `UC-${slug}-voice-pack.zip`; a.click();
   };
 
   const unscripted = ready.filter(s => !s.script);
-  const STEPS = autoTranslate ? ["EN", "FR", "ES", "PT"] : ["EN"];
+  const STEPS = autoTranslate ? ["EN","FR","ES","PT"] : ["EN"];
 
   if (!ready.length) return (
     <div style={{ textAlign:"center", padding:"80px 0", color:"var(--t4)" }} className="animate-fade-in">
@@ -136,99 +184,114 @@ export default function ScriptView({ stories, onUpdate }) {
   return (
     <div className="animate-fade-in">
 
-      {/* Options bar */}
+      {/* Options + batch bar */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:12 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <span style={{ fontSize:12, color:"var(--t2)" }}>Auto-translate after generate</span>
-          <button onClick={() => setAutoTranslate(a => !a)} style={{
-            width:36, height:20, borderRadius:10, border:"none", cursor:"pointer",
-            background: autoTranslate ? "var(--t1)" : "var(--t4)",
-            position:"relative", transition:"background 0.2s",
-          }}>
-            <div style={{
-              position:"absolute", top:2, left: autoTranslate ? 18 : 2,
-              width:16, height:16, borderRadius:"50%", background:"var(--bg)",
-              transition:"left 0.2s",
-            }} />
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:12, color:"var(--t2)" }}>Auto-translate</span>
+          <button onClick={() => setAutoTranslate(a=>!a)} style={{ width:36, height:20, borderRadius:10, border:"none", cursor:"pointer", background: autoTranslate ? "var(--t1)" : "var(--t4)", position:"relative", transition:"background 0.2s" }}>
+            <div style={{ position:"absolute", top:2, left: autoTranslate ? 18 : 2, width:16, height:16, borderRadius:"50%", background:"var(--bg)", transition:"left 0.2s" }} />
           </button>
+          {batchMode && batchStep && (
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:8 }}>
+              <ProgressSteps steps={STEPS} current={
+                loading?.startsWith("fr") ? 1 : loading?.startsWith("es") ? 2 : loading?.startsWith("pt") ? 3 : 0
+              } />
+              <span style={{ fontSize:11, color:"var(--t3)" }}>{batchStep}</span>
+              <span style={{ fontSize:11, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>{batchDone}/{unscripted.length + batchDone}</span>
+            </div>
+          )}
         </div>
-        {unscripted.length > 0 && (
-          <button onClick={generateAll} disabled={!!loading || batchMode} style={{
+        {unscripted.length > 0 && !batchMode && (
+          <button onClick={generateAll} disabled={!!loading} style={{
             padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600,
-            background: batchMode ? "var(--fill2)" : "var(--t1)",
-            color: batchMode ? "var(--t3)" : "var(--bg)",
-            border:"none", cursor: batchMode ? "not-allowed" : "pointer",
+            background:"var(--t1)", color:"var(--bg)", border:"none", cursor:loading?"not-allowed":"pointer",
             display:"flex", alignItems:"center", gap:5,
           }}>
-            <Layers size={12} />
-            {batchMode ? `${batchDone}/${unscripted.length} done` : `Generate all (${unscripted.length})`}
+            <Layers size={12} /> Generate all ({unscripted.length})
           </button>
         )}
       </div>
 
-      {/* Batch progress */}
-      {batchMode && batchStep && (
-        <div style={{ padding:"10px 14px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:12, fontSize:12, color:"var(--t2)" }}>
-          <ProgressSteps steps={STEPS} current={
-            loading?.startsWith("fr") ? 1 : loading?.startsWith("es") ? 2 : loading?.startsWith("pt") ? 3 : 0
-          } />
-          <div style={{ marginTop:6, color:"var(--t3)", fontSize:11 }}>{batchStep}</div>
-        </div>
-      )}
-
       {/* Story list */}
-      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-        {ready.map(s => {
-          const isOpen      = selId === s.id;
+      <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+        {ready.map((s, idx) => {
+          const isFocused   = idx === focusedIdx;
+          const isExpanded  = expandedIds.has(s.id);
           const isStreaming = s.id in streaming;
-          const langCount   = LANGS.filter(l => getScript(s, l.key)).length;
-          const thisLang    = isOpen ? viewLang : "en";
-          const isLoadingEn = loading === `en-${s.id}`;
-          const isLoadingFr = loading === `fr-${s.id}`;
-          const isLoadingEs = loading === `es-${s.id}`;
-          const isLoadingPt = loading === `pt-${s.id}`;
-          const isLoadingAny = isLoadingEn || isLoadingFr || isLoadingEs || isLoadingPt;
-          const currentStep = isLoadingEn ? 0 : isLoadingFr ? 1 : isLoadingEs ? 2 : isLoadingPt ? 3 : -1;
+          const availLangs  = getAvailableLangs(s);
+          const ac          = ACCENT[s.archetype] || "var(--border)";
+          const isLoadingEn  = loading === `en-${s.id}`;
+          const isLoadingFr  = loading === `fr-${s.id}`;
+          const isLoadingEs  = loading === `es-${s.id}`;
+          const isLoadingPt  = loading === `pt-${s.id}`;
+          const isLoadingThis = isLoadingEn || isLoadingFr || isLoadingEs || isLoadingPt;
+          const currentStep  = isLoadingEn ? 0 : isLoadingFr ? 1 : isLoadingEs ? 2 : isLoadingPt ? 3 : -1;
 
           return (
-            <div key={s.id} style={{ borderRadius:10, overflow:"hidden", background:"var(--card)", border:"1px solid var(--border)" }}>
-              <button onClick={() => setSelId(isOpen ? null : s.id)} style={{
-                width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center",
-                padding:"14px 16px", background:"transparent", border:"none", cursor:"pointer", textAlign:"left",
+            <div key={s.id} id={`script-${s.id}`}
+              onClick={() => setFocusedIdx(idx)}
+              style={{
+                borderRadius:8, marginBottom:2, cursor:"pointer",
+                borderTop:    isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
+                borderRight:  isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
+                borderBottom: isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
+                borderLeft:   `3px solid ${ac}`,
+                background:   isFocused ? "var(--fill2)" : "var(--card)",
+                transition:   "background 0.1s",
               }}>
+
+              {/* Header row */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px" }}
+                onClick={e => { e.stopPropagation(); setFocusedIdx(idx); setExpandedIds(ex => { const n = new Set(ex); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; }); }}>
                 <div style={{ minWidth:0, flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", letterSpacing:"-0.01em", marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
                   <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)", flexWrap:"wrap" }}>
-                    <span>{s.archetype}</span>
+                    <span style={{ color:ac, fontWeight:500 }}>{s.archetype}</span>
                     {s.era && <><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
                     {s.script && <><span style={{color:"var(--t4)"}}>·</span><span style={{fontFamily:"'DM Mono',monospace",fontSize:11}}>v{s.script_version||1} · {wc(s.script)}w</span></>}
-                    {isLoadingAny && autoTranslate && (
-                      <ProgressSteps steps={STEPS} current={currentStep} />
-                    )}
-                    {!isLoadingAny && langCount > 0 && LANGS.filter(l=>getScript(s,l.key)).map(l => (
-                      <span key={l.key} style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{l.label}</span>
-                    ))}
+                    {isLoadingThis
+                      ? <ProgressSteps steps={STEPS} current={currentStep} />
+                      : availLangs.map(l => (
+                          <span key={l.key} style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{l.label}</span>
+                        ))
+                    }
                   </div>
                 </div>
-                {isOpen ? <ChevronDown size={15} color="var(--t4)" /> : <ChevronRight size={15} color="var(--t4)" />}
-              </button>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft:12 }}>
+                  {/* Quick generate button */}
+                  {!isLoadingThis && (
+                    <button onClick={e=>{e.stopPropagation();generate(s);}} disabled={!!loading} style={{
+                      padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:500,
+                      background:"var(--fill2)", border:"1px solid var(--border)",
+                      color:"var(--t2)", cursor:loading?"not-allowed":"pointer",
+                      display:"flex", alignItems:"center", gap:4,
+                    }}
+                    onMouseEnter={e=>{e.currentTarget.style.background="var(--t1)";e.currentTarget.style.color="var(--bg)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.background="var(--fill2)";e.currentTarget.style.color="var(--t2)";}}>
+                      <RefreshCw size={11} /> {s.script ? "Rewrite" : "Generate"}
+                    </button>
+                  )}
+                  {isExpanded ? <ChevronDown size={15} color="var(--t4)" /> : <ChevronRight size={15} color="var(--t4)" />}
+                </div>
+              </div>
 
-              {isOpen && (
-                <div style={{ padding:"0 16px 16px", borderTop:"1px solid var(--border2)" }}>
-                  {s.angle && <div style={{ fontSize:13, color:"var(--t3)", lineHeight:1.6, margin:"12px 0" }}>{s.angle}</div>}
+              {/* Expanded content */}
+              {isExpanded && (
+                <div className="animate-fade-in" style={{ padding:"0 14px 14px", borderTop:"1px solid var(--border2)" }}>
+                  {s.angle && <div style={{ fontSize:13, color:"var(--t3)", lineHeight:1.6, margin:"10px 0 8px" }}>{s.angle}</div>}
 
                   {/* Lang tabs */}
                   {s.script && (
                     <div style={{ display:"flex", gap:4, marginBottom:10 }}>
-                      {LANGS.map(l => {
-                        const has = !!getScript(s, l.key);
+                      {LANGS.map((l, li) => {
+                        const has       = !!getScript(s, l.key);
                         const isLoading = loading === `${l.key}-${s.id}`;
                         return (
-                          <button key={l.key} onClick={() => has && setViewLang(l.key)} style={{
+                          <button key={l.key} onClick={()=>has&&setViewLang(l.key)} style={{
                             padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:600,
-                            background: viewLang===l.key && has ? "var(--t1)" : "var(--fill2)",
-                            color: viewLang===l.key && has ? "var(--bg)" : has ? "var(--t2)" : "var(--t4)",
-                            border:"1px solid var(--border)", cursor: has ? "pointer" : "default",
+                            background: viewLang===l.key&&has ? "var(--t1)" : "var(--fill2)",
+                            color: viewLang===l.key&&has ? "var(--bg)" : has ? "var(--t2)" : "var(--t4)",
+                            border:"1px solid var(--border)", cursor:has?"pointer":"default",
                             display:"flex", alignItems:"center", gap:4,
                           }}>
                             {isLoading
@@ -236,6 +299,7 @@ export default function ScriptView({ stories, onUpdate }) {
                               : has ? <Check size={9} /> : null
                             }
                             {l.label}
+                            <span style={{fontSize:9,color:"var(--t4)"}}>{li+1}</span>
                           </button>
                         );
                       })}
@@ -243,84 +307,72 @@ export default function ScriptView({ stories, onUpdate }) {
                   )}
 
                   {/* Script text */}
-                  {getScript(s, thisLang) && (
-                    <div style={{ padding:"14px 16px", borderRadius:8, background:"var(--bg2)", marginBottom:10, maxHeight:240, overflowY:"auto", position:"relative" }}>
-                      {isStreaming && (
-                        <div style={{ position:"absolute", top:10, right:12, width:6, height:6, borderRadius:"50%", background:"var(--t1)", animation:"pulse 1s ease-in-out infinite" }} />
-                      )}
+                  {getScript(s, viewLang) && (
+                    <div style={{ padding:"14px 16px", borderRadius:8, background:"var(--bg2)", marginBottom:10, maxHeight:260, overflowY:"auto", position:"relative" }}>
+                      {isStreaming && <div style={{ position:"absolute", top:10, right:12, width:6, height:6, borderRadius:"50%", background:"var(--t1)", animation:"pulse 1s ease-in-out infinite" }} />}
                       <div style={{ fontSize:14, color:"var(--t2)", lineHeight:1.85, fontFamily:"Georgia, serif", whiteSpace:"pre-wrap" }}>
-                        {getScript(s, thisLang)}
+                        {getScript(s, viewLang)}
                       </div>
                     </div>
                   )}
 
-                  {/* Actions */}
+                  {/* Action buttons */}
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    <button onClick={() => generate(s)} disabled={!!loading} style={{
-                      flex:1, minWidth:120, padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
+                    <button onClick={()=>generate(s)} disabled={!!loading} style={{
+                      flex:1, minWidth:110, padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
                       background: isLoadingEn ? "var(--fill2)" : "var(--t1)",
                       color: isLoadingEn ? "var(--t3)" : "var(--bg)",
                       border:"none", cursor:loading?"not-allowed":"pointer",
                       display:"flex", alignItems:"center", justifyContent:"center", gap:5,
                     }}>
                       <RefreshCw size={12} />
-                      {isLoadingEn ? "Writing..." : isLoadingAny ? "Translating..." : s.script ? "Rewrite EN" : "Generate"}
-                      {autoTranslate && !s.script && <span style={{fontSize:10,opacity:0.7}}>+ translate</span>}
+                      {isLoadingEn ? "Writing..." : s.script ? "Rewrite EN" : "Generate"}
+                      {autoTranslate && !isLoadingThis && <span style={{fontSize:10,opacity:0.6}}>+ all langs</span>}
                     </button>
 
-                    {s.script && !autoTranslate && (
-                      <button onClick={() => translateAll(s)} disabled={!!loading} style={{
-                        flex:1, minWidth:100, padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
+                    {s.script && availLangs.length < 4 && (
+                      <button onClick={()=>translateAll(s)} disabled={!!loading} style={{
+                        padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color:"var(--t1)",
                         border:"1px solid var(--border)", cursor:loading?"not-allowed":"pointer",
-                        display:"flex", alignItems:"center", justifyContent:"center", gap:5,
+                        display:"flex", alignItems:"center", gap:5,
                       }}>
                         <Layers size={12} />
-                        {loading===`all-${s.id}` ? "Translating..." : "Translate all"}
+                        {isLoadingFr||isLoadingEs||isLoadingPt ? "Translating..." : "Translate missing"}
                       </button>
                     )}
 
-                    {getScript(s, thisLang) && !isStreaming && (
-                      <button onClick={() => { navigator.clipboard.writeText(getScript(s,thisLang)); setCopied(`${s.id}-${thisLang}`); setTimeout(()=>setCopied(false),2000); }} style={{
-                        padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
-                        background:"var(--fill2)", color: copied===`${s.id}-${thisLang}` ? "var(--t1)" : "var(--t2)",
+                    {getScript(s, viewLang) && !isStreaming && (
+                      <button onClick={()=>{ navigator.clipboard.writeText(getScript(s,viewLang)); setCopied(`${s.id}-${viewLang}`); setTimeout(()=>setCopied(false),2000); }} style={{
+                        padding:"8px 12px", borderRadius:7, fontSize:12, fontWeight:600,
+                        background:"var(--fill2)", color: copied===`${s.id}-${viewLang}` ? "var(--t1)" : "var(--t2)",
                         border:"1px solid var(--border)", cursor:"pointer",
                         display:"flex", alignItems:"center", gap:5,
                       }}>
-                        <Copy size={12} />{copied===`${s.id}-${thisLang}` ? "Copied!" : `Copy ${thisLang.toUpperCase()}`}
+                        <Copy size={12} />{copied===`${s.id}-${viewLang}` ? "Copied!" : `Copy ${viewLang.toUpperCase()}`}
                       </button>
                     )}
 
-                    {/* ElevenLabs export */}
-                    {langCount >= 1 && (
-                      <button onClick={() => exportVoicePack(s)} style={{
-                        padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
+                    {availLangs.length >= 1 && (
+                      <button onClick={()=>exportVoicePack(s)} style={{
+                        padding:"8px 12px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color:"var(--t2)",
                         border:"1px solid var(--border)", cursor:"pointer",
                         display:"flex", alignItems:"center", gap:5,
-                      }}
-                      title="Download voice pack (txt files for ElevenLabs)">
+                      }} title="Download zip for ElevenLabs">
                         <Zap size={12} /> Voice pack
                       </button>
                     )}
                   </div>
 
-                  {/* Individual translate if auto-translate off */}
-                  {s.script && !autoTranslate && LANGS.filter(l=>l.key!=="en"&&!getScript(s,l.key)).length > 0 && (
-                    <div style={{ display:"flex", gap:4, marginTop:6 }}>
-                      {LANGS.filter(l=>l.key!=="en"&&!getScript(s,l.key)).map(l => (
-                        <button key={l.key} onClick={() => translateLang(s, l.key, s.script).then(t => onUpdate(s.id,{[`script_${l.key}`]:t}))} disabled={!!loading} style={{
-                          padding:"5px 10px", borderRadius:6, fontSize:11, fontWeight:600,
-                          background:"var(--fill2)", color:"var(--t3)",
-                          border:"1px solid var(--border)", cursor:loading?"not-allowed":"pointer",
-                        }}>
-                          {loading===`${l.key}-${s.id}` ? "..." : `+ ${l.label}`}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {error && <div style={{ marginTop:8, fontSize:11, color:"var(--t3)" }}>{error}</div>}
 
-                  {error && <div style={{ marginTop:8, fontSize:11, color:"var(--t2)" }}>{error}</div>}
+                  {/* Shortcut hint */}
+                  <div style={{ marginTop:10, fontSize:10, color:"var(--t4)", display:"flex", gap:10, flexWrap:"wrap" }}>
+                    {[["⌘G","Generate/rewrite"],["⌘T","Translate all"],["1-4","Switch lang"],["→←","Expand/collapse"]].map(([k,v])=>(
+                      <span key={k}><kbd style={{fontFamily:"'DM Mono',monospace",fontSize:9,padding:"1px 4px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

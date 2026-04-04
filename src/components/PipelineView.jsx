@@ -221,7 +221,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
           <span style={{ fontSize:13, fontWeight:500 }}>{selected.size} selected</span>
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={() => { [...selected].forEach(id => onStageChange(id,"approved")); setSelected(new Set()); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--bg)", color:"var(--t1)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
-              <Check size:12 /> Approve
+              <Check size={12} /> Approve
             </button>
             <button onClick={() => { onBulkReject([...selected]); setSelected(new Set()); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"rgba(255,255,255,0.1)", color:"var(--bg)", border:"1px solid rgba(255,255,255,0.2)", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
               <X size={12} /> Reject

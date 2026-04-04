@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight } from "lucide-react";
+import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal } from "lucide-react";
+import { useMemo } from "react";
 import { LANGS, SCRIPT_SYSTEM, ACCENT } from "@/lib/constants";
 import { callClaude, callClaudeStream } from "@/lib/db";
 
@@ -27,7 +28,41 @@ function ProgressSteps({ steps, current }) {
 }
 
 export default function ScriptView({ stories, onUpdate }) {
-  const ready = stories.filter(s => ["approved","scripted"].includes(s.status));
+  const allReady = stories.filter(s => ["approved","scripted"].includes(s.status));
+
+  const ready = useMemo(() => {
+    let list = allReady.filter(s => {
+      if (filterStatus === "unscripted" && s.script) return false;
+      if (filterStatus === "scripted"   && !s.script) return false;
+      if (filterArch && s.archetype !== filterArch) return false;
+      if (filterEra  && s.era       !== filterEra)  return false;
+      if (filterLang) {
+        const hasFr = !!(localLangs[s.id]?.fr ?? s.script_fr);
+        const hasEs = !!(localLangs[s.id]?.es ?? s.script_es);
+        const hasPt = !!(localLangs[s.id]?.pt ?? s.script_pt);
+        if (filterLang === "fr" && hasFr) return false;
+        if (filterLang === "es" && hasEs) return false;
+        if (filterLang === "pt" && hasPt) return false;
+      }
+      if (search) {
+        const q = search.toLowerCase();
+        const players = Array.isArray(s.players) ? s.players.join(" ") : (s.players||"");
+        if (![(s.title||""), players].some(f => f.toLowerCase().includes(q))) return false;
+      }
+      return true;
+    });
+    list.sort((a, b) => {
+      if (sortBy === "date_desc")  return new Date(b.created_at||0) - new Date(a.created_at||0);
+      if (sortBy === "date_asc")   return new Date(a.created_at||0) - new Date(b.created_at||0);
+      if (sortBy === "score_desc") return (b.score_total||0) - (a.score_total||0);
+      if (sortBy === "title_asc")  return (a.title||"").localeCompare(b.title||"");
+      return 0;
+    });
+    return list;
+  }, [allReady, filterStatus, filterLang, filterArch, filterEra, search, sortBy, localLangs]);
+
+  const activeFilterCount = [filterStatus!=="all", filterLang, filterArch, filterEra].filter(Boolean).length;
+  const clearFilters = () => { setFilterStatus("all"); setFilterLang(""); setFilterArch(""); setFilterEra(""); setSearch(""); setSortBy("date_desc"); };
   
   // Navigation state
   const [focusedIdx,   setFocusedIdx]   = useState(0);
@@ -46,19 +81,28 @@ export default function ScriptView({ stories, onUpdate }) {
   const [batchStep,    setBatchStep]    = useState("");
   const [autoTranslate,setAutoTranslate] = useState(true);
 
+  // Filters
+  const [search,      setSearch]      = useState("");
+  const [filterStatus,setFilterStatus]= useState("all"); // all | unscripted | scripted
+  const [filterLang,  setFilterLang]  = useState("");    // "" | fr | es | pt (missing)
+  const [filterArch,  setFilterArch]  = useState("");
+  const [filterEra,   setFilterEra]   = useState("");
+  const [sortBy,      setSortBy]      = useState("date_desc");
+  const [showFilters, setShowFilters] = useState(false);
+
   const focusedStory = ready[focusedIdx] || null;
 
   // Get script text — check local cache first, then story props
-  const getScript = useCallback((story, lang) => {
+  const getScript = (story, lang) => {
     if (!story) return null;
-    if (lang === "en") return streaming[story.id] ?? story.script;
-    return localLangs[story.id]?.[lang] ?? story[`script_${lang}`];
-  }, [streaming, localLangs]);
+    if (lang === "en") return streaming[story.id] !== undefined ? streaming[story.id] : story.script;
+    return localLangs[story.id]?.[lang] ?? story[`script_${lang}`] ?? null;
+  };
 
   // Get all available langs for a story
-  const getAvailableLangs = useCallback((story) => {
+  const getAvailableLangs = (story) => {
     return LANGS.filter(l => !!getScript(story, l.key));
-  }, [getScript]);
+  };
 
   // Keyboard navigation
   useEffect(() => {
@@ -86,18 +130,19 @@ export default function ScriptView({ stories, onUpdate }) {
       if (e.metaKey && e.key === "t") { e.preventDefault(); if (!loading && focusedStory.script) translateAll(focusedStory); }
       // Cmd+C when expanded = copy current lang
       if (e.metaKey && e.key === "c" && expandedIds.has(focusedStory.id)) {
-        const sc = getScript(focusedStory, viewLang);
-        if (sc) { navigator.clipboard.writeText(sc); setCopied(`${focusedStory.id}-${viewLang}`); setTimeout(()=>setCopied(false),2000); }
+        const vl = getViewLang(focusedStory.id);
+        const sc = getScript(focusedStory, vl);
+        if (sc) { navigator.clipboard.writeText(sc); setCopied(`${focusedStory.id}-${vl}`); setTimeout(()=>setCopied(false),2000); }
       }
       // 1-4 keys = switch lang when expanded
       if (expandedIds.has(focusedStory.id)) {
         const langMap = { "1":"en","2":"fr","3":"es","4":"pt" };
-        if (langMap[e.key]) { const l = langMap[e.key]; if (getScript(focusedStory, l)) setViewLang(l); }
+        if (langMap[e.key]) { const l = langMap[e.key]; if (getScript(focusedStory, l)) setViewLang(focusedStory.id, l); }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [focusedIdx, focusedStory, ready, loading, expandedIds, viewLang, getScript]);
+  }, [focusedIdx, focusedStory, ready, loading, expandedIds, viewLangMap, localLangs, streaming]);
 
   const translateLang = async (story, lang, scriptText) => {
     const langName = LANGS.find(l=>l.key===lang)?.name||lang;
@@ -212,6 +257,82 @@ export default function ScriptView({ stories, onUpdate }) {
         )}
       </div>
 
+      {/* ── Filter bar ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:8, marginBottom:12, alignItems:"center" }}>
+        <div style={{ position:"relative" }}>
+          <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--t3)", pointerEvents:"none" }} />
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title or player..."
+            style={{ width:"100%", padding:"8px 12px 8px 32px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", fontSize:13, outline:"none" }} />
+        </div>
+        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ padding:"8px 10px", borderRadius:8, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+          <option value="date_desc">Newest first</option>
+          <option value="date_asc">Oldest first</option>
+          <option value="score_desc">Score: high → low</option>
+          <option value="title_asc">Title A → Z</option>
+        </select>
+        <button onClick={() => setShowFilters(f=>!f)} style={{
+          height:36, padding:"0 12px", borderRadius:8, fontSize:12, fontWeight:500,
+          background: showFilters || activeFilterCount > 0 ? "var(--t1)" : "var(--fill2)",
+          color:      showFilters || activeFilterCount > 0 ? "var(--bg)"  : "var(--t2)",
+          border:"1px solid var(--border)", cursor:"pointer", display:"flex", alignItems:"center", gap:6,
+        }}>
+          <SlidersHorizontal size={13} /> Filters
+          {activeFilterCount > 0 && <span style={{ width:16, height:16, borderRadius:"50%", background:"var(--bg)", color:"var(--t1)", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{activeFilterCount}</span>}
+        </button>
+        {activeFilterCount > 0 && (
+          <button onClick={clearFilters} style={{ height:36, padding:"0 10px", borderRadius:8, fontSize:12, color:"var(--t3)", background:"transparent", border:"1px solid var(--border)", cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
+            <X size={12} /> Clear
+          </button>
+        )}
+      </div>
+
+      {showFilters && (
+        <div className="animate-fade-in" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:8, padding:"12px 14px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:12 }}>
+          {/* Status */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Status</div>
+            <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+              <option value="all">All</option>
+              <option value="unscripted">No script yet</option>
+              <option value="scripted">Has script</option>
+            </select>
+          </div>
+          {/* Missing lang */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Missing lang</div>
+            <select value={filterLang} onChange={e=>setFilterLang(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+              <option value="">Any</option>
+              <option value="fr">Missing FR</option>
+              <option value="es">Missing ES</option>
+              <option value="pt">Missing PT</option>
+            </select>
+          </div>
+          {/* Archetype */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Archetype</div>
+            <select value={filterArch} onChange={e=>setFilterArch(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+              <option value="">Any</option>
+              {[...new Set(allReady.map(s=>s.archetype).filter(Boolean))].sort().map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          {/* Era */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Era</div>
+            <select value={filterEra} onChange={e=>setFilterEra(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+              <option value="">Any</option>
+              {[...new Set(allReady.map(s=>s.era).filter(Boolean))].sort().map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Result count */}
+      {(search || activeFilterCount > 0) && (
+        <div style={{ fontSize:12, color:"var(--t3)", marginBottom:10 }}>
+          {ready.length} {ready.length === 1 ? "story" : "stories"} found
+        </div>
+      )}
+
       {/* Story list */}
       <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
         {ready.map((s, idx) => {
@@ -286,11 +407,12 @@ export default function ScriptView({ stories, onUpdate }) {
                       {LANGS.map((l, li) => {
                         const has       = !!getScript(s, l.key);
                         const isLoading = loading === `${l.key}-${s.id}`;
+                        const vl        = getViewLang(s.id);
                         return (
-                          <button key={l.key} onClick={()=>has&&setViewLang(l.key)} style={{
+                          <button key={l.key} onClick={()=>has&&setViewLang(s.id,l.key)} style={{
                             padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:600,
-                            background: viewLang===l.key&&has ? "var(--t1)" : "var(--fill2)",
-                            color: viewLang===l.key&&has ? "var(--bg)" : has ? "var(--t2)" : "var(--t4)",
+                            background: vl===l.key&&has ? "var(--t1)" : "var(--fill2)",
+                            color: vl===l.key&&has ? "var(--bg)" : has ? "var(--t2)" : "var(--t4)",
                             border:"1px solid var(--border)", cursor:has?"pointer":"default",
                             display:"flex", alignItems:"center", gap:4,
                           }}>
@@ -307,11 +429,11 @@ export default function ScriptView({ stories, onUpdate }) {
                   )}
 
                   {/* Script text */}
-                  {getScript(s, viewLang) && (
+                  {getScript(s, getViewLang(s.id)) && (
                     <div style={{ padding:"14px 16px", borderRadius:8, background:"var(--bg2)", marginBottom:10, maxHeight:260, overflowY:"auto", position:"relative" }}>
                       {isStreaming && <div style={{ position:"absolute", top:10, right:12, width:6, height:6, borderRadius:"50%", background:"var(--t1)", animation:"pulse 1s ease-in-out infinite" }} />}
                       <div style={{ fontSize:14, color:"var(--t2)", lineHeight:1.85, fontFamily:"Georgia, serif", whiteSpace:"pre-wrap" }}>
-                        {getScript(s, viewLang)}
+                        {getScript(s, getViewLang(s.id))}
                       </div>
                     </div>
                   )}
@@ -342,14 +464,14 @@ export default function ScriptView({ stories, onUpdate }) {
                       </button>
                     )}
 
-                    {getScript(s, viewLang) && !isStreaming && (
-                      <button onClick={()=>{ navigator.clipboard.writeText(getScript(s,viewLang)); setCopied(`${s.id}-${viewLang}`); setTimeout(()=>setCopied(false),2000); }} style={{
+                    {getScript(s, getViewLang(s.id)) && !isStreaming && (
+                      <button onClick={()=>{ const vl=getViewLang(s.id); navigator.clipboard.writeText(getScript(s,vl)); setCopied(`${s.id}-${vl}`); setTimeout(()=>setCopied(false),2000); }} style={{
                         padding:"8px 12px", borderRadius:7, fontSize:12, fontWeight:600,
-                        background:"var(--fill2)", color: copied===`${s.id}-${viewLang}` ? "var(--t1)" : "var(--t2)",
+                        background:"var(--fill2)", color: copied===`${s.id}-${getViewLang(s.id)}` ? "var(--t1)" : "var(--t2)",
                         border:"1px solid var(--border)", cursor:"pointer",
                         display:"flex", alignItems:"center", gap:5,
                       }}>
-                        <Copy size={12} />{copied===`${s.id}-${viewLang}` ? "Copied!" : `Copy ${viewLang.toUpperCase()}`}
+                        <Copy size={12} />{copied===`${s.id}-${getViewLang(s.id)}` ? "Copied!" : `Copy ${getViewLang(s.id).toUpperCase()}`}
                       </button>
                     )}
 

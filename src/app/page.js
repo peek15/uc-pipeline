@@ -13,7 +13,7 @@ import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 
-const VERSION = "2.4.1";
+const VERSION = "2.4.3";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },

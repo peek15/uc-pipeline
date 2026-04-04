@@ -94,9 +94,14 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
 
       // Tab switching: Cmd+1-5
-      if (e.metaKey && e.shiftKey && ["1","2","3","4","5"].includes(e.key)) {
+      if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
         e.preventDefault();
-        setActiveTab(TABS[parseInt(e.key) - 1]);
+        const TAB_KEYS = ["pipeline","research","script","calendar","analyze"];
+        setActiveTab(prev => {
+          const idx = TAB_KEYS.indexOf(prev);
+          if (e.key === "ArrowRight") return TAB_KEYS[Math.min(idx+1, TAB_KEYS.length-1)];
+          return TAB_KEYS[Math.max(idx-1, 0)];
+        });
         return;
       }
 
@@ -107,8 +112,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
       const idx = visibleIds.indexOf(focused);
 
-      if (e.key === "ArrowDown") { e.preventDefault(); const next = visibleIds[Math.min(idx+1, visibleIds.length-1)]; setFocused(next); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(next); return n; }); setTimeout(() => document.getElementById(`story-${next}`)?.scrollIntoView({ block:"nearest", behavior:"smooth" }), 0); }
-      if (e.key === "ArrowUp")   { e.preventDefault(); const prev = visibleIds[Math.max(idx-1, 0)]; setFocused(prev); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(prev); return n; }); setTimeout(() => document.getElementById(`story-${prev}`)?.scrollIntoView({ block:"nearest", behavior:"smooth" }), 0); }
+      if (e.key === "ArrowDown") { e.preventDefault(); const next = visibleIds[Math.min(idx+1, visibleIds.length-1)]; setFocused(next); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(next); return n; }); setTimeout(() => { const el = document.getElementById(`story-${next}`); if (el) { const r = el.getBoundingClientRect(); if (r.bottom > window.innerHeight - 80) el.scrollIntoView({ block:"end", behavior:"smooth" }); } }, 50); }
+      if (e.key === "ArrowUp")   { e.preventDefault(); const prev = visibleIds[Math.max(idx-1, 0)]; setFocused(prev); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(prev); return n; }); setTimeout(() => { const el = document.getElementById(`story-${prev}`); if (el) { const r = el.getBoundingClientRect(); if (r.top < 120) el.scrollIntoView({ block:"start", behavior:"smooth" }); } }, 50); }
       if (e.key === "ArrowRight") { e.preventDefault(); setExpanded(s => { const n = new Set(s); n.add(focused); return n; }); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); setExpanded(s => { const n = new Set(s); n.delete(focused); return n; }); }
       if (e.key === " ") { e.preventDefault(); setSelected(s => { const n = new Set(s); n.has(focused) ? n.delete(focused) : n.add(focused); return n; }); }
@@ -222,7 +227,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
           <span style={{ fontSize:13, fontWeight:500 }}>{selected.size} selected</span>
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={() => { [...selected].forEach(id => onStageChange(id,"approved")); setSelected(new Set()); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--bg)", color:"var(--t1)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
-              <Check size={12} /> Approve
+              <Check size:12 /> Approve
             </button>
             <button onClick={() => { onBulkReject([...selected]); setSelected(new Set()); }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"rgba(255,255,255,0.1)", color:"var(--bg)", border:"1px solid rgba(255,255,255,0.2)", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
               <X size={12} /> Reject
@@ -337,22 +342,27 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
                         {/* Full score breakdown */}
                         {hasScore && (
-                          <div style={{ padding:"10px 12px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginBottom:10, display:"flex", flexDirection:"column", gap:6 }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:2 }}>
+                          <div style={{ padding:"10px 12px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginBottom:10 }}>
+                            {/* Header row: label + score number */}
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                               <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>AI Score</span>
-                              <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{s.score_total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span></span>
+                              <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>
+                                {s.score_total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span>
+                              </span>
                             </div>
-                            {/* Total score bar */}
-                            <div style={{ height:4, borderRadius:2, background:"var(--bg3)", overflow:"hidden", marginBottom:4 }}>
+                            {/* Total progress bar */}
+                            <div style={{ height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden", marginBottom:8 }}>
                               <div style={{ height:"100%", width:`${s.score_total}%`, background:"var(--t1)", borderRadius:2 }} />
                             </div>
-                            {/* Breakdown bars if available */}
-                            {s.score_emotional != null && <>
-                              <ScoreBar score={s.score_emotional} label="Emotional depth" />
-                              <ScoreBar score={s.score_obscurity} label="Obscurity"       />
-                              <ScoreBar score={s.score_visual}    label="Visual potential"/>
-                              <ScoreBar score={s.score_hook}      label="Hook strength"   />
-                            </>}
+                            {/* Breakdown bars */}
+                            {s.score_emotional != null && (
+                              <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                                <ScoreBar score={s.score_emotional} label="Emotional depth" />
+                                <ScoreBar score={s.score_obscurity} label="Obscurity"       />
+                                <ScoreBar score={s.score_visual}    label="Visual potential"/>
+                                <ScoreBar score={s.score_hook}      label="Hook strength"   />
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -386,7 +396,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
       {/* Keyboard shortcut hint */}
       <div style={{ marginTop:24, padding:"10px 14px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border2)", fontSize:11, color:"var(--t4)", display:"flex", gap:16, flexWrap:"wrap" }}>
-        {[["↑↓","Navigate"],["→←","Expand/collapse"],["Space","Select"],["⌘A","Select all"],["⌘↵","Approve"],["⌘⌫","Reject"],["⌘⇧1-5","Switch tab"]].map(([k,v]) => (
+        {[["↑↓","Navigate"],["→←","Expand/collapse"],["Space","Select"],["⌘A","Select all"],["⌘↵","Approve"],["⌘⌫","Reject"],["⌥→←","Switch tab"]].map(([k,v]) => (
           <span key={k}><kbd style={{ fontFamily:"'DM Mono',monospace", fontSize:10, padding:"1px 5px", borderRadius:3, background:"var(--bg3)", border:"1px solid var(--border)" }}>{k}</kbd> {v}</span>
         ))}
       </div>

@@ -124,10 +124,21 @@ export default function Home() {
     }
   }, [undoStack, updateStory]);
 
-  // Global undo shortcut
+  // Global keyboard shortcuts
   useEffect(() => {
+    const TAB_KEYS = ["pipeline","research","script","calendar","analyze"];
     const handler = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
       if (e.metaKey && e.key === "z" && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+      if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+        e.preventDefault();
+        setTab(prev => {
+          const idx = TAB_KEYS.indexOf(prev);
+          if (e.key === "ArrowRight") return TAB_KEYS[Math.min(idx+1, TAB_KEYS.length-1)];
+          return TAB_KEYS[Math.max(idx-1, 0)];
+        });
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -250,7 +261,7 @@ export default function Home() {
             }}>
               <t.Icon size={14} strokeWidth={tab===t.key ? 2.5 : 1.8} />
               {t.label}
-              <span style={{ fontSize:9, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌘⇧{i+1}</span>
+              {i === 0 && <span style={{ fontSize:9, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌥←→</span>}
             </button>
           ))}
         </div>

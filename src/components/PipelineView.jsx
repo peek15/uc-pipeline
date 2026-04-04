@@ -84,7 +84,9 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   const bySt = {};
   for (const s of filtered) { bySt[s.status] = bySt[s.status] || []; bySt[s.status].push(s); }
   const stageOrder = ["accepted","approved","scripted","produced","published"];
-  const visibleIds = filtered.map(s => s.id);
+  // Build visibleIds in the same order they render (grouped by stage)
+  const visibleIds = (stageFilter === "all" ? stageOrder : [stageFilter])
+    .flatMap(stKey => (bySt[stKey] || []).map(s => s.id));
 
   // ── Keyboard navigation ──
   useEffect(() => {
@@ -112,8 +114,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
       const idx = visibleIds.indexOf(focused);
 
-      if (e.key === "ArrowDown") { e.preventDefault(); const next = visibleIds[Math.min(idx+1, visibleIds.length-1)]; setFocused(next); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(next); return n; }); setTimeout(() => { const el = document.getElementById(`story-${next}`); if (el) { const r = el.getBoundingClientRect(); if (r.bottom > window.innerHeight - 80) el.scrollIntoView({ block:"end", behavior:"smooth" }); } }, 50); }
-      if (e.key === "ArrowUp")   { e.preventDefault(); const prev = visibleIds[Math.max(idx-1, 0)]; setFocused(prev); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(prev); return n; }); setTimeout(() => { const el = document.getElementById(`story-${prev}`); if (el) { const r = el.getBoundingClientRect(); if (r.top < 120) el.scrollIntoView({ block:"start", behavior:"smooth" }); } }, 50); }
+      if (e.key === "ArrowDown") { e.preventDefault(); const next = visibleIds[Math.min(idx+1, visibleIds.length-1)]; setFocused(next); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(next); return n; }); setTimeout(() => { document.getElementById(`story-${next}`)?.scrollIntoView({ block:"center", behavior:"smooth" }); }, 50); }
+      if (e.key === "ArrowUp")   { e.preventDefault(); const prev = visibleIds[Math.max(idx-1, 0)]; setFocused(prev); if (e.shiftKey) setSelected(s => { const n = new Set(s); n.add(prev); return n; }); setTimeout(() => { document.getElementById(`story-${prev}`)?.scrollIntoView({ block:"center", behavior:"smooth" }); }, 50); }
       if (e.key === "ArrowRight") { e.preventDefault(); setExpanded(s => { const n = new Set(s); n.add(focused); return n; }); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); setExpanded(s => { const n = new Set(s); n.delete(focused); return n; }); }
       if (e.key === " ") { e.preventDefault(); setSelected(s => { const n = new Set(s); n.has(focused) ? n.delete(focused) : n.add(focused); return n; }); }
@@ -280,8 +282,10 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                     border: isFocused ? "1px solid var(--t2)" : isSelected ? "1px solid var(--t1)" : "1px solid var(--border2)",
                     borderLeft: `3px solid ${ac}`,
                     background: isSelected ? "var(--fill2)" : "var(--card)",
-                    transition:"all 0.1s",
+                    transition:"border-color 0.1s, background 0.1s",
                     marginBottom:2,
+                    overflow:"visible",
+                    position:"relative",
                   }}>
                     {/* Main row */}
                     <div style={{ display:"grid", gridTemplateColumns:"24px 1fr auto auto", alignItems:"center", gap:10, padding:"10px 12px", cursor:"pointer" }}
@@ -342,21 +346,22 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
                         {/* Full score breakdown */}
                         {hasScore && (
-                          <div style={{ padding:"10px 12px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginBottom:10 }}>
-                            {/* Header row: label + score number */}
-                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                          <div style={{ padding:"12px 14px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginBottom:10 }}>
+                            {/* Total score row */}
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                               <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>AI Score</span>
-                              <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>
-                                {s.score_total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span>
-                              </span>
+                              <div style={{ display:"flex", alignItems:"baseline", gap:3 }}>
+                                <span style={{ fontSize:20, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)", letterSpacing:"-0.03em" }}>{s.score_total}</span>
+                                <span style={{ fontSize:11, color:"var(--t3)" }}>/100</span>
+                              </div>
                             </div>
-                            {/* Total progress bar */}
-                            <div style={{ height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden", marginBottom:8 }}>
-                              <div style={{ height:"100%", width:`${s.score_total}%`, background:"var(--t1)", borderRadius:2 }} />
+                            {/* Thin total bar */}
+                            <div style={{ height:2, borderRadius:2, background:"var(--bg3)", overflow:"hidden", marginBottom:12 }}>
+                              <div style={{ height:"100%", width:`${s.score_total}%`, background:"var(--t2)", borderRadius:2 }} />
                             </div>
                             {/* Breakdown bars */}
                             {s.score_emotional != null && (
-                              <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                                 <ScoreBar score={s.score_emotional} label="Emotional depth" />
                                 <ScoreBar score={s.score_obscurity} label="Obscurity"       />
                                 <ScoreBar score={s.score_visual}    label="Visual potential"/>

@@ -30,7 +30,9 @@ export default function ScriptView({ stories, onUpdate }) {
   // ── All state first — before any useMemo ──
   const [focusedIdx,   setFocusedIdx]   = useState(0);
   const [expandedIds,  setExpandedIds]  = useState(new Set());
-  const [viewLang,     setViewLang]     = useState("en");
+  const [viewLangMap,  setViewLangMap]  = useState({});
+  const getViewLang = (id) => viewLangMap[id] || "en";
+  const setViewLang = (id, lang) => setViewLangMap(m => ({ ...m, [id]: lang }));
   const [loading,      setLoading]      = useState(null);
   const [streaming,    setStreaming]     = useState({});
   const [localLangs,   setLocalLangs]   = useState({});
@@ -125,9 +127,9 @@ export default function ScriptView({ stories, onUpdate }) {
       if (e.metaKey && e.key === "t") { e.preventDefault(); if (!loading && focusedStory.script) translateAll(focusedStory); }
       // Cmd+C when expanded = copy current lang
       if (e.metaKey && e.key === "c" && expandedIds.has(focusedStory.id)) {
-        const vl = getViewLang(focusedStory.id);
-        const sc = getScript(focusedStory, vl);
-        if (sc) { navigator.clipboard.writeText(sc); setCopied(`${focusedStory.id}-${vl}`); setTimeout(()=>setCopied(false),2000); }
+        const vl2 = getViewLang(focusedStory.id);
+        const sc = getScript(focusedStory, vl2);
+        if (sc) { navigator.clipboard.writeText(sc); setCopied(`${focusedStory.id}-${vl2}`); setTimeout(()=>setCopied(false),2000); }
       }
       // 1-4 keys = switch lang when expanded
       if (expandedIds.has(focusedStory.id)) {

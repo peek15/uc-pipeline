@@ -27,6 +27,28 @@ function ProgressSteps({ steps, current }) {
 }
 
 export default function ScriptView({ stories, onUpdate }) {
+  // ── All state first — before any useMemo ──
+  const [focusedIdx,   setFocusedIdx]   = useState(0);
+  const [expandedIds,  setExpandedIds]  = useState(new Set());
+  const [viewLang,     setViewLang]     = useState("en");
+  const [loading,      setLoading]      = useState(null);
+  const [streaming,    setStreaming]     = useState({});
+  const [localLangs,   setLocalLangs]   = useState({});
+  const [error,        setError]        = useState(null);
+  const [copied,       setCopied]       = useState(false);
+  const [batchMode,    setBatchMode]    = useState(false);
+  const [batchDone,    setBatchDone]    = useState(0);
+  const [batchStep,    setBatchStep]    = useState("");
+  const [autoTranslate,setAutoTranslate] = useState(true);
+  const [search,      setSearch]      = useState("");
+  const [filterStatus,setFilterStatus]= useState("all");
+  const [filterLang,  setFilterLang]  = useState("");
+  const [filterArch,  setFilterArch]  = useState("");
+  const [filterEra,   setFilterEra]   = useState("");
+  const [sortBy,      setSortBy]      = useState("date_desc");
+  const [showFilters, setShowFilters] = useState(false);
+
+  // ── Derived state ──
   const allReady = stories.filter(s => ["approved","scripted"].includes(s.status));
 
   const ready = useMemo(() => {
@@ -62,32 +84,6 @@ export default function ScriptView({ stories, onUpdate }) {
 
   const activeFilterCount = [filterStatus!=="all", filterLang, filterArch, filterEra].filter(Boolean).length;
   const clearFilters = () => { setFilterStatus("all"); setFilterLang(""); setFilterArch(""); setFilterEra(""); setSearch(""); setSortBy("date_desc"); };
-  
-  // Navigation state
-  const [focusedIdx,   setFocusedIdx]   = useState(0);
-  const [expandedIds,  setExpandedIds]  = useState(new Set());
-  const [viewLang,     setViewLang]     = useState("en");
-  
-  // Operation state
-  const [loading,      setLoading]      = useState(null);
-  const [streaming,    setStreaming]     = useState({});
-  // Track completed langs locally to fix display bug
-  const [localLangs,   setLocalLangs]   = useState({}); // { [storyId]: { fr: text, es: text, pt: text } }
-  const [error,        setError]        = useState(null);
-  const [copied,       setCopied]       = useState(false);
-  const [batchMode,    setBatchMode]    = useState(false);
-  const [batchDone,    setBatchDone]    = useState(0);
-  const [batchStep,    setBatchStep]    = useState("");
-  const [autoTranslate,setAutoTranslate] = useState(true);
-
-  // Filters
-  const [search,      setSearch]      = useState("");
-  const [filterStatus,setFilterStatus]= useState("all"); // all | unscripted | scripted
-  const [filterLang,  setFilterLang]  = useState("");    // "" | fr | es | pt (missing)
-  const [filterArch,  setFilterArch]  = useState("");
-  const [filterEra,   setFilterEra]   = useState("");
-  const [sortBy,      setSortBy]      = useState("date_desc");
-  const [showFilters, setShowFilters] = useState(false);
 
   const focusedStory = ready[focusedIdx] || null;
 

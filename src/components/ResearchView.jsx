@@ -44,10 +44,10 @@ export default function ResearchView({ stories, onAddStories, onStateChange, pre
   const [_prefillApplied, setPrefillApplied] = useState(false);
 
   // Search state — restored from parent on tab switch
-  const [topic,     setTopic]     = useState(persistedState?.topic     || "");
-  const [count,     setCount]     = useState(persistedState?.count     || "8");
-  const [era,       setEra]       = useState(persistedState?.era       || "");
-  const [team,      setTeam]      = useState(persistedState?.team      || "");
+  const [topic,     setTopic]     = useState("");
+  const [count,     setCount]     = useState("8");
+  const [era,       setEra]       = useState("");
+  const [team,      setTeam]      = useState("");
   const [archetype, setArchetype] = useState("");
   const [format,    setFormat]    = useState("");
 

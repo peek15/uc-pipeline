@@ -13,7 +13,7 @@ import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 
-const VERSION = "2.6";
+const VERSION = "2.6.1";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -277,7 +277,7 @@ export default function Home() {
       </main>
 
       {showUserMenu && <div onClick={() => setShowUserMenu(false)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
-      {selected && <DetailModal story={selected} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
+      {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
       <ToastContainer />
     </div>
   );

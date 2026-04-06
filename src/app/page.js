@@ -14,7 +14,7 @@ import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "2.7.4";
+const VERSION = "2.7.5";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -146,7 +146,10 @@ export default function Home() {
         .map(c => ({ ...c, avg: c.completions.reduce((a,b)=>a+b,0)/c.completions.length }))
         .sort((a,b) => b.avg - a.avg)[0];
       if (best) {
-        setResearchPrefill({ archetype: best.archetype, era: best.era, format: best.format });
+        const ready = stories.filter(s => ["approved","scripted","produced"].includes(s.status));
+        const gap = Math.max(0, 20 - ready.length);
+        const smartCount = Math.min(30, Math.ceil(gap * 1.2) || 8);
+        setResearchPrefill({ archetype: best.archetype, era: best.era, format: best.format, count: smartCount });
         setTab("research");
         toast(`↗ Researching ${best.archetype} ${best.era} — avg ${Math.round(best.avg)}% completion`);
         return;
@@ -158,7 +161,10 @@ export default function Home() {
     for (const fmt of FORMATS_ORDER) {
       const count = ready.filter(s => s.format === fmt).length;
       if (count < 3) {
-        setResearchPrefill({ format: fmt });
+        const ready2 = stories.filter(s => ["approved","scripted","produced"].includes(s.status));
+        const gap2 = Math.max(0, 20 - ready2.length);
+        const smartCount2 = Math.min(30, Math.ceil(gap2 * 1.2) || 8);
+        setResearchPrefill({ format: fmt, count: smartCount2 });
         setTab("research");
         toast(`↗ Low on ${fmt.replace("_"," ")} stories — researching more`);
         return;

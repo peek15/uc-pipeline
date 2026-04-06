@@ -22,6 +22,11 @@ function ScoreDots({ score }) {
   );
 }
 
+function getReadiness(s) {
+  const checks = [!!s.script, !!s.script_fr, !!s.script_es, !!s.script_pt, !!s.hook, s.score_total != null, !!s.scheduled_date, ["produced","published"].includes(s.status)];
+  return checks.filter(Boolean).length;
+}
+
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null || score === undefined) return null;
   return (
@@ -314,12 +319,13 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                         )}
                       </div>
 
-                      {/* Score + date */}
+                      {/* Score + readiness + date */}
                       <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3, flexShrink:0 }}>
-                        {hasScore && (
-                          <span style={{ fontSize:11, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{s.score_total}</span>
-                        )}
-                        {!hasScore && s.obscurity > 0 && <ScoreDots score={s.obscurity} />}
+                        <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                          {(() => { const r = getReadiness(s); const color = r === 8 ? "#4A9B7F" : r >= 5 ? "#C49A3C" : "var(--t4)"; return <span title={`${r}/8 ready`} style={{ fontSize:9, fontWeight:700, fontFamily:"'DM Mono',monospace", color, padding:"1px 4px", borderRadius:3, background: r===8 ? "rgba(74,155,127,0.1)" : "transparent" }}>{r}/8</span>; })()}
+                          {hasScore && <span style={{ fontSize:11, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{s.score_total}</span>}
+                          {!hasScore && s.obscurity > 0 && <ScoreDots score={s.obscurity} />}
+                        </div>
                         {dateStr && <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>{dateStr}</span>}
                       </div>
 

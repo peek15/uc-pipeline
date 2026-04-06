@@ -115,10 +115,10 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
         </div>
 
         {/* ── Two column body ── */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",minHeight:400}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",height:460,overflow:"hidden"}}>
 
           {/* Left: story content */}
-          <div style={{padding:"20px",borderRight:"1px solid var(--border2)"}}>
+          <div style={{padding:"20px",borderRight:"1px solid var(--border2)",overflowY:"auto",height:"100%"}}>
             {/* Archetype + era */}
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,flexWrap:"wrap"}}>
               <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
@@ -151,7 +151,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
           </div>
 
           {/* Right: scores + metadata + readiness */}
-          <div style={{padding:"20px",display:"flex",flexDirection:"column",gap:16}}>
+          <div style={{padding:"20px",display:"flex",flexDirection:"column",gap:16,overflowY:"auto",height:"100%"}}>
 
             {/* Scores */}
             <div>

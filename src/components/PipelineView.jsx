@@ -154,7 +154,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         if (s) onSelect(s);
       }
 
-      if (e.metaKey&&e.key==="a")       { e.preventDefault(); setSelected(new Set(visibleIds)); }
+      if (e.metaKey&&e.shiftKey&&e.key==="A") { e.preventDefault(); setSelected(new Set(visibleIds)); }
       if (e.metaKey&&e.key==="Enter")    { e.preventDefault(); if(selected.size>0){[...selected].forEach(id=>onStageChange(id,"approved"));setSelected(new Set());}else if(focused)onStageChange(focused,"approved"); }
       if (e.metaKey&&e.key==="Backspace"){ e.preventDefault(); if(selected.size>0){onBulkReject([...selected]);setSelected(new Set());}else if(focused)onBulkReject([focused]); }
     };
@@ -324,7 +324,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                       borderTop:    isFocused?"1px solid var(--t2)":isSelected?"1px solid var(--t1)":"1px solid var(--border2)",
                       borderRight:  isFocused?"1px solid var(--t2)":isSelected?"1px solid var(--t1)":"1px solid var(--border2)",
                       borderBottom: isFocused?"1px solid var(--t2)":isSelected?"1px solid var(--t1)":"1px solid var(--border2)",
-                      borderLeft:   fmt?`3px solid ${fmt.color}`:`3px solid ${ac}`,
+                      borderLeft:   fmt?`3px solid ${fmt.color}`:"3px solid var(--border2)",
                       background:   isSelected?"var(--fill2)":"var(--card)",
                       transition:   "background 0.1s",
                     }}>
@@ -387,14 +387,12 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                       )}
                     </div>
 
-                    {/* Expanded view — no script, just story info + scores */}
+                    {/* Expanded view — angle, hook, players, scores only. No script. */}
                     {isExpanded&&(
                       <div className="animate-fade-in" style={{padding:"0 12px 14px 46px",borderTop:"1px solid var(--border2)"}}>
                         {s.angle&&<div style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,marginTop:10,marginBottom:8}}>{s.angle}</div>}
                         {s.hook&&<div style={{fontSize:13,color:"var(--t3)",fontStyle:"italic",paddingLeft:12,borderLeft:"2px solid var(--border)",lineHeight:1.5,marginBottom:10}}>"{s.hook}"</div>}
-
-                        {/* Players — full, no truncation */}
-                        {players&&<div style={{fontSize:12,color:"var(--t3)",marginBottom:10,lineHeight:1.6}}>{players}</div>}
+                        {players&&<div style={{fontSize:12,color:"var(--t3)",marginBottom:10,lineHeight:1.6,whiteSpace:"normal"}}>{players}</div>}
 
                         {hasScore&&(
                           <div style={{padding:"10px 12px",borderRadius:7,background:"var(--bg2)",border:"1px solid var(--border2)",marginBottom:10}}>
@@ -442,7 +440,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
       {/* Shortcut hint */}
       <div style={{marginTop:24,padding:"10px 14px",borderRadius:8,background:"var(--fill2)",border:"1px solid var(--border2)",fontSize:11,color:"var(--t4)",display:"flex",gap:16,flexWrap:"wrap"}}>
-        {[["↑↓","Navigate"],["→←","Expand"],["Enter/D","Full detail"],["Space","Select"],["⌘A","Select all"],["⌘↵","Approve"],["⌘⌫","Reject"],["⌥→←","Switch tab"]].map(([k,v])=>(
+        {[["↑↓","Navigate"],["→←","Expand"],["Enter/D","Full detail"],["Space","Select"],["⌘⇧A","Select all"],["⌘↵","Approve"],["⌘⌫","Reject"],["⌥→←","Switch tab"]].map(([k,v])=>(
           <span key={k}><kbd style={{fontFamily:"'DM Mono',monospace",fontSize:9,padding:"1px 5px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
         ))}
       </div>

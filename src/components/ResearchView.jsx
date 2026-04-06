@@ -49,6 +49,8 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
   const [loading, setLoading] = useState(false);
   const [scoring, setScoring] = useState(false);
   const [error,   setError]   = useState(null);
+  const [results, setResults] = useState(persistedState?.results || []);
+  const [scores,  setScores]  = useState(persistedState?.scores  || {});
   const [batch,   setBatch]   = useState(0);
 
   // Apply prefill when received

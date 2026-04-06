@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Search, Check, X, Star, Plus } from "lucide-react";
-import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES } from "@/lib/constants";
+import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, suggestFormat } from "@/lib/constants";
 import { callClaude } from "@/lib/db";
 
 function ScoreBar({ score, label, max = 25 }) {
@@ -97,6 +97,7 @@ export default function ResearchView({ stories, onAddStories }) {
         id: crypto.randomUUID(),
         status: "accepted",
         created_at: new Date().toISOString(),
+        format: suggestFormat(s.era),
         ...(sc ? {
           score_total:     sc.total,
           score_emotional: sc.emotional_depth,
@@ -190,7 +191,8 @@ export default function ResearchView({ stories, onAddStories }) {
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                        <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>{s.archetype}</span>
+  <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>{s.archetype}</span>
+                      {(() => { const f = FORMAT_MAP[suggestFormat(s.era)]; return f ? <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:`${f.color}15`, color:f.color, border:`1px solid ${f.color}25` }}>{f.label}</span> : null; })()}
                         {s.era && <span style={{ fontSize:10, color:"var(--t4)" }}>{s.era}</span>}
                       </div>
                       <div style={{ fontSize:15, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.02em", lineHeight:1.3, marginBottom:4 }}>{s.title}</div>

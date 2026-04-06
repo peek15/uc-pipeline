@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Search, ArrowRight, FileText, Eye, ChevronRight, ChevronDown, SlidersHorizontal, X, Check, Trash2 } from "lucide-react";
-import { STAGES, ERAS, ARCHETYPES, ACCENT } from "@/lib/constants";
+import { STAGES, ERAS, ARCHETYPES, ACCENT, FORMATS, FORMAT_MAP } from "@/lib/constants";
 
 const SORT_OPTS = [
   { key: "date_desc",  label: "Newest first" },
@@ -49,14 +49,15 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   const [dateFrom,    setDateFrom]    = useState("");
   const [dateTo,      setDateTo]      = useState("");
   const [minScore,    setMinScore]    = useState(0);
+  const [format,      setFormat]      = useState("");
   const [sort,        setSort]        = useState("date_desc");
   const [selected,    setSelected]    = useState(new Set());
   const [expanded,    setExpanded]    = useState(new Set());
   const [focused,     setFocused]     = useState(null); // focused story id for keyboard nav
   const containerRef = useRef(null);
 
-  const activeFilterCount = [era, archetype, dateFrom, dateTo, minScore > 0].filter(Boolean).length;
-  const clearFilters = () => { setEra(""); setArchetype(""); setDateFrom(""); setDateTo(""); setMinScore(0); setSort("date_desc"); };
+  const activeFilterCount = [era, archetype, format, dateFrom, dateTo, minScore > 0].filter(Boolean).length;
+  const clearFilters = () => { setEra(""); setArchetype(""); setFormat(""); setDateFrom(""); setDateTo(""); setMinScore(0); setSort("date_desc"); };
 
   const filtered = useMemo(() => {
     let list = stories.filter(s => {
@@ -306,6 +307,11 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                       <div onClick={()=>setExpanded(ex=>{const n=new Set(ex);n.has(s.id)?n.delete(s.id):n.add(s.id);return n;})} style={{ minWidth:0 }}>
                         <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", letterSpacing:"-0.01em", marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
                         <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)", marginBottom: s.angle ? 2 : 0 }}>
+                          {s.format && FORMAT_MAP[s.format] && (
+                            <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:`${FORMAT_MAP[s.format].color}15`, color:FORMAT_MAP[s.format].color, border:`1px solid ${FORMAT_MAP[s.format].color}25` }}>
+                              {FORMAT_MAP[s.format].label}
+                            </span>
+                          )}
                           {s.archetype && <span style={{ color: ac, fontWeight:500 }}>{s.archetype}</span>}
                           {s.era && <><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
                           {players && <><span style={{color:"var(--t4)"}}>·</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160}}>{players}</span></>}

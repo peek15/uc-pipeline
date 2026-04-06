@@ -23,6 +23,39 @@ export const ACCENT = {
   Brotherhood: "#5BA8A0",
 };
 
+// ─── Content Formats ───
+export const FORMATS = [
+  { key: "standard",          label: "Standard",           color: "#C49A3C", desc: "NBA 2000s–present. Reach-leaning entry point." },
+  { key: "classics",          label: "Classics",           color: "#4A9B7F", desc: "Pre-2000s NBA. Differentiator. Community-leaning." },
+  { key: "performance_special",label: "Performance Special",color: "#C0666A", desc: "Historic games & records. Numbers hook, human story." },
+  { key: "special_edition",   label: "Special Edition",    color: "#8B7EC8", desc: "Cultural moments. 3–4x/year max." },
+];
+
+export const FORMAT_MAP = Object.fromEntries(FORMATS.map(f => [f.key, f]));
+
+// Auto-suggest format based on era
+export function suggestFormat(era) {
+  if (!era) return "standard";
+  if (["1960s-70s","1980s","1990s"].includes(era)) return "classics";
+  return "standard";
+}
+
+// ─── Hook Types ───
+export const HOOK_TYPES = [
+  { key: "statement",  label: "Statement",  desc: "Quiet confident assertion" },
+  { key: "reframe",    label: "Reframe",    desc: "Known story, new angle" },
+  { key: "contrast",   label: "Contrast",   desc: "Two opposing truths" },
+  { key: "revelation", label: "Revelation", desc: "Something hidden revealed" },
+  { key: "question",   label: "Question",   desc: "Opens a mystery" },
+  { key: "cold_open",  label: "Cold Open",  desc: "Drop into the moment" },
+];
+
+// ─── Emotional Angles ───
+export const EMOTIONAL_ANGLES = [
+  "redemption","rivalry","sacrifice","legacy","shock",
+  "resilience","loyalty","heartbreak","brotherhood","pressure","betrayal","underdog"
+];
+
 export const LANGS = [
   { key: "en", label: "EN", name: "English",    color: "var(--t1)" },
   { key: "fr", label: "FR", name: "French",     color: "var(--t2)" },

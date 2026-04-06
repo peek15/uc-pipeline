@@ -154,7 +154,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         if (s) onSelect(s);
       }
 
-      if (e.metaKey&&e.shiftKey&&e.key==="A") { e.preventDefault(); setSelected(new Set(visibleIds)); }
+      if (e.metaKey&&e.key==="e") { e.preventDefault(); setSelected(new Set(visibleIds)); }
       if (e.metaKey&&e.key==="Enter")    { e.preventDefault(); if(selected.size>0){[...selected].forEach(id=>onStageChange(id,"approved"));setSelected(new Set());}else if(focused)onStageChange(focused,"approved"); }
       if (e.metaKey&&e.key==="Backspace"){ e.preventDefault(); if(selected.size>0){onBulkReject([...selected]);setSelected(new Set());}else if(focused)onBulkReject([focused]); }
     };
@@ -354,7 +354,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                           {s.metrics_views&&<><span style={{color:"var(--t4)"}}>·</span><Eye size={11}/><span>{parseInt(s.metrics_views)>1000?`${(parseInt(s.metrics_views)/1000).toFixed(1)}k`:s.metrics_views}</span></>}
                         </div>
                         {/* Angle preview */}
-                        {s.angle&&(
+                        {s.angle&&!isExpanded&&(
                           <div style={{fontSize:12,color:"var(--t3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",opacity:0.7,marginTop:1}}>
                             {s.angle}
                           </div>
@@ -440,7 +440,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
       {/* Shortcut hint */}
       <div style={{marginTop:24,padding:"10px 14px",borderRadius:8,background:"var(--fill2)",border:"1px solid var(--border2)",fontSize:11,color:"var(--t4)",display:"flex",gap:16,flexWrap:"wrap"}}>
-        {[["↑↓","Navigate"],["→←","Expand"],["Enter/D","Full detail"],["Space","Select"],["⌘⇧A","Select all"],["⌘↵","Approve"],["⌘⌫","Reject"],["⌥→←","Switch tab"]].map(([k,v])=>(
+        {[["↑↓","Navigate"],["→←","Expand"],["Enter/D","Full detail"],["Space","Select"],["⌘E","Select all"],["⌘↵","Approve"],["⌘⌫","Reject"],["⌥→←","Switch tab"]].map(([k,v])=>(
           <span key={k}><kbd style={{fontFamily:"'DM Mono',monospace",fontSize:9,padding:"1px 5px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
         ))}
       </div>

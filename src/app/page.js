@@ -12,8 +12,9 @@ import AnalyzeView from "@/components/AnalyzeView";
 import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
+import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "2.6.3";
+const VERSION = "2.7";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -32,7 +33,10 @@ export default function Home() {
   const [tab, setTab]                 = useState("pipeline");
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
-  const [undoStack, setUndoStack]     = useState([]);
+  const [undoStack,       setUndoStack]       = useState([]);
+  const [researchState,   setResearchState]   = useState(null); // persisted across tab switches
+  const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
+  const [showCmdK,        setShowCmdK]        = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -131,6 +135,7 @@ export default function Home() {
       const tag = document.activeElement?.tagName;
       if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
       if (e.metaKey && e.key === "z" && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+      if (e.metaKey && e.key === "k") { e.preventDefault(); setShowCmdK(s=>!s); setTab("pipeline"); }
       if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
         e.preventDefault();
         setTab(prev => {
@@ -269,8 +274,15 @@ export default function Home() {
 
       {/* ── Content ── */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 80px" }}>
-        {tab === "pipeline" && <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />}
-        {tab === "research" && <ResearchView stories={stories} onAddStories={addStories} />}
+        {tab === "pipeline" && <>
+          <ProductionAlert
+            stories={stories}
+            onNavigate={(t) => setTab(t)}
+            onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
+          />
+          <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />
+        </>}
+        {tab === "research" && <ResearchView stories={stories} onAddStories={addStories} persistedState={researchState} onStateChange={setResearchState} prefill={researchPrefill} />}
         {tab === "script"   && <ScriptView   stories={stories} onUpdate={updateStory} />}
         {tab === "calendar" && <CalendarView  stories={stories} onUpdate={updateStory} />}
         {tab === "analyze"  && <AnalyzeView   stories={stories} onUpdate={updateStory} />}

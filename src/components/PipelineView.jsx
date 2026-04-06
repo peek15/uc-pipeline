@@ -75,7 +75,12 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       if (search) {
         const q = search.toLowerCase();
         const players = Array.isArray(s.players) ? s.players.join(" ") : (s.players||"");
-        if (![(s.title||""), players, (s.archetype||"")].some(f => f.toLowerCase().includes(q))) return false;
+        const searchFields = [
+          s.title, players, s.archetype, s.era, s.angle, s.hook,
+          s.format, s.hook_type, s.emotional_angle,
+          ...(s.subject_tags||[])
+        ].map(f=>(f||"").toLowerCase());
+        if (!searchFields.some(f => f.includes(q))) return false;
       }
       if (era        && s.era            !== era)        return false;
       if (archetype  && s.archetype      !== archetype)  return false;
@@ -177,7 +182,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:8,marginBottom:12,alignItems:"center"}}>
         <div style={{position:"relative"}}>
           <Search size={13} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--t3)",pointerEvents:"none"}} />
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search stories, players, archetypes..."
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title, players, angle, hook, era, format..."
             style={{width:"100%",padding:"8px 12px 8px 32px",borderRadius:8,background:"var(--fill2)",border:"1px solid var(--border-in)",color:"var(--t1)",fontSize:13,outline:"none"}} />
         </div>
         <select value={sort} onChange={e=>setSort(e.target.value)} style={sel}>

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Check, X, Star, Plus } from "lucide-react";
 import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, suggestFormat } from "@/lib/constants";
 import { callClaude } from "@/lib/db";
@@ -39,17 +39,33 @@ JSON array ONLY. No markdown.`;
   return parsed || [];
 }
 
-export default function ResearchView({ stories, onAddStories }) {
-  const [topic,   setTopic]   = useState("");
-  const [count,   setCount]   = useState("8");
-  const [era,     setEra]     = useState("");
-  const [team,    setTeam]    = useState("");
+export default function ResearchView({ stories, onAddStories, persistedState, onStateChange, prefill }) {
+  // Prefill from ProductionAlert
+  const [_prefillApplied, setPrefillApplied] = useState(false);
+  const [topic,   setTopic]   = useState(persistedState?.topic   || "");
+  const [count,   setCount]   = useState(persistedState?.count   || "8");
+  const [era,     setEra]     = useState(persistedState?.era     || "");
+  const [team,    setTeam]    = useState(persistedState?.team    || "");
   const [loading, setLoading] = useState(false);
   const [scoring, setScoring] = useState(false);
   const [error,   setError]   = useState(null);
-  const [results, setResults] = useState([]);
-  const [scores,  setScores]  = useState({});
   const [batch,   setBatch]   = useState(0);
+
+  // Apply prefill when received
+  useEffect(() => {
+    if (prefill && !_prefillApplied) {
+      if (prefill.topic)     setTopic(prefill.topic);
+      if (prefill.era)       setEra(prefill.era);
+      if (prefill.archetype) setTopic(prefill.archetype);
+      if (prefill.format)    setTopic(prefill.format);
+      setPrefillApplied(true);
+    }
+  }, [prefill]);
+
+  // Persist state to parent on change
+  useEffect(() => {
+    if (onStateChange) onStateChange({ topic, count, era, team, results, scores });
+  }, [topic, count, era, team, results, scores]);
 
   const doFetch = async () => {
     setLoading(true); setError(null); setScores({});

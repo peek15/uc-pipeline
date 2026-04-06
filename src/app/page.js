@@ -14,7 +14,7 @@ import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "2.7.1";
+const VERSION = "2.7.3";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -128,6 +128,48 @@ export default function Home() {
     }
   }, [undoStack, updateStory]);
 
+  // Production shortcut — Cmd+J: jump to research with top recommendation
+  const handleProductionShortcut = useCallback(() => {
+    const ready = stories.filter(s => ["approved","scripted","produced"].includes(s.status));
+    const published = stories.filter(s => s.status === "published" && s.metrics_completion);
+
+    // Find best performing combo
+    if (published.length >= 5) {
+      const combos = {};
+      for (const s of published) {
+        const key = `${s.archetype}|${s.era}`;
+        if (!combos[key]) combos[key] = { archetype: s.archetype, era: s.era, completions: [], format: s.format };
+        combos[key].completions.push(parseFloat(s.metrics_completion)||0);
+      }
+      const best = Object.values(combos)
+        .filter(c => c.completions.length >= 2)
+        .map(c => ({ ...c, avg: c.completions.reduce((a,b)=>a+b,0)/c.completions.length }))
+        .sort((a,b) => b.avg - a.avg)[0];
+      if (best) {
+        setResearchPrefill({ archetype: best.archetype, era: best.era, format: best.format });
+        setTab("research");
+        toast(`↗ Researching ${best.archetype} ${best.era} — avg ${Math.round(best.avg)}% completion`);
+        return;
+      }
+    }
+
+    // Fallback: find underrepresented format
+    const FORMATS_ORDER = ["standard","classics","performance_special"];
+    for (const fmt of FORMATS_ORDER) {
+      const count = ready.filter(s => s.format === fmt).length;
+      if (count < 3) {
+        setResearchPrefill({ format: fmt });
+        setTab("research");
+        toast(`↗ Low on ${fmt.replace("_"," ")} stories — researching more`);
+        return;
+      }
+    }
+
+    // Fallback: just go to research
+    setTab("research");
+    toast("↗ Jumped to Research");
+  }, [stories, setTab, setResearchPrefill]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const TAB_KEYS = ["pipeline","research","script","calendar","analyze"];
@@ -135,7 +177,7 @@ export default function Home() {
       const tag = document.activeElement?.tagName;
       if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
       if (e.metaKey && e.key === "z" && !e.shiftKey) { e.preventDefault(); handleUndo(); }
-      if (e.metaKey && e.key === "k") { e.preventDefault(); setShowCmdK(s=>!s); setTab("pipeline"); }
+      if (e.metaKey && e.key === "j") { e.preventDefault(); handleProductionShortcut(); }
       if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
         e.preventDefault();
         setTab(prev => {
@@ -279,6 +321,8 @@ export default function Home() {
             stories={stories}
             onNavigate={(t) => setTab(t)}
             onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
+            forceExpanded={showCmdK}
+            onToggle={() => setShowCmdK(s=>!s)}
           />
           <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />
         </>}
@@ -293,6 +337,8 @@ export default function Home() {
               stories={stories}
               onNavigate={(t) => setTab(t)}
               onPrefillResearch={(pf) => { setResearchPrefill(pf); }}
+              forceExpanded={showCmdK}
+              onToggle={() => setShowCmdK(s=>!s)}
             />
           }
         />}

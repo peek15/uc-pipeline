@@ -86,9 +86,11 @@ function getCalendarGaps(stories) {
   return { totalSlots, scheduled, empty: Math.max(0, totalSlots - scheduled) };
 }
 
-export default function ProductionAlert({ stories, onNavigate, onPrefillResearch }) {
+export default function ProductionAlert({ stories, onNavigate, onPrefillResearch, forceExpanded, onToggle }) {
   const [dismissed, setDismissed] = useState(new Set());
-  const [expanded,  setExpanded]  = useState(true);
+  const [_expanded, _setExpanded] = useState(true);
+  const expanded  = forceExpanded !== undefined ? forceExpanded : _expanded;
+  const setExpanded = onToggle || _setExpanded;
 
   const ready        = getReadyStories(stories);
   const stockLevel   = ready.length;
@@ -187,7 +189,7 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
           {!expanded && <span style={{ fontSize:11, color:"var(--t3)" }}>· {visibleBullets.length} alert{visibleBullets.length!==1?"s":""}</span>}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌘K</span>
+          <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌘J</span>
           <span style={{ fontSize:12, color:"var(--t4)" }}>{expanded?"↑":"↓"}</span>
         </div>
       </div>

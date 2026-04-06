@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Search, Check, X, Star, Plus, SlidersHorizontal } from "lucide-react";
+import { Search, Check, X, Star, Plus } from "lucide-react";
 import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, HOOK_TYPES, suggestFormat } from "@/lib/constants";
 import { callClaude } from "@/lib/db";
 
@@ -40,7 +40,7 @@ JSON array ONLY. No markdown.`;
   return parsed || [];
 }
 
-export default function ResearchView({ stories, onAddStories, persistedState, onStateChange, prefill, ProductionAlertComponent }) {
+export default function ResearchView({ stories, onAddStories, onStateChange, prefill, onPrefillUsed }) {
   const [_prefillApplied, setPrefillApplied] = useState(false);
 
   // Search state — restored from parent on tab switch
@@ -48,15 +48,15 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
   const [count,     setCount]     = useState(persistedState?.count     || "8");
   const [era,       setEra]       = useState(persistedState?.era       || "");
   const [team,      setTeam]      = useState(persistedState?.team      || "");
-  const [archetype, setArchetype] = useState(persistedState?.archetype || "");
-  const [format,    setFormat]    = useState(persistedState?.format    || "");
-  const [showFilters, setShowFilters] = useState(false);
+  const [archetype, setArchetype] = useState("");
+  const [format,    setFormat]    = useState("");
+
 
   const [loading,   setLoading]   = useState(false);
   const [scoring,   setScoring]   = useState(false);
   const [error,     setError]     = useState(null);
-  const [results,   setResults]   = useState(persistedState?.results   || []);
-  const [scores,    setScores]    = useState(persistedState?.scores    || {});
+  const [results,   setResults]   = useState([]);
+  const [scores,    setScores]    = useState({});
   const [batch,     setBatch]     = useState(0);
 
   const activeFilterCount = [era, team, archetype, format].filter(Boolean).length;
@@ -70,6 +70,7 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
       if (prefill.archetype) setArchetype(prefill.archetype);
       if (prefill.format)    setFormat(prefill.format);
       setPrefillApplied(true);
+      if (onPrefillUsed) onPrefillUsed();
     }
   }, [prefill, _prefillApplied]);
 
@@ -156,9 +157,6 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
   return (
     <div className="animate-fade-in">
 
-      {/* Production Alert */}
-      {ProductionAlertComponent}
-
       {/* Active filter pills */}
       {(era || team || archetype || format) && (
         <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
@@ -175,21 +173,12 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
       <div style={{ display:"flex", gap:8, marginBottom:10 }}>
         <div style={{ position:"relative", flex:1 }}>
           <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--t3)", pointerEvents:"none" }} />
-          <input value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Topic or focus (optional)"
-            onKeyDown={e => e.key === "Enter" && doFetch()}
+          <input value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Topic or focus — press Enter or ⌘↵ to search"
+            onKeyDown={e => (e.key === "Enter" || (e.metaKey && e.key === "Enter")) && doFetch()}
             style={{ width:"100%", padding:"9px 12px 9px 32px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", fontSize:13, outline:"none" }} />
         </div>
         <input value={count} onChange={e=>setCount(e.target.value.replace(/\D/g,""))}
           style={{ width:52, padding:"9px 0", borderRadius:8, textAlign:"center", fontSize:13, fontWeight:700, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", outline:"none", fontFamily:"'DM Mono',monospace" }} />
-        <button onClick={() => setShowFilters(f=>!f)} style={{
-          padding:"9px 14px", borderRadius:8, fontSize:12, fontWeight:500,
-          background: showFilters || activeFilterCount > 0 ? "var(--t1)" : "var(--fill2)",
-          color:      showFilters || activeFilterCount > 0 ? "var(--bg)"  : "var(--t2)",
-          border:"1px solid var(--border)", cursor:"pointer", display:"flex", alignItems:"center", gap:6,
-        }}>
-          <SlidersHorizontal size={13} />
-          {activeFilterCount > 0 && <span style={{ width:16, height:16, borderRadius:"50%", background:"var(--bg)", color:"var(--t1)", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{activeFilterCount}</span>}
-        </button>
         <button onClick={doFetch} disabled={loading} style={{
           padding:"9px 20px", borderRadius:8, fontSize:13, fontWeight:600,
           background: loading ? "var(--fill2)" : "var(--t1)",
@@ -200,9 +189,8 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
         </button>
       </div>
 
-      {/* Filter panel */}
-      {showFilters && (
-        <div className="animate-fade-in" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(160px, 1fr))", gap:8, padding:"12px 14px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:12 }}>
+      {/* Filters — always visible */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(160px, 1fr))", gap:8, marginBottom:16 }}>
           {/* Format */}
           <div>
             <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Format</div>
@@ -236,7 +224,6 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
             </select>
           </div>
         </div>
-      )}
 
       {scoring && (
         <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)", marginBottom:12 }}>

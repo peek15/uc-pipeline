@@ -14,7 +14,7 @@ import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "2.7.3";
+const VERSION = "2.7.4";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -316,35 +316,32 @@ export default function Home() {
 
       {/* ── Content ── */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 80px" }}>
-        {tab === "pipeline" && <>
-          <ProductionAlert
-            stories={stories}
-            onNavigate={(t) => setTab(t)}
-            onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
-            forceExpanded={showCmdK}
-            onToggle={() => setShowCmdK(s=>!s)}
-          />
-          <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />
-        </>}
-        {tab === "research" && <ResearchView
+
+        {/* ProductionAlert — always visible on all tabs */}
+        <ProductionAlert
           stories={stories}
-          onAddStories={addStories}
-          persistedState={researchState}
-          onStateChange={setResearchState}
-          prefill={researchPrefill}
-          ProductionAlertComponent={
-            <ProductionAlert
-              stories={stories}
-              onNavigate={(t) => setTab(t)}
-              onPrefillResearch={(pf) => { setResearchPrefill(pf); }}
-              forceExpanded={showCmdK}
-              onToggle={() => setShowCmdK(s=>!s)}
-            />
-          }
-        />}
-        {tab === "script"   && <ScriptView   stories={stories} onUpdate={updateStory} />}
-        {tab === "calendar" && <CalendarView  stories={stories} onUpdate={updateStory} />}
-        {tab === "analyze"  && <AnalyzeView   stories={stories} onUpdate={updateStory} />}
+          onNavigate={(t) => setTab(t)}
+          onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
+          forceExpanded={showCmdK}
+          onToggle={() => setShowCmdK(s=>!s)}
+        />
+
+        {/* All tabs mounted always — CSS hides inactive ones to preserve state */}
+        <div style={{ display: tab==="pipeline" ? "block" : "none" }}>
+          <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />
+        </div>
+        <div style={{ display: tab==="research" ? "block" : "none" }}>
+          <ResearchView
+            stories={stories}
+            onAddStories={addStories}
+            onStateChange={setResearchState}
+            prefill={researchPrefill}
+            onPrefillUsed={() => setResearchPrefill(null)}
+          />
+        </div>
+        <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView   stories={stories} onUpdate={updateStory} /></div>
+        <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} /></div>
+        <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
       </main>
 
       {showUserMenu && <div onClick={() => setShowUserMenu(false)} style={{ position:"fixed", inset:0, zIndex:30 }} />}

@@ -14,7 +14,7 @@ import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "2.7";
+const VERSION = "2.7.1";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -282,7 +282,20 @@ export default function Home() {
           />
           <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />
         </>}
-        {tab === "research" && <ResearchView stories={stories} onAddStories={addStories} persistedState={researchState} onStateChange={setResearchState} prefill={researchPrefill} />}
+        {tab === "research" && <ResearchView
+          stories={stories}
+          onAddStories={addStories}
+          persistedState={researchState}
+          onStateChange={setResearchState}
+          prefill={researchPrefill}
+          ProductionAlertComponent={
+            <ProductionAlert
+              stories={stories}
+              onNavigate={(t) => setTab(t)}
+              onPrefillResearch={(pf) => { setResearchPrefill(pf); }}
+            />
+          }
+        />}
         {tab === "script"   && <ScriptView   stories={stories} onUpdate={updateStory} />}
         {tab === "calendar" && <CalendarView  stories={stories} onUpdate={updateStory} />}
         {tab === "analyze"  && <AnalyzeView   stories={stories} onUpdate={updateStory} />}

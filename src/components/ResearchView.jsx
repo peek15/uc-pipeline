@@ -1,10 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Search, Check, X, Star, Plus } from "lucide-react";
-import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, suggestFormat } from "@/lib/constants";
+import { Search, Check, X, Star, Plus, SlidersHorizontal } from "lucide-react";
+import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, HOOK_TYPES, suggestFormat } from "@/lib/constants";
 import { callClaude } from "@/lib/db";
 
 function ScoreBar({ score, label, max = 25 }) {
+  if (score == null) return null;
   return (
     <div style={{ display:"flex", alignItems:"center", gap:8 }}>
       <span style={{ fontSize:10, color:"var(--t3)", width:90, flexShrink:0 }}>{label}</span>
@@ -39,35 +40,43 @@ JSON array ONLY. No markdown.`;
   return parsed || [];
 }
 
-export default function ResearchView({ stories, onAddStories, persistedState, onStateChange, prefill }) {
-  // Prefill from ProductionAlert
+export default function ResearchView({ stories, onAddStories, persistedState, onStateChange, prefill, ProductionAlertComponent }) {
   const [_prefillApplied, setPrefillApplied] = useState(false);
-  const [topic,   setTopic]   = useState(persistedState?.topic   || "");
-  const [count,   setCount]   = useState(persistedState?.count   || "8");
-  const [era,     setEra]     = useState(persistedState?.era     || "");
-  const [team,    setTeam]    = useState(persistedState?.team    || "");
-  const [loading, setLoading] = useState(false);
-  const [scoring, setScoring] = useState(false);
-  const [error,   setError]   = useState(null);
-  const [results, setResults] = useState(persistedState?.results || []);
-  const [scores,  setScores]  = useState(persistedState?.scores  || {});
-  const [batch,   setBatch]   = useState(0);
 
-  // Apply prefill when received
+  // Search state — restored from parent on tab switch
+  const [topic,     setTopic]     = useState(persistedState?.topic     || "");
+  const [count,     setCount]     = useState(persistedState?.count     || "8");
+  const [era,       setEra]       = useState(persistedState?.era       || "");
+  const [team,      setTeam]      = useState(persistedState?.team      || "");
+  const [archetype, setArchetype] = useState(persistedState?.archetype || "");
+  const [format,    setFormat]    = useState(persistedState?.format    || "");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const [loading,   setLoading]   = useState(false);
+  const [scoring,   setScoring]   = useState(false);
+  const [error,     setError]     = useState(null);
+  const [results,   setResults]   = useState(persistedState?.results   || []);
+  const [scores,    setScores]    = useState(persistedState?.scores    || {});
+  const [batch,     setBatch]     = useState(0);
+
+  const activeFilterCount = [era, team, archetype, format].filter(Boolean).length;
+  const clearFilters = () => { setEra(""); setTeam(""); setArchetype(""); setFormat(""); };
+
+  // Apply prefill from ProductionAlert
   useEffect(() => {
     if (prefill && !_prefillApplied) {
       if (prefill.topic)     setTopic(prefill.topic);
       if (prefill.era)       setEra(prefill.era);
-      if (prefill.archetype) setTopic(prefill.archetype);
-      if (prefill.format)    setTopic(prefill.format);
+      if (prefill.archetype) setArchetype(prefill.archetype);
+      if (prefill.format)    setFormat(prefill.format);
       setPrefillApplied(true);
     }
-  }, [prefill]);
+  }, [prefill, _prefillApplied]);
 
-  // Persist state to parent on change
+  // Persist state to parent
   useEffect(() => {
-    if (onStateChange) onStateChange({ topic, count, era, team, results, scores });
-  }, [topic, count, era, team, results, scores]);
+    if (onStateChange) onStateChange({ topic, count, era, team, archetype, format, results, scores });
+  }, [topic, count, era, team, archetype, format, results, scores]);
 
   const doFetch = async () => {
     setLoading(true); setError(null); setScores({});
@@ -75,7 +84,8 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
     try {
       const angle    = RESEARCH_ANGLES[Math.floor(Math.random() * RESEARCH_ANGLES.length)];
       const existing = stories.slice(-30).map(s => s.title).join("; ");
-      const prompt   = `You are a story research engine for "Uncle Carter," an NBA storytelling brand. Find ${n} compelling, lesser-known human stories.\n\nReturn JSON objects with: title, archetype (${ARCHETYPES.join("/")}), obscurity (1-5, prefer 3-5), players, era, angle (2-3 sentences human tension), hook (1 sentence opener).\n\nRULES: Human story > highlights. Specific facts. Obscure > well-known. Each DISTINCT.${era ? `\nEra: ${era}.` : ""}${team ? `\nTeam: ${team}.` : ""}${topic ? `\nFocus: "${topic}"` : ""}\n${existing ? `\nALREADY COVERED: ${existing}` : ""}\n\nAngle: "${angle}". Batch #${batch + 1}. JSON array ONLY. No markdown.`;
+      const fmtLabel = FORMAT_MAP[format]?.label || "";
+      const prompt   = `You are a story research engine for "Uncle Carter," an NBA storytelling brand. Find ${n} compelling, lesser-known human stories.\n\nReturn JSON objects with: title, archetype (${ARCHETYPES.join("/")}), obscurity (1-5, prefer 3-5), players, era, angle (2-3 sentences human tension), hook (1 sentence opener).\n\nRULES: Human story > highlights. Specific facts. Obscure > well-known. Each DISTINCT.${era ? `\nEra: ${era}.` : ""}${team ? `\nTeam: ${team}.` : ""}${archetype ? `\nArchetype: ${archetype}.` : ""}${fmtLabel ? `\nContent format: ${fmtLabel} (${format==="classics"?"pre-2000s NBA":format==="performance_special"?"historic records/dominant seasons":"recent NBA 2000s-present"}).` : ""}${topic ? `\nFocus: "${topic}"` : ""}\n${existing ? `\nALREADY COVERED: ${existing}` : ""}\n\nAngle: "${angle}". Batch #${batch + 1}. JSON array ONLY. No markdown.`;
 
       const text  = await callClaude(prompt, Math.min(700 + n * 350, 8000), "haiku");
       const clean = text.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
@@ -91,7 +101,6 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
       setResults(fresh);
       setBatch(b => b + 1);
 
-      // Score in background with Haiku
       if (fresh.length > 0) {
         setScoring(true);
         try {
@@ -106,7 +115,6 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
-  // Add all remaining to pipeline with scores saved
   const addAllToPipeline = () => {
     const toAdd = results.map((s, i) => {
       const sc = scores[i];
@@ -115,7 +123,7 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
         id: crypto.randomUUID(),
         status: "accepted",
         created_at: new Date().toISOString(),
-        format: suggestFormat(s.era),
+        format: format || suggestFormat(s.era),
         ...(sc ? {
           score_total:     sc.total,
           score_emotional: sc.emotional_depth,
@@ -134,7 +142,6 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
     setScores(sc => { const n = {...sc}; delete n[i]; return n; });
   };
 
-  // Sort by score desc
   const sortedResults = results
     .map((s, i) => ({ s, i, score: scores[i]?.total ?? null }))
     .sort((a, b) => {
@@ -144,11 +151,28 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
       return b.score - a.score;
     });
 
+  const selStyle = { padding:"6px 10px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" };
+
   return (
     <div className="animate-fade-in">
 
+      {/* Production Alert */}
+      {ProductionAlertComponent}
+
+      {/* Active filter pills */}
+      {(era || team || archetype || format) && (
+        <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
+          <span style={{ fontSize:11, color:"var(--t3)" }}>Searching:</span>
+          {format && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:`${FORMAT_MAP[format]?.color}15`, color:FORMAT_MAP[format]?.color, border:`1px solid ${FORMAT_MAP[format]?.color}25`, fontWeight:600 }}>{FORMAT_MAP[format]?.label}</span>}
+          {archetype && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{archetype}</span>}
+          {era && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{era}</span>}
+          {team && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{team}</span>}
+          <button onClick={clearFilters} style={{ fontSize:11, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer", padding:0 }}>Clear ×</button>
+        </div>
+      )}
+
       {/* Search row */}
-      <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+      <div style={{ display:"flex", gap:8, marginBottom:10 }}>
         <div style={{ position:"relative", flex:1 }}>
           <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--t3)", pointerEvents:"none" }} />
           <input value={topic} onChange={e=>setTopic(e.target.value)} placeholder="Topic or focus (optional)"
@@ -157,6 +181,15 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
         </div>
         <input value={count} onChange={e=>setCount(e.target.value.replace(/\D/g,""))}
           style={{ width:52, padding:"9px 0", borderRadius:8, textAlign:"center", fontSize:13, fontWeight:700, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", outline:"none", fontFamily:"'DM Mono',monospace" }} />
+        <button onClick={() => setShowFilters(f=>!f)} style={{
+          padding:"9px 14px", borderRadius:8, fontSize:12, fontWeight:500,
+          background: showFilters || activeFilterCount > 0 ? "var(--t1)" : "var(--fill2)",
+          color:      showFilters || activeFilterCount > 0 ? "var(--bg)"  : "var(--t2)",
+          border:"1px solid var(--border)", cursor:"pointer", display:"flex", alignItems:"center", gap:6,
+        }}>
+          <SlidersHorizontal size={13} />
+          {activeFilterCount > 0 && <span style={{ width:16, height:16, borderRadius:"50%", background:"var(--bg)", color:"var(--t1)", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>{activeFilterCount}</span>}
+        </button>
         <button onClick={doFetch} disabled={loading} style={{
           padding:"9px 20px", borderRadius:8, fontSize:13, fontWeight:600,
           background: loading ? "var(--fill2)" : "var(--t1)",
@@ -167,23 +200,50 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
         </button>
       </div>
 
-      {/* Filters */}
-      <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap", alignItems:"center" }}>
-        <select value={era} onChange={e=>setEra(e.target.value)} style={{ padding:"6px 10px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color: era ? "var(--t1)" : "var(--t3)", outline:"none" }}>
-          <option value="">Any era</option>
-          {ERAS.map(e => <option key={e} value={e}>{e}</option>)}
-        </select>
-        <select value={team} onChange={e=>setTeam(e.target.value)} style={{ padding:"6px 10px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color: team ? "var(--t1)" : "var(--t3)", outline:"none", maxWidth:180 }}>
-          <option value="">Any team</option>
-          {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        {scoring && (
-          <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)" }}>
-            <div className="anim-spin" style={{ width:12, height:12, borderRadius:"50%", border:"1.5px solid var(--t4)", borderTopColor:"var(--t1)" }} />
-            Scoring...
+      {/* Filter panel */}
+      {showFilters && (
+        <div className="animate-fade-in" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(160px, 1fr))", gap:8, padding:"12px 14px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:12 }}>
+          {/* Format */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Format</div>
+            <select value={format} onChange={e=>setFormat(e.target.value)} style={{ ...selStyle, width:"100%" }}>
+              <option value="">Any format</option>
+              {FORMATS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+            </select>
           </div>
-        )}
-      </div>
+          {/* Archetype */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Archetype</div>
+            <select value={archetype} onChange={e=>setArchetype(e.target.value)} style={{ ...selStyle, width:"100%" }}>
+              <option value="">Any archetype</option>
+              {ARCHETYPES.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          {/* Era */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Era</div>
+            <select value={era} onChange={e=>setEra(e.target.value)} style={{ ...selStyle, width:"100%" }}>
+              <option value="">Any era</option>
+              {ERAS.map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+          {/* Team */}
+          <div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Team</div>
+            <select value={team} onChange={e=>setTeam(e.target.value)} style={{ ...selStyle, width:"100%", maxWidth:"100%" }}>
+              <option value="">Any team</option>
+              {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {scoring && (
+        <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)", marginBottom:12 }}>
+          <div className="anim-spin" style={{ width:12, height:12, borderRadius:"50%", border:"1.5px solid var(--t4)", borderTopColor:"var(--t1)" }} />
+          Scoring stories...
+        </div>
+      )}
 
       {error && <div style={{ padding:"10px 14px", borderRadius:8, marginBottom:16, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", fontSize:12 }}>{error}</div>}
 
@@ -191,12 +251,8 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
       {results.length > 0 && (
         <div>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-            <span style={{ fontSize:13, fontWeight:600, color:"var(--t1)" }}>{results.length} stories found {scoring ? "· scoring..." : ""}</span>
-            <button onClick={addAllToPipeline} style={{
-              padding:"7px 16px", borderRadius:7, fontSize:12, fontWeight:600,
-              background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer",
-              display:"flex", alignItems:"center", gap:6,
-            }}>
+            <span style={{ fontSize:13, fontWeight:600, color:"var(--t1)" }}>{results.length} stories found{scoring ? " · scoring..." : ""}</span>
+            <button onClick={addAllToPipeline} style={{ padding:"7px 16px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
               <Plus size={13} /> Add all to Pipeline
             </button>
           </div>
@@ -204,14 +260,15 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             {sortedResults.map(({ s, i, score: sc }) => {
               const scoreData = scores[i];
+              const fmt = FORMAT_MAP[format || suggestFormat(s.era)];
               return (
-                <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"1px solid var(--border)" }}>
+                <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"1px solid var(--border)", borderLeft:`3px solid ${fmt?.color||"var(--border)"}` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-  <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>{s.archetype}</span>
-                      {(() => { const f = FORMAT_MAP[suggestFormat(s.era)]; return f ? <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:`${f.color}15`, color:f.color, border:`1px solid ${f.color}25` }}>{f.label}</span> : null; })()}
+                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
+                        <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>{s.archetype}</span>
                         {s.era && <span style={{ fontSize:10, color:"var(--t4)" }}>{s.era}</span>}
+                        {fmt && <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:`${fmt.color}15`, color:fmt.color, border:`1px solid ${fmt.color}25` }}>{fmt.label}</span>}
                       </div>
                       <div style={{ fontSize:15, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.02em", lineHeight:1.3, marginBottom:4 }}>{s.title}</div>
                       {s.players && <div style={{ fontSize:12, color:"var(--t3)", marginBottom:8 }}>{Array.isArray(s.players) ? s.players.join(", ") : s.players}</div>}
@@ -259,7 +316,7 @@ export default function ResearchView({ stories, onAddStories, persistedState, on
         <div style={{ textAlign:"center", padding:"80px 0", color:"var(--t4)" }}>
           <Search size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }} />
           <div style={{ fontSize:13 }}>Search for NBA stories to get started</div>
-          <div style={{ fontSize:12, marginTop:6, color:"var(--t4)" }}>Stories will be scored automatically and added directly to your Pipeline</div>
+          <div style={{ fontSize:12, marginTop:6, color:"var(--t4)" }}>Use filters to target specific format, archetype, or era</div>
         </div>
       )}
     </div>

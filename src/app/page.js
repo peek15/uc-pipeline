@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.1.1";
+const VERSION = "3.2";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },

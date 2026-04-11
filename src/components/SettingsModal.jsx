@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
 import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
 import { supabase, callClaude } from "@/lib/db";
+import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
 
 const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -483,6 +484,173 @@ JSON only.`;
       }
     } catch(e) { console.error(e); }
     setResolving(false);
+  };
+
+  // Onboarding state
+  const [obStep,      setObStep]      = useState(null); // null=off, "chat"=active
+  const [obMessages,  setObMessages]  = useState([]);
+  const [obInput,     setObInput]     = useState("");
+  const [obLoading,   setObLoading]   = useState(false);
+  const [obDraft,     setObDraft]     = useState(null); // extracted brand fields
+
+  // Asset library state
+  const [assets,      setAssets]      = useState([]);
+  const [assetsLoading,setAssetsLoading]=useState(false);
+  const [uploadingAsset,setUploadingAsset]=useState(false);
+  const [assetError,  setAssetError]  = useState(null);
+  const [dragOver,    setDragOver]    = useState(false);
+
+  const BRAND_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
+  const WORKSPACE_ID     = "00000000-0000-0000-0000-000000000001";
+
+  // Load assets when brand section opens
+  useEffect(() => {
+    if (section === "brand") {
+      setAssetsLoading(true);
+      listAssets(BRAND_PROFILE_ID)
+        .then(data => setAssets(data))
+        .catch(() => setAssets([]))
+        .finally(() => setAssetsLoading(false));
+    }
+  }, [section]);
+
+  // Onboarding conversation
+  const startOnboarding = () => {
+    setObStep("chat");
+    setObMessages([{
+      role: "assistant",
+      text: `Hi! I'll help you set up your brand profile. You can drop a brand doc here and I'll read it, or just tell me about your brand in your own words. What's the name and what kind of content do you make?`
+    }]);
+  };
+
+  const sendObMessage = async (text, fileText) => {
+    const userMsg = { role:"user", text: fileText ? `[Uploaded document]
+
+${fileText.slice(0,3000)}` : text };
+    const newMessages = [...obMessages, userMsg];
+    setObMessages(newMessages);
+    setObInput("");
+    setObLoading(true);
+
+    const history = newMessages.map(m => `${m.role==="user"?"User":"Assistant"}: ${m.text}`).join("
+
+");
+    const currentBrand = JSON.stringify(settings.brand, null, 2);
+
+    const prompt = `You are an onboarding assistant helping set up a brand profile for an AI content production tool.
+
+Current brand settings:
+${currentBrand}
+
+Conversation so far:
+${history}
+
+Your job:
+1. Ask short, focused questions to fill in missing brand info (voice, avoid, goals, audience, locked elements like a closing line)
+2. If a document was shared, extract what you can and only ask about genuine gaps
+3. When you have enough info, output a JSON block with extracted fields
+4. Be conversational and fast — don't ask more than 2 questions at once
+
+If you have enough info to extract brand fields, end your response with:
+<brand_extract>
+{
+  "name": "...",
+  "voice": "...",
+  "avoid": "...",
+  "goal_primary": "community|reach|conversion|awareness",
+  "goal_secondary": "community|reach|conversion|awareness",
+  "content_type": "narrative|advertising|educational|product|custom",
+  "locked_elements": ["..."]
+}
+</brand_extract>
+
+Otherwise just respond conversationally. Keep it short.`;
+
+    try {
+      const response = await callClaude(prompt, 800, "haiku");
+
+      // Check for extracted brand fields
+      const extractMatch = response.match(/<brand_extract>([\s\S]*?)<\/brand_extract>/);
+      let cleanResponse = response.replace(/<brand_extract>[\s\S]*?<\/brand_extract>/, "").trim();
+
+      if (extractMatch) {
+        try {
+          const extracted = JSON.parse(extractMatch[1].trim());
+          setObDraft(extracted);
+          cleanResponse = cleanResponse || "Here's what I've extracted from our conversation. Review and confirm to apply to your brand profile.";
+        } catch {}
+      }
+
+      setObMessages(prev => [...prev, { role:"assistant", text: cleanResponse }]);
+    } catch(e) { setObMessages(prev => [...prev, { role:"assistant", text:"Something went wrong — try again." }]); }
+    setObLoading(false);
+  };
+
+  const applyObDraft = () => {
+    if (!obDraft) return;
+    Object.entries(obDraft).forEach(([k,v]) => {
+      if (k === "locked_elements") upd("brand.locked_elements", v);
+      else if (k in settings.brand) upd(`brand.${k}`, v);
+    });
+    setObStep(null);
+    setObDraft(null);
+    setObMessages([]);
+  };
+
+  // Asset upload handler
+  const handleAssetUpload = async (file, assetType) => {
+    setUploadingAsset(true);
+    setAssetError(null);
+    try {
+      // Extract text for AI summary
+      const fileText = await extractTextFromFile(file);
+
+      // Upload securely
+      const doc = await uploadAsset({
+        file,
+        brandProfileId: BRAND_PROFILE_ID,
+        workspaceId:    WORKSPACE_ID,
+        assetType:      assetType || "other",
+        displayName:    file.name,
+      });
+
+      // If text extracted, get AI summary
+      if (fileText) {
+        const summaryPrompt = `Summarize this brand document in 2-3 sentences, focusing on what's useful for content generation (voice, restrictions, audience, key messages).
+
+Document excerpt:
+${fileText.slice(0, 2000)}
+
+Summary only. No preamble.`;
+        try {
+          const summary = await callClaude(summaryPrompt, 200, "haiku");
+          await updateAssetSummary(doc.id, summary);
+          doc.content_summary = summary;
+
+          // If onboarding is active, feed document to conversation
+          if (obStep === "chat") {
+            sendObMessage("", fileText);
+          }
+        } catch {}
+      }
+
+      setAssets(prev => [doc, ...prev]);
+    } catch(e) { setAssetError(e.message); }
+    setUploadingAsset(false);
+  };
+
+  const handleFileDrop = async (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) await handleAssetUpload(file, "brand_guide");
+  };
+
+  const handleAssetDelete = async (assetId) => {
+    try {
+      await deleteAsset(assetId, BRAND_PROFILE_ID);
+      setAssets(prev => prev.filter(a => a.id !== assetId));
+    } catch(e) { setAssetError(e.message); }
   };
 
   const inputStyle = { width:"100%", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", fontFamily:"inherit" };

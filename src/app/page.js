@@ -191,7 +191,7 @@ export default function Home() {
     for (const lang of ["fr","es","pt"]) {
       const tPrompt = `Translate this Uncle Carter NBA story script to ${lang==="fr"?"French":lang==="es"?"Spanish":"Portuguese"}. Keep the warm, storytelling tone. Same length. End with the exact translated equivalent of "Because the score is never the whole story."\n\n${enText}`;
       const translated = await callClaude(tPrompt, 600);
-      await updateStory(storyId, { [\`script_\${lang}\`]: translated });
+      await updateStory(storyId, { [`script_${lang}`]: translated });
     }
   }, [stories, updateStory]);
 

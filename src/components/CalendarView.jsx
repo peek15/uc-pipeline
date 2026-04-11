@@ -71,6 +71,11 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
   const [platform,    setPlatform]    = useState("All");
   const [view,        setView]        = useState("week"); // week | month
 
+  // Read from settings — fall back to defaults
+  const cadence   = settings?.strategy?.weekly_cadence || DEFAULT_CADENCE;
+  const formatMix = settings?.strategy?.format_mix || { standard:60, classics:25, performance_special:15, special_edition:0 };
+  const seqRules  = settings?.strategy?.sequence_rules || { no_consecutive_classics:true, no_consecutive_performance_special:true };
+
   const today = new Date(); today.setHours(0,0,0,0);
 
   // Week days

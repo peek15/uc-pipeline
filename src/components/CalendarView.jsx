@@ -1,158 +1,275 @@
 "use client";
-import { useState } from "react";
-import { X, Check, Clock } from "lucide-react";
-import { STAGES, ACCENT, ARCHETYPES, LANGS } from "@/lib/constants";
+import { useState, useMemo } from "react";
+import { X, ChevronLeft, ChevronRight, Plus, Circle } from "lucide-react";
+import { STAGES, ACCENT, ARCHETYPES, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
 
-export default function CalendarView({ stories, onUpdate }) {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [showAssign, setShowAssign] = useState(null);
+const PLATFORMS = ["TikTok","Instagram","YouTube","All"];
+const CADENCE   = 5; // target per week
 
-  const today = new Date();
-  const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - today.getDay() + 1 + weekOffset * 7);
+function fmt(d)     { return d.toISOString().split("T")[0]; }
+function isToday(d) { return fmt(d) === fmt(new Date()); }
+function isPast(d)  { const t = new Date(); t.setHours(0,0,0,0); return d < t; }
 
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart);
-    d.setDate(weekStart.getDate() + i);
-    return d;
+// 3-week coverage summary
+function CoverageSummary({ stories, weekOffset }) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const horizon = new Date(today.getTime() + 21*86400000);
+  const totalSlots = Math.round(21/7*CADENCE); // 15
+
+  const scheduled = stories.filter(s => {
+    if (!s.scheduled_date) return false;
+    const d = new Date(s.scheduled_date);
+    return d >= today && d <= horizon;
   });
 
-  const fmt = d => d.toISOString().split("T")[0];
-  const dayLabel = d => ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][d.getDay() === 0 ? 6 : d.getDay() - 1];
-  const monthDay = d => `${d.getMonth() + 1}/${d.getDate()}`;
-  const isToday = d => fmt(d) === fmt(today);
+  const ready = stories.filter(s =>
+    ["approved","scripted","produced"].includes(s.status) && !s.scheduled_date
+  );
 
-  const getForDay = d => stories.filter(s => s.scheduled_date === fmt(d));
-  const ready = stories.filter(s => ["approved", "scripted", "produced"].includes(s.status) && !s.scheduled_date);
+  const covered   = scheduled.length + ready.length;
+  const pct       = Math.min(100, Math.round((covered/totalSlots)*100));
+  const color     = covered >= totalSlots ? "#4A9B7F" : covered >= totalSlots*0.6 ? "#C49A3C" : "#C0666A";
 
-  const recentArchetypes = days.flatMap(d => getForDay(d).map(s => s.archetype)).filter(Boolean);
-  const suggestArchetype = () => {
-    const counts = {};
-    for (const a of ARCHETYPES) counts[a] = 0;
-    for (const a of recentArchetypes) counts[a] = (counts[a] || 0) + 1;
-    return ARCHETYPES.sort((a, b) => counts[a] - counts[b])[0];
-  };
+  // Format balance in next 3 weeks
+  const fmtCounts = {};
+  for (const s of [...scheduled, ...ready]) {
+    const f = s.format||"standard";
+    fmtCounts[f] = (fmtCounts[f]||0) + 1;
+  }
 
-  const published = stories.filter(s => s.metrics_completion);
-  const bestTime = () => {
-    if (published.length < 5) return null;
-    const byTime = {};
-    for (const s of published) {
-      if (!s.post_time) continue;
-      if (!byTime[s.post_time]) byTime[s.post_time] = [];
-      byTime[s.post_time].push(parseFloat(s.metrics_completion));
-    }
-    let best = null, bestAvg = 0;
-    for (const [time, vals] of Object.entries(byTime)) {
-      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-      if (avg > bestAvg) { bestAvg = avg; best = time; }
-    }
-    return best;
-  };
+  return (
+    <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>3-week coverage</span>
+        <span style={{ fontSize:12, fontWeight:700, fontFamily:"'DM Mono',monospace", color }}>{covered}/{totalSlots} slots</span>
+      </div>
+      <div style={{ height:4, borderRadius:2, background:"var(--bg3)", overflow:"hidden", marginBottom:10 }}>
+        <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:2, transition:"width 0.4s" }}/>
+      </div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+        <span style={{ fontSize:11, color:"var(--t3)" }}>{scheduled.length} scheduled</span>
+        <span style={{ fontSize:11, color:"var(--t4)" }}>·</span>
+        <span style={{ fontSize:11, color:"var(--t3)" }}>{ready.length} ready unscheduled</span>
+        {FORMATS.filter(f=>f.key!=="special_edition").map(f => (
+          <span key={f.key} style={{ fontSize:10, padding:"1px 7px", borderRadius:99, background:`${f.color}15`, color:f.color, border:`1px solid ${f.color}25`, fontWeight:600 }}>
+            {f.label} {fmtCounts[f.key]||0}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-  const assignToDay = (storyId, date) => {
-    onUpdate(storyId, { scheduled_date: fmt(date), status: "produced" });
+export default function CalendarView({ stories, onUpdate }) {
+  const [weekOffset,  setWeekOffset]  = useState(0);
+  const [showAssign,  setShowAssign]  = useState(null); // day index
+  const [platform,    setPlatform]    = useState("All");
+  const [view,        setView]        = useState("week"); // week | month
+
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // Week days
+  const weekStart = useMemo(() => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (today.getDay()===0?6:today.getDay()-1) + weekOffset*7);
+    return d;
+  }, [weekOffset]);
+
+  const days = useMemo(() =>
+    Array.from({length:7}, (_,i) => {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate()+i);
+      return d;
+    }), [weekStart]);
+
+  const getForDay = (d) => stories.filter(s => s.scheduled_date === fmt(d));
+
+  const ready = stories.filter(s =>
+    ["approved","scripted","produced"].includes(s.status) && !s.scheduled_date
+  );
+
+  const assignToDay = (storyId, date, plt) => {
+    onUpdate(storyId, {
+      scheduled_date: fmt(date),
+      platform_target: plt !== "All" ? plt : null,
+      status: "produced",
+    });
     setShowAssign(null);
   };
 
-  const sugArch = suggestArchetype();
-  const bt = bestTime();
-  const bankSize = stories.filter(s => ["approved", "scripted", "produced"].includes(s.status)).length;
-  const emptyDays = days.filter(d => getForDay(d).length === 0 && d >= today).length;
-
   const weekLabel = () => {
-    const sm = days[0].toLocaleString("default", { month: "short" });
-    const em = days[6].toLocaleString("default", { month: "short" });
-    return sm === em ? `${sm} ${days[0].getDate()}–${days[6].getDate()}` : `${sm} ${days[0].getDate()} – ${em} ${days[6].getDate()}`;
+    const sm = days[0].toLocaleString("default",{month:"short"});
+    const em = days[6].toLocaleString("default",{month:"short"});
+    return sm===em
+      ? `${sm} ${days[0].getDate()}–${days[6].getDate()}`
+      : `${sm} ${days[0].getDate()} – ${em} ${days[6].getDate()}`;
+  };
+
+  // Suggest best story for a day based on format balance + archetype variety
+  const getSuggested = (dayIdx) => {
+    const weekStories = days.flatMap(d => getForDay(d));
+    const usedFormats   = weekStories.map(s=>s.format).filter(Boolean);
+    const usedArchetypes = weekStories.map(s=>s.archetype).filter(Boolean);
+    return ready.map(s => {
+      let score = 0;
+      if (!usedFormats.includes(s.format)) score += 3;
+      if (!usedArchetypes.includes(s.archetype)) score += 2;
+      if (s.score_total) score += s.score_total/100;
+      return { s, score };
+    }).sort((a,b)=>b.score-a.score).map(x=>x.s);
   };
 
   return (
     <div className="animate-fade-in">
-      {/* Health */}
-      <div className="flex gap-2 mb-3.5 overflow-x-auto pb-0.5" style={{ WebkitOverflowScrolling: "touch" }}>
-        {[
-          { label: "Story Bank", value: bankSize, color: bankSize > 7 ? "#34C759" : bankSize > 3 ? "#FF9F0A" : "#FF3B30", sub: `${bankSize} days` },
-          { label: "Empty Days", value: emptyDays, color: emptyDays === 0 ? "#34C759" : "#FF9F0A" },
-          bt && { label: "Best Time", value: bt, color: "#5AC8FA" },
-          sugArch && { label: "Suggest", value: sugArch, color: ACCENT[sugArch] || "#B8860B" },
-        ].filter(Boolean).map((s, i) => (
-          <div key={i} className="shrink-0 px-3 py-2 rounded-xl text-center min-w-[70px]" style={{ background: "var(--card)", border: "1px solid var(--border2)" }}>
-            <div className="text-[13px] font-bold font-display" style={{ color: s.color, letterSpacing: "-0.02em" }}>{s.value}</div>
-            <div className="text-[8px] text-[var(--t4)] mt-0.5">{s.label}</div>
+
+      {/* 3-week coverage */}
+      <CoverageSummary stories={stories} weekOffset={weekOffset} />
+
+      {/* Controls */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <button onClick={()=>setWeekOffset(w=>w-1)} style={{ width:30, height:30, borderRadius:7, border:"1px solid var(--border)", background:"var(--fill2)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <ChevronLeft size={14} color="var(--t2)"/>
+          </button>
+          <div style={{ textAlign:"center", minWidth:140 }}>
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.02em" }}>{weekLabel()}</div>
+            {weekOffset!==0 && <button onClick={()=>setWeekOffset(0)} style={{ fontSize:10, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer", padding:0 }}>Today</button>}
           </div>
-        ))}
-      </div>
-
-      {/* Week nav */}
-      <div className="flex justify-between items-center mb-3">
-        <button onClick={() => setWeekOffset(w => w - 1)} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--t3)] text-[14px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>‹</button>
-        <div className="text-center">
-          <div className="text-[15px] font-bold font-display text-[var(--t1)]" style={{ letterSpacing: "-0.02em" }}>{weekLabel()}</div>
-          {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-[10px] mt-0.5 bg-transparent border-none cursor-pointer" style={{ color: "var(--t2)" }}>Today</button>}
+          <button onClick={()=>setWeekOffset(w=>w+1)} style={{ width:30, height:30, borderRadius:7, border:"1px solid var(--border)", background:"var(--fill2)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <ChevronRight size={14} color="var(--t2)"/>
+          </button>
         </div>
-        <button onClick={() => setWeekOffset(w => w + 1)} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--t3)] text-[14px]" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>›</button>
+
+        {/* Platform filter */}
+        <div style={{ display:"flex", gap:4 }}>
+          {PLATFORMS.map(p => (
+            <button key={p} onClick={()=>setPlatform(p)} style={{
+              padding:"5px 10px", borderRadius:6, fontSize:11, fontWeight:500,
+              background: platform===p?"var(--t1)":"var(--fill2)",
+              color:      platform===p?"var(--bg)":"var(--t3)",
+              border: platform===p?"1px solid var(--t1)":"1px solid var(--border)",
+              cursor:"pointer",
+            }}>{p}</button>
+          ))}
+        </div>
       </div>
 
-      {/* Days */}
-      <div className="flex flex-col gap-1">
+      {/* Week grid */}
+      <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
         {days.map((d, di) => {
-          const items = getForDay(d);
-          const isPast = d < today && !isToday(d);
-          const tod = isToday(d);
+          const items    = getForDay(d).filter(s => platform==="All" || !s.platform_target || s.platform_target===platform);
+          const past     = isPast(d);
+          const today_   = isToday(d);
+          const suggested = getSuggested(di);
+          const isGap    = !past && items.length===0;
+
           return (
-            <div key={di} className="rounded-xl p-2.5" style={{ background: tod ? "var(--fill2)" : "transparent", border: `1px solid ${tod ? "var(--border-in)" : "var(--border2)"}`, opacity: isPast ? 0.5 : 1 }}>
-              <div className="flex justify-between items-center" style={{ marginBottom: items.length > 0 || showAssign === di ? 8 : 0 }}>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[12px] font-bold" style={{ color: tod ? "var(--t1)" : "var(--t3)", fontWeight: tod ? 700 : 600 }}>{dayLabel(d)}</span>
-                  <span className="text-[11px] text-[var(--t3)]">{monthDay(d)}</span>
-                  {tod && <span className="text-[9px] font-semibold px-1.5 rounded-full" style={{ color: "var(--t1)", background: "var(--fill2)", border: "1px solid var(--border)" }}>Today</span>}
+            <div key={di} style={{
+              borderRadius:9,
+              border: today_ ? "1px solid var(--t2)" : isGap ? "1px dashed var(--border)" : "1px solid var(--border2)",
+              background: today_ ? "var(--fill2)" : "transparent",
+              opacity: past ? 0.45 : 1,
+              overflow:"hidden",
+            }}>
+              {/* Day header */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ fontSize:12, fontWeight:today_?700:500, color:today_?"var(--t1)":"var(--t3)", width:28 }}>
+                    {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][di]}
+                  </span>
+                  <span style={{ fontSize:11, color:"var(--t4)" }}>{d.getMonth()+1}/{d.getDate()}</span>
+                  {today_ && <span style={{ fontSize:9, fontWeight:600, padding:"1px 6px", borderRadius:99, background:"var(--t1)", color:"var(--bg)" }}>Today</span>}
+                  {isGap && <span style={{ fontSize:10, color:"var(--t4)" }}>empty slot</span>}
                 </div>
-                {!isPast && (
-                  <button onClick={() => setShowAssign(showAssign === di ? null : di)}
-                    className="w-6 h-6 rounded-md flex items-center justify-center text-[var(--t3)] text-[16px]"
-                    style={{ background: "var(--card)", border: "1px solid var(--border)" }}>+</button>
+                {!past && (
+                  <button onClick={()=>setShowAssign(showAssign===di?null:di)} style={{
+                    width:24, height:24, borderRadius:6, border:"1px solid var(--border)", background: showAssign===di?"var(--t1)":"var(--fill2)",
+                    cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                  }}>
+                    <Plus size={12} color={showAssign===di?"var(--bg)":"var(--t3)"}/>
+                  </button>
                 )}
               </div>
 
-              {items.map(s => {
-                const ac = ACCENT[s.archetype] || "#FF9F0A";
-                return (
-                  <div key={s.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg mb-1" style={{ background: `${ac}10`, borderLeft: `3px solid ${ac}`, borderRadius:6 }}>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-semibold truncate" style={{color:"var(--t1)"}}>{s.title}</div>
-                      <div className="text-[9px] text-[var(--t3)] flex items-center gap-1">
-                        <span>{s.archetype} · {s.era}</span>
-                        {LANGS.filter(l => l.key === "en" ? s.script : s[`script_${l.key}`]).map(l => (
-                          <span key={l.key} className="text-[7px] font-bold px-0.5 rounded" style={{ color: l.color, background: `${l.color}15` }}>{l.label}</span>
-                        ))}
+              {/* Scheduled items */}
+              {items.length > 0 && (
+                <div style={{ padding:"0 8px 8px" }}>
+                  {items.map(s => {
+                    const fmtObj = FORMAT_MAP[s.format];
+                    const ac     = fmtObj ? fmtObj.color : (ACCENT[s.archetype]||"var(--border)");
+                    const ready4 = [!!s.script, !!s.script_fr, !!s.script_es, !!s.script_pt].filter(Boolean).length;
+                    return (
+                      <div key={s.id} style={{
+                        display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:7, marginBottom:3,
+                        background:"var(--card)", borderLeft:`3px solid ${ac}`,
+                      }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
+                            {fmtObj && <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:`${fmtObj.color}15`, color:fmtObj.color, border:`1px solid ${fmtObj.color}25` }}>{fmtObj.label}</span>}
+                            <span style={{ fontSize:9, color:"var(--t4)" }}>·</span>
+                            <span style={{ fontSize:10, color:ACCENT[s.archetype]||"var(--t3)", fontWeight:500 }}>{s.archetype}</span>
+                            {s.platform_target && <span style={{ fontSize:9, color:"var(--t4)", marginLeft:2 }}>{s.platform_target}</span>}
+                          </div>
+                          <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
+                          <div style={{ display:"flex", gap:3, marginTop:3 }}>
+                            {LANGS.filter(l=>l.key==="en"?s.script:s[`script_${l.key}`]).map(l=>(
+                              <span key={l.key} style={{ fontSize:8, fontWeight:700, padding:"1px 4px", borderRadius:3, background:"var(--fill2)", color:"var(--t3)" }}>{l.label}</span>
+                            ))}
+                            <span style={{ fontSize:9, color: ready4===4?"#4A9B7F":"var(--t4)", marginLeft:2 }}>{ready4}/4 langs</span>
+                          </div>
+                        </div>
+                        <button onClick={()=>onUpdate(s.id,{scheduled_date:null})} style={{ width:22, height:22, borderRadius:5, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                          <X size={11} color="var(--t4)"/>
+                        </button>
                       </div>
-                    </div>
-                    <button onClick={() => onUpdate(s.id, { scheduled_date: null })}
-                      className="w-5 h-5 rounded flex items-center justify-center"
-                      style={{ background: "rgba(255,59,48,0.06)", border: "none", cursor: "pointer" }}>
-                      <X size={11} color="rgba(255,59,48,0.4)" />
-                    </button>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
 
-              {showAssign === di && (
-                <div className="mt-1.5 p-2 rounded-lg" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                  <div className="text-[9px] text-[var(--t3)] font-semibold mb-1.5">Assign to {dayLabel(d)} {monthDay(d)}</div>
-                  {!ready.length ? <div className="text-[11px] text-[var(--t4)]">No unscheduled stories</div> : (
-                    <div className="flex flex-col gap-0.5 max-h-36 overflow-y-auto">
-                      {ready.map(s => {
-                        const ac = ACCENT[s.archetype] || "#FF9F0A";
-                        const isSug = s.archetype === sugArch;
+              {/* Assign panel */}
+              {showAssign===di && (
+                <div style={{ margin:"0 8px 8px", padding:"12px", borderRadius:8, background:"var(--bg2)", border:"1px solid var(--border)" }}>
+                  <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>
+                    Assign to {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][di]} {d.getMonth()+1}/{d.getDate()}
+                  </div>
+
+                  {/* Platform select */}
+                  <div style={{ display:"flex", gap:4, marginBottom:8 }}>
+                    {PLATFORMS.map(p=>(
+                      <button key={p} onClick={()=>setPlatform(p)} style={{
+                        padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:500,
+                        background:platform===p?"var(--t1)":"var(--fill2)",
+                        color:platform===p?"var(--bg)":"var(--t3)",
+                        border:"1px solid var(--border)", cursor:"pointer",
+                      }}>{p}</button>
+                    ))}
+                  </div>
+
+                  {!ready.length ? (
+                    <div style={{ fontSize:12, color:"var(--t4)" }}>No unscheduled stories ready</div>
+                  ) : (
+                    <div style={{ display:"flex", flexDirection:"column", gap:3, maxHeight:200, overflowY:"auto" }}>
+                      {suggested.map((s,i) => {
+                        const fmtObj = FORMAT_MAP[s.format];
+                        const ac = fmtObj?fmtObj.color:(ACCENT[s.archetype]||"var(--border)");
                         return (
-                          <button key={s.id} onClick={() => assignToDay(s.id, d)}
-                            className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-md text-left transition-all"
-                            style={{ background: isSug ? `${ac}10` : "rgba(255,255,255,0.02)", border: `1px solid ${isSug ? `${ac}20` : "rgba(255,255,255,0.04)"}` }}>
-                            <div className="w-1 h-5 rounded-sm shrink-0" style={{ background: ac }} />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[11px] font-semibold truncate" style={{color:"var(--t1)"}}>{s.title}</div>
-                              <div className="text-[9px] text-[var(--t3)]">{s.archetype}{isSug ? " · Suggested" : ""}</div>
+                          <button key={s.id} onClick={()=>assignToDay(s.id,d,platform)} style={{
+                            display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:7,
+                            background: i===0?"var(--fill2)":"transparent",
+                            border: i===0?"1px solid var(--border)":"1px solid transparent",
+                            cursor:"pointer", textAlign:"left",
+                          }}>
+                            <div style={{ width:3, height:32, borderRadius:2, background:ac, flexShrink:0 }}/>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:1 }}>
+                                {fmtObj && <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:`${fmtObj.color}15`, color:fmtObj.color }}>{fmtObj.label}</span>}
+                                <span style={{ fontSize:10, color:ACCENT[s.archetype]||"var(--t3)" }}>{s.archetype}</span>
+                                {i===0 && <span style={{ fontSize:9, color:"#4A9B7F", fontWeight:600 }}>· Suggested</span>}
+                              </div>
+                              <div style={{ fontSize:12, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
                             </div>
+                            {s.score_total && <span style={{ fontSize:11, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t3)", flexShrink:0 }}>{s.score_total}</span>}
                           </button>
                         );
                       })}
@@ -160,11 +277,33 @@ export default function CalendarView({ stories, onUpdate }) {
                   )}
                 </div>
               )}
-
-              {!items.length && showAssign !== di && !isPast && <div className="text-[10px] text-[var(--t4)] mt-0.5">No episode</div>}
             </div>
           );
         })}
+      </div>
+
+      {/* Ready bank */}
+      <div style={{ marginTop:20, padding:"12px 14px", borderRadius:9, background:"var(--bg2)", border:"1px solid var(--border)" }}>
+        <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>
+          Ready to schedule — {ready.length} stories
+        </div>
+        {!ready.length ? (
+          <div style={{ fontSize:12, color:"var(--t4)" }}>No stories ready. Approve or script stories in the Pipeline.</div>
+        ) : (
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            {FORMATS.filter(f=>f.key!=="special_edition").map(f => {
+              const count = ready.filter(s=>s.format===f.key).length;
+              return (
+                <span key={f.key} style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:`${f.color}15`, color:f.color, border:`1px solid ${f.color}25`, fontWeight:600 }}>
+                  {f.label} · {count}
+                </span>
+              );
+            })}
+            <span style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", color:"var(--t3)", border:"1px solid var(--border)" }}>
+              No format · {ready.filter(s=>!s.format).length}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

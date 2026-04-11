@@ -158,6 +158,35 @@ export default function ScriptView({ stories, onUpdate }) {
       setStreaming(s => { const n = {...s}; delete n[story.id]; return n; });
       await onUpdate(story.id, { script: enText, script_version: (story.script_version||0)+1, status: "scripted" });
 
+      // Auto-suggest reach score if not already set
+      if (!story.reach_score) {
+        try {
+          const reachPrompt = `You are scoring an Uncle Carter NBA story for reach potential (discoverability by new viewers).
+
+Score this story 0-100 on reach potential based on:
+- Name recognition of the subject (40%) — how famous is the player/moment?
+- Recency (25%) — how recently was this in public consciousness?
+- Search volume proxy (20%) — how often is this topic searched?
+- Trending relevance (15%) — is this connected to current news?
+
+Story: "${story.title}"
+Players: ${story.players||"Unknown"}
+Era: ${story.era||"Unknown"}
+Angle: ${story.angle||""}
+
+Return ONLY a JSON object: { "reach_score": number, "reasoning": "1 sentence" }
+No markdown.`;
+          const reachText = await callClaude(reachPrompt, 200, "haiku");
+          const clean = reachText.replace(/\`\`\`json\s*/g,"").replace(/\`\`\`\s*/g,"").trim();
+          let parsed = null;
+          try { parsed = JSON.parse(clean); } catch {}
+          if (!parsed) { const m = clean.match(/\{[\s\S]*\}/); if(m) try{parsed=JSON.parse(m[0]);}catch{} }
+          if (parsed?.reach_score) {
+            await onUpdate(story.id, { reach_score: Math.min(100, Math.max(0, Math.round(parsed.reach_score))) });
+          }
+        } catch {} // reach score is non-blocking
+      }
+
       if (withTranslate) {
         const newLangs = {};
         for (const lang of ["fr","es","pt"]) {

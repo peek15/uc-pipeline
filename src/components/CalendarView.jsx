@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { X, ChevronLeft, ChevronRight, Plus, Circle } from "lucide-react";
 import { STAGES, ACCENT, ARCHETYPES, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
 
@@ -24,7 +24,12 @@ function CoverageSummary({ stories, weekOffset }) {
 
   const ready = stories.filter(s =>
     ["approved","scripted","produced"].includes(s.status) && !s.scheduled_date
-  );
+  ).sort((a,b) => {
+    // Sort by combined score — intelligence layer will replace this later
+    const scoreA = (a.score_total||0) + (a.reach_score||0);
+    const scoreB = (b.score_total||0) + (b.reach_score||0);
+    return scoreB - scoreA;
+  });
 
   const covered   = scheduled.length + ready.length;
   const pct       = Math.min(100, Math.round((covered/totalSlots)*100));
@@ -60,7 +65,7 @@ function CoverageSummary({ stories, weekOffset }) {
   );
 }
 
-export default function CalendarView({ stories, onUpdate }) {
+export default function CalendarView({ stories, onUpdate, onProduce }) {
   const [weekOffset,  setWeekOffset]  = useState(0);
   const [showAssign,  setShowAssign]  = useState(null); // day index
   const [platform,    setPlatform]    = useState("All");
@@ -86,13 +91,17 @@ export default function CalendarView({ stories, onUpdate }) {
 
   const ready = stories.filter(s =>
     ["approved","scripted","produced"].includes(s.status) && !s.scheduled_date
-  );
+  ).sort((a,b) => {
+    // Sort by combined score — intelligence layer will replace this later
+    const scoreA = (a.score_total||0) + (a.reach_score||0);
+    const scoreB = (b.score_total||0) + (b.reach_score||0);
+    return scoreB - scoreA;
+  });
 
   const assignToDay = (storyId, date, plt) => {
     onUpdate(storyId, {
       scheduled_date: fmt(date),
       platform_target: plt !== "All" ? plt : null,
-      status: "produced",
     });
     setShowAssign(null);
   };
@@ -119,11 +128,122 @@ export default function CalendarView({ stories, onUpdate }) {
     }).sort((a,b)=>b.score-a.score).map(x=>x.s);
   };
 
+  // Auto-fill week with best stories per empty slot
+  const autoFillWeek = () => {
+    const emptyFuture = days.filter(d => !isPast(d) && getForDay(d).length === 0);
+    let available = [...ready];
+    for (const d of emptyFuture) {
+      if (!available.length) break;
+      const used = days.flatMap(day => getForDay(day));
+      const usedFormats    = used.map(s=>s.format).filter(Boolean);
+      const usedArchetypes = used.map(s=>s.archetype).filter(Boolean);
+      const scored = available.map(s => {
+        let score = 0;
+        if (!usedFormats.includes(s.format))     score += 3;
+        if (!usedArchetypes.includes(s.archetype)) score += 2;
+        if (s.score_total) score += s.score_total/100;
+        return { s, score };
+      }).sort((a,b) => b.score - a.score);
+      const pick = scored[0]?.s;
+      if (pick) {
+        onUpdate(pick.id, { scheduled_date: fmt(d) });
+        available = available.filter(s => s.id !== pick.id);
+      }
+    }
+  };
+
+  // Cmd+F = auto-fill week
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.metaKey && e.key === "f" && !e.shiftKey) {
+        const tag = document.activeElement?.tagName;
+        if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
+        e.preventDefault();
+        autoFillWeek();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [days, ready, stories]);
+
+  // Auto-produce: trigger script generation for all scheduled-but-unscripted stories
+  const [producing,    setProducing]    = useState(false);
+  const [produceStatus,setProduceStatus]= useState(null);
+
+  const autoProduce = async () => {
+    const today2 = new Date(); today2.setHours(0,0,0,0);
+    const horizon = new Date(today2.getTime() + 14*86400000);
+    const toProcess = stories.filter(s => {
+      if (!s.scheduled_date) return false;
+      const d = new Date(s.scheduled_date);
+      return d >= today2 && d <= horizon && !s.script;
+    }).sort((a,b) => new Date(a.scheduled_date) - new Date(b.scheduled_date));
+
+    if (!toProcess.length) {
+      setProduceStatus("All scheduled stories in the next 2 weeks already have scripts.");
+      setTimeout(()=>setProduceStatus(null), 3000);
+      return;
+    }
+
+    setProducing(true);
+    setProduceStatus(`Producing ${toProcess.length} stories...`);
+
+    for (let i=0; i<toProcess.length; i++) {
+      const s = toProcess[i];
+      setProduceStatus(`Scripting ${i+1}/${toProcess.length} — ${s.title.slice(0,40)}...`);
+      try {
+        // Trigger script generation via parent
+        if (onProduce) await onProduce(s.id);
+      } catch(err) {
+        setProduceStatus(`Error on "${s.title.slice(0,30)}": ${err.message}`);
+        await new Promise(r=>setTimeout(r,2000));
+      }
+      if (i < toProcess.length-1) await new Promise(r=>setTimeout(r,800));
+    }
+
+    setProducing(false);
+    setProduceStatus(`✓ Done — ${toProcess.length} stories scripted.`);
+    setTimeout(()=>setProduceStatus(null), 4000);
+  };
+
+  const scheduledNext14 = (() => {
+    const today2 = new Date(); today2.setHours(0,0,0,0);
+    const horizon = new Date(today2.getTime() + 14*86400000);
+    return stories.filter(s => {
+      if (!s.scheduled_date) return false;
+      const d = new Date(s.scheduled_date);
+      return d >= today2 && d <= horizon;
+    });
+  })();
+  const needsScript = scheduledNext14.filter(s => !s.script).length;
+
   return (
     <div className="animate-fade-in">
 
       {/* 3-week coverage */}
       <CoverageSummary stories={stories} weekOffset={weekOffset} />
+
+      {/* Auto-produce banner */}
+      {needsScript > 0 && (
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:9, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:14 }}>
+          <div>
+            <span style={{ fontSize:13, fontWeight:500, color:"var(--t1)" }}>{needsScript} scheduled {needsScript===1?"story":"stories"} need{needsScript===1?"s":""} scripting</span>
+            <span style={{ fontSize:12, color:"var(--t3)", marginLeft:8 }}>in the next 14 days</span>
+          </div>
+          <button onClick={autoProduce} disabled={producing} style={{
+            padding:"7px 16px", borderRadius:7, fontSize:12, fontWeight:600,
+            background: producing?"var(--fill2)":"var(--t1)",
+            color: producing?"var(--t3)":"var(--bg)",
+            border:"none", cursor: producing?"not-allowed":"pointer",
+            display:"flex", alignItems:"center", gap:6,
+          }}>
+            {producing ? "Producing..." : `⚡ Auto-produce ${needsScript}`}
+          </button>
+        </div>
+      )}
+      {produceStatus && (
+        <div style={{ padding:"8px 12px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)", fontSize:12, color:"var(--t2)", marginBottom:12 }}>{produceStatus}</div>
+      )}
 
       {/* Controls */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, gap:8 }}>
@@ -140,6 +260,15 @@ export default function CalendarView({ stories, onUpdate }) {
           </button>
         </div>
 
+        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <button onClick={autoFillWeek} style={{
+            padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500,
+            background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer",
+            display:"flex", alignItems:"center", gap:5,
+          }}>
+            ⌘F Auto-fill week
+          </button>
+        </div>
         {/* Platform filter */}
         <div style={{ display:"flex", gap:4 }}>
           {PLATFORMS.map(p => (
@@ -228,7 +357,7 @@ export default function CalendarView({ stories, onUpdate }) {
               )}
 
               {/* Assign panel */}
-              {showAssign===di && (
+              {showAssign===di && (() => { const assignDay = new Date(d); return (
                 <div style={{ margin:"0 8px 8px", padding:"12px", borderRadius:8, background:"var(--bg2)", border:"1px solid var(--border)" }}>
                   <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>
                     Assign to {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][di]} {d.getMonth()+1}/{d.getDate()}
@@ -254,7 +383,7 @@ export default function CalendarView({ stories, onUpdate }) {
                         const fmtObj = FORMAT_MAP[s.format];
                         const ac = fmtObj?fmtObj.color:(ACCENT[s.archetype]||"var(--border)");
                         return (
-                          <button key={s.id} onClick={()=>assignToDay(s.id,d,platform)} style={{
+                          <button key={s.id} onClick={()=>assignToDay(s.id,assignDay,platform)} style={{
                             display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:7,
                             background: i===0?"var(--fill2)":"transparent",
                             border: i===0?"1px solid var(--border)":"1px solid transparent",
@@ -276,7 +405,7 @@ export default function CalendarView({ stories, onUpdate }) {
                     </div>
                   )}
                 </div>
-              )}
+              ); })()}
             </div>
           );
         })}

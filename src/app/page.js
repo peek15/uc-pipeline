@@ -14,7 +14,7 @@ import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "2.9";
+const VERSION = "2.9.2";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -175,6 +175,25 @@ export default function Home() {
     setTab("research");
     toast("↗ Jumped to Research");
   }, [stories, setTab, setResearchPrefill]);
+
+  // Auto-produce: generate script for a story by ID
+  // ScriptView handles the actual generation — we trigger it via a shared ref or
+  // by moving the story to scripted status after calling the API directly
+  const handleProduce = useCallback(async (storyId) => {
+    const story = stories.find(s => s.id === storyId);
+    if (!story || story.script) return;
+    const { callClaude, callClaudeStream } = await import("@/lib/db");
+    const { SCRIPT_SYSTEM } = await import("@/lib/constants");
+    const prompt = `${SCRIPT_SYSTEM}\n\n---\n\nWrite an Uncle Carter episode script about:\nStory: ${story.angle||story.title}\nPlayer(s): ${story.players||"Unknown"}\nEra: ${story.era||"Unknown"}\nEmotional angle: ${story.archetype||"Pressure"}\n\n110-150 words. Pure script only.`;
+    const enText = await callClaude(prompt, 600);
+    await updateStory(storyId, { script: enText, script_version: 1, status: "scripted" });
+    // Auto-translate
+    for (const lang of ["fr","es","pt"]) {
+      const tPrompt = `Translate this Uncle Carter NBA story script to ${lang==="fr"?"French":lang==="es"?"Spanish":"Portuguese"}. Keep the warm, storytelling tone. Same length. End with the exact translated equivalent of "Because the score is never the whole story."\n\n${enText}`;
+      const translated = await callClaude(tPrompt, 600);
+      await updateStory(storyId, { [\`script_\${lang}\`]: translated });
+    }
+  }, [stories, updateStory]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -346,7 +365,7 @@ export default function Home() {
           />
         </div>
         <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView   stories={stories} onUpdate={updateStory} /></div>
-        <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} /></div>
+        <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} /></div>
         <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
       </main>
 

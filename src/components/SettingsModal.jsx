@@ -26,6 +26,12 @@ const DEFAULT_SETTINGS = {
       no_consecutive_same_format: false,
     },
     rules: [],
+    programmes: [
+      { id:"standard",           name:"Standard",            color:"#C49A3C", role:"reach",     weight:60, angle_suggestions:["redemption","rivalry","legacy","pressure"], custom_fields:[] },
+      { id:"classics",           name:"Classics",            color:"#4A9B7F", role:"community", weight:25, angle_suggestions:["sacrifice","legacy","brotherhood","loyalty"], custom_fields:[] },
+      { id:"performance_special",name:"Performance Special", color:"#C0666A", role:"balanced",  weight:15, angle_suggestions:["shock","resilience","triumph"], custom_fields:[] },
+      { id:"special_edition",    name:"Special Edition",     color:"#8B7EC8", role:"special",   weight:0,  angle_suggestions:[], custom_fields:[] },
+    ],
   },
   providers: {
     script:   { provider:"anthropic", model:"claude-haiku-4-5-20251001", status:"configured" },
@@ -226,12 +232,22 @@ function RuleBuilder({ rule, onChange, onDelete, index, conflicts, totalRules })
 
 // ── Section nav ──
 const SECTIONS = [
-  { key:"brand",      label:"Brand Profile" },
-  { key:"strategy",   label:"Content Strategy" },
-  { key:"rules",      label:"Programming Rules" },
-  { key:"providers",  label:"Providers" },
+  { key:"brand",       label:"Brand Profile" },
+  { key:"strategy",    label:"Content Strategy" },
+  { key:"programmes",  label:"Programmes" },
+  { key:"rules",       label:"Programming Rules" },
+  { key:"providers",   label:"Providers" },
   { key:"intelligence",label:"Intelligence" },
 ];
+
+const ROLES = [
+  { key:"reach",     label:"Reach-leaning",    color:"#5B8FB9" },
+  { key:"community", label:"Community-leaning", color:"#4A9B7F" },
+  { key:"balanced",  label:"Balanced",          color:"#C49A3C" },
+  { key:"special",   label:"Special",           color:"#8B7EC8" },
+];
+
+const PRESET_COLORS = ["#C49A3C","#4A9B7F","#C0666A","#8B7EC8","#5B8FB9","#B87333","#7B9E6B","#9B7B6E"];
 
 export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings }) {
   const [section,  setSection]  = useState("brand");
@@ -249,6 +265,11 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [resolving,     setResolving]     = useState(false);
   const [suggestRunning,setSuggestRunning]= useState(false);
   const [suggestions,   setSuggestions]   = useState([]);
+  const [stratAudit,    setStratAudit]    = useState(null);
+  const [stratRunning,  setStratRunning]  = useState(false);
+  const [stratContext,  setStratContext]  = useState("");
+  const [progAudit,     setProgAudit]     = useState(null);
+  const [progRunning,   setProgRunning]   = useState(false);
 
   useEffect(() => { if (initialSettings) setSettings(initialSettings); }, [initialSettings]);
 
@@ -281,6 +302,79 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const delRule = (i) => upd("strategy.rules", rules.filter((_,idx)=>idx!==i));
 
   const fmtTotal = Object.values(settings.strategy?.format_mix||{}).reduce((a,b)=>a+b,0);
+
+  const programmes = settings.strategy?.programmes || [];
+
+  const runStratAudit = async () => {
+    setStratRunning(true);
+    const published = stories.filter(s => s.status==="published" && s.metrics_completion);
+    const byProg = {};
+    for (const s of published) {
+      const k = s.format||"standard";
+      if (!byProg[k]) byProg[k] = [];
+      byProg[k].push(parseFloat(s.metrics_completion)||0);
+    }
+    const perfSummary = Object.entries(byProg).map(([k,vals])=>`${k}: avg ${(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1)}% (${vals.length} videos)`).join(", ");
+
+    const prompt = `You are auditing the content strategy for "${settings.brand.name}".
+
+Brand goal: ${settings.brand.goal_primary} (secondary: ${settings.brand.goal_secondary})
+Weekly cadence: ${settings.strategy?.weekly_cadence} episodes/week
+Current programme mix: ${programmes.map(p=>`${p.name} ${p.weight}%`).join(", ")}
+Performance by programme: ${perfSummary||"No data yet"}
+${stratContext ? `User context: "${stratContext}"` : ""}
+
+Audit the strategy. Cover:
+1. Mix alignment with goals
+2. Cadence sustainability
+3. Programme balance gaps
+4. Specific recommendations with numbers
+
+Be direct. Use • bullets. Max 6 points.`;
+
+    try {
+      const text = await callClaude(prompt, 600, "haiku");
+      setStratAudit(text);
+    } catch(e) { setStratAudit("Audit failed."); }
+    setStratRunning(false);
+  };
+
+  const suggestProgrammes = async () => {
+    setProgRunning(true);
+    const prompt = `You are suggesting content programmes for "${settings.brand.name}", a ${settings.brand.content_type} brand.
+
+Goal: ${settings.brand.goal_primary}
+Current programmes: ${programmes.map(p=>p.name).join(", ")||"None"}
+Voice: ${settings.brand.voice}
+Avoid: ${settings.brand.avoid}
+
+Suggest 2-3 additional programmes that would complement the existing ones.
+Return JSON array: [{ name, role ("reach"|"community"|"balanced"|"special"), weight (0-100 integer), color (hex), angle_suggestions: [array of 3-4 content angle strings], rationale }]
+JSON only.`;
+
+    try {
+      const text = await callClaude(prompt, 600, "haiku");
+      const clean = text.replace(/\`\`\`json\s*/g,"").replace(/\`\`\`\s*/g,"").trim();
+      let parsed = null;
+      try { parsed = JSON.parse(clean); } catch {}
+      if (!parsed) { const m=clean.match(/\[\s*\{[\s\S]*\}\s*\]/); if(m) try{parsed=JSON.parse(m[0]);}catch{} }
+      if (parsed) setProgAudit(parsed);
+    } catch(e) { console.error(e); }
+    setProgRunning(false);
+  };
+
+  const addProgramme = (preset) => {
+    const newProg = preset || { id:crypto.randomUUID(), name:"New Programme", color:"#888", role:"balanced", weight:0, angle_suggestions:[], custom_fields:[] };
+    upd("strategy.programmes", [...programmes, newProg]);
+  };
+
+  const updProg = (i, val) => {
+    upd("strategy.programmes", programmes.map((p,idx)=>idx===i?val:p));
+  };
+
+  const delProg = (i) => {
+    upd("strategy.programmes", programmes.filter((_,idx)=>idx!==i));
+  };
 
   const save = async () => {
     setSaving(true);
@@ -516,6 +610,133 @@ JSON only.`;
                 })}
                 {fmtTotal!==100 && <div style={{ fontSize:11, color:"#C0666A", display:"flex", alignItems:"center", gap:5 }}><AlertCircle size={11}/>Must total 100%</div>}
               </div>
+            </div>
+          )}
+
+          {/* ── Programmes ── */}
+          {section==="programmes" && (
+            <div>
+              <div style={{ fontSize:12, color:"var(--t3)", marginBottom:14, lineHeight:1.6 }}>
+                Programmes define your content formats — name, role, cadence weight, and angle suggestions. The auto-fill and intelligence layer use these to plan and score content.
+              </div>
+
+              {/* AI tools */}
+              <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
+                <button onClick={()=>addProgramme()} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
+                  <Plus size={12}/> New programme
+                </button>
+                <button onClick={suggestProgrammes} disabled={progRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                  <Zap size={12} color="#C49A3C"/> {progRunning?"Thinking...":"AI suggest programmes"}
+                </button>
+                <button onClick={runStratAudit} disabled={stratRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                  <RefreshCw size={12}/> {stratRunning?"Auditing...":"Strategy audit"}
+                </button>
+              </div>
+
+              {/* AI suggested programmes */}
+              {progAudit && Array.isArray(progAudit) && progAudit.length>0 && (
+                <div style={{ padding:"12px 14px", borderRadius:9, background:"rgba(196,154,60,0.06)", border:"1px solid rgba(196,154,60,0.2)", marginBottom:16 }}>
+                  <div style={{ fontSize:11, fontWeight:600, color:"#C49A3C", marginBottom:10 }}>⚡ AI suggested programmes</div>
+                  {progAudit.map((p,i)=>(
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8, padding:"8px 10px", borderRadius:7, background:"var(--fill2)", borderLeft:`3px solid ${p.color||"var(--border)"}` }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:12, fontWeight:600, color:"var(--t1)" }}>{p.name} <span style={{ fontSize:10, color:"var(--t3)", fontWeight:400 }}>· {p.role} · {p.weight}%</span></div>
+                        <div style={{ fontSize:11, color:"var(--t3)", marginTop:2 }}>{p.rationale}</div>
+                      </div>
+                      <button onClick={()=>{ addProgramme({id:crypto.randomUUID(),...p,angle_suggestions:p.angle_suggestions||[],custom_fields:[]}); setProgAudit(a=>a.filter((_,j)=>j!==i)); }} style={{ padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:600, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer", flexShrink:0 }}>
+                        Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Strategy audit result */}
+              {stratAudit && (
+                <div style={{ padding:"12px 14px", borderRadius:9, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:16, fontSize:12, color:"var(--t2)", lineHeight:1.7, whiteSpace:"pre-wrap" }}>
+                  {stratAudit}
+                  <div style={{ marginTop:10 }}>
+                    <textarea value={stratContext} onChange={e=>setStratContext(e.target.value)} placeholder="Add context for follow-up..." rows={2} style={{ width:"100%", padding:"7px 10px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", resize:"none", fontFamily:"inherit" }}/>
+                    <button onClick={runStratAudit} disabled={stratRunning} style={{ marginTop:6, padding:"5px 12px", borderRadius:6, fontSize:11, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                      Re-audit with context
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Programme platform intelligence note */}
+              <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:"var(--t4)", flexShrink:0 }}/>
+                <div style={{ fontSize:11, color:"var(--t4)" }}>Platform benchmark suggestions unlock when 5+ clients + 50 videos per client in your vertical are active on Creative Engine.</div>
+              </div>
+
+              {/* Programme cards */}
+              {programmes.map((prog, i) => (
+                <div key={prog.id||i} style={{ borderRadius:10, border:"1px solid var(--border)", background:"var(--card)", marginBottom:10, overflow:"hidden", borderLeft:`3px solid ${prog.color||"var(--border)"}` }}>
+                  {/* Header */}
+                  <div style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderBottom:"1px solid var(--border2)", background:"var(--bg2)" }}>
+                    {/* Color picker */}
+                    <div style={{ position:"relative" }}>
+                      <div style={{ width:20, height:20, borderRadius:5, background:prog.color||"#888", cursor:"pointer", border:"2px solid var(--border)", flexShrink:0 }}/>
+                      <input type="color" value={prog.color||"#888"} onChange={e=>updProg(i,{...prog,color:e.target.value})} style={{ position:"absolute", inset:0, opacity:0, cursor:"pointer", width:"100%", height:"100%" }}/>
+                    </div>
+                    <input value={prog.name} onChange={e=>updProg(i,{...prog,name:e.target.value})} style={{ fontSize:13, fontWeight:600, color:"var(--t1)", background:"transparent", border:"none", outline:"none", flex:1, fontFamily:"inherit" }} placeholder="Programme name"/>
+                    <select value={prog.role||"balanced"} onChange={e=>updProg(i,{...prog,role:e.target.value})} style={{ fontSize:11, padding:"3px 8px", borderRadius:5, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+                      {ROLES.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+                    </select>
+                    <button onClick={()=>delProg(i)} style={{ width:24, height:24, borderRadius:5, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                      <Trash2 size={12} color="var(--t4)"/>
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding:"12px 14px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                    {/* Weight */}
+                    <div>
+                      <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Cadence weight · {prog.weight||0}%</div>
+                      <input type="range" min="0" max="100" step="5" value={prog.weight||0} onChange={e=>updProg(i,{...prog,weight:parseInt(e.target.value)})} style={{ width:"100%" }}/>
+                    </div>
+
+                    {/* Angle suggestions */}
+                    <div>
+                      <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Content angle suggestions</div>
+                      <input value={(prog.angle_suggestions||[]).join(", ")} onChange={e=>updProg(i,{...prog,angle_suggestions:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)})}
+                        style={{ width:"100%", padding:"6px 8px", borderRadius:6, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}
+                        placeholder="redemption, rivalry, legacy..."/>
+                    </div>
+
+                    {/* Custom fields */}
+                    <div style={{ gridColumn:"1/-1" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                        <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Custom fields</div>
+                        <button onClick={()=>updProg(i,{...prog,custom_fields:[...(prog.custom_fields||[]),{key:"",value:""}]})} style={{ fontSize:10, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
+                          <Plus size={10}/> Add field
+                        </button>
+                      </div>
+                      {(prog.custom_fields||[]).length===0 && <div style={{ fontSize:11, color:"var(--t4)" }}>No custom fields — add any metadata specific to this programme.</div>}
+                      {(prog.custom_fields||[]).map((cf,fi)=>(
+                        <div key={fi} style={{ display:"flex", gap:6, marginBottom:4, alignItems:"center" }}>
+                          <input value={cf.key} onChange={e=>{ const cfs=[...(prog.custom_fields||[])]; cfs[fi]={...cf,key:e.target.value}; updProg(i,{...prog,custom_fields:cfs}); }} placeholder="Field name" style={{ flex:1, padding:"5px 8px", borderRadius:5, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:11, outline:"none" }}/>
+                          <input value={cf.value} onChange={e=>{ const cfs=[...(prog.custom_fields||[])]; cfs[fi]={...cf,value:e.target.value}; updProg(i,{...prog,custom_fields:cfs}); }} placeholder="Default value" style={{ flex:1, padding:"5px 8px", borderRadius:5, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:11, outline:"none" }}/>
+                          <button onClick={()=>{ const cfs=(prog.custom_fields||[]).filter((_,j)=>j!==fi); updProg(i,{...prog,custom_fields:cfs}); }} style={{ width:20, height:20, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                            <X size={11} color="var(--t4)"/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Total weight */}
+              {programmes.length>0 && (
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)", marginTop:4 }}>
+                  <span style={{ fontSize:12, color:"var(--t3)" }}>Total weight</span>
+                  <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:programmes.reduce((a,p)=>a+(p.weight||0),0)===100?"#4A9B7F":"#C0666A" }}>
+                    {programmes.reduce((a,p)=>a+(p.weight||0),0)}%
+                  </span>
+                </div>
+              )}
             </div>
           )}
 

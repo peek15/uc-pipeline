@@ -281,6 +281,33 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
+  // Onboarding state
+  const [obStep,        setObStep]        = useState(null);
+  const [obMessages,    setObMessages]    = useState([]);
+  const [obInput,       setObInput]       = useState("");
+  const [obLoading,     setObLoading]     = useState(false);
+  const [obDraft,       setObDraft]       = useState(null);
+
+  // Asset library state
+  const [assets,        setAssets]        = useState([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+  const [uploadingAsset,setUploadingAsset]= useState(false);
+  const [assetError,    setAssetError]    = useState(null);
+  const [dragOver,      setDragOver]      = useState(false);
+
+  const BRAND_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
+  const WORKSPACE_ID     = "00000000-0000-0000-0000-000000000001";
+
+  useEffect(() => {
+    if (section === "brand" && isOpen) {
+      setAssetsLoading(true);
+      listAssets(BRAND_PROFILE_ID)
+        .then(data => setAssets(data))
+        .catch(() => setAssets([]))
+        .finally(() => setAssetsLoading(false));
+    }
+  }, [section, isOpen]);
+
   if (!isOpen) return null;
 
   const upd = (path, val) => {
@@ -486,33 +513,7 @@ JSON only.`;
     setResolving(false);
   };
 
-  // Onboarding state
-  const [obStep,      setObStep]      = useState(null); // null=off, "chat"=active
-  const [obMessages,  setObMessages]  = useState([]);
-  const [obInput,     setObInput]     = useState("");
-  const [obLoading,   setObLoading]   = useState(false);
-  const [obDraft,     setObDraft]     = useState(null); // extracted brand fields
 
-  // Asset library state
-  const [assets,      setAssets]      = useState([]);
-  const [assetsLoading,setAssetsLoading]=useState(false);
-  const [uploadingAsset,setUploadingAsset]=useState(false);
-  const [assetError,  setAssetError]  = useState(null);
-  const [dragOver,    setDragOver]    = useState(false);
-
-  const BRAND_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
-  const WORKSPACE_ID     = "00000000-0000-0000-0000-000000000001";
-
-  // Load assets when brand section opens
-  useEffect(() => {
-    if (section === "brand") {
-      setAssetsLoading(true);
-      listAssets(BRAND_PROFILE_ID)
-        .then(data => setAssets(data))
-        .catch(() => setAssets([]))
-        .finally(() => setAssetsLoading(false));
-    }
-  }, [section]);
 
   // Onboarding conversation
   const startOnboarding = () => {

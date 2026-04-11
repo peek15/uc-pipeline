@@ -12,11 +12,11 @@ import AnalyzeView from "@/components/AnalyzeView";
 import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
-import SettingsView from "@/components/SettingsView";
+import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.0.2";
+const VERSION = "3.1";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -24,7 +24,6 @@ const TABS = [
   { key: "script",   label: "Script",   Icon: FileText },
   { key: "calendar", label: "Calendar", Icon: Clock },
   { key: "analyze",  label: "Analyze",  Icon: BarChart3 },
-  { key: "settings", label: "Settings", Icon: Settings },
 ];
 
 export default function Home() {
@@ -38,7 +37,8 @@ export default function Home() {
   const [loading, setLoading]         = useState(true);
   const [undoStack,       setUndoStack]       = useState([]);
   const [researchState,   setResearchState]   = useState(null);
-  const [appSettings,     setAppSettings]     = useState(null); // persisted across tab switches
+  const [appSettings,     setAppSettings]     = useState(null);
+  const [showSettings,    setShowSettings]    = useState(false); // persisted across tab switches
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
 
@@ -207,6 +207,7 @@ export default function Home() {
       if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
       if (e.metaKey && e.key === "z" && !e.shiftKey) { e.preventDefault(); handleUndo(); }
       if (e.metaKey && e.key === "j") { e.preventDefault(); handleProductionShortcut(); }
+      if (e.metaKey && e.key === ",") { e.preventDefault(); setShowSettings(s=>!s); }
       if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
         e.preventDefault();
         setTab(prev => {
@@ -304,7 +305,7 @@ export default function Home() {
                   ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:22, height:22, borderRadius:99, objectFit:"cover" }} />
                   : <div style={{ width:22, height:22, borderRadius:99, background:"var(--bg3)", display:"flex", alignItems:"center", justifyContent:"center" }}><User size={12} color="var(--t3)" /></div>
                 }
-                <span style={{ fontSize:12, color:"var(--t2)", maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.user_metadata?.full_name || user.email}</span>
+                <span onClick={()=>setShowSettings(s=>!s)} style={{ fontSize:12, color:"var(--t2)", maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }}>{user.user_metadata?.full_name || user.email}</span>
                 <ChevronDown size={12} color="var(--t3)" />
               </button>
               {showUserMenu && (
@@ -371,11 +372,12 @@ export default function Home() {
         <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView   stories={stories} onUpdate={updateStory} /></div>
         <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
         <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
-        <div style={{ display: tab==="settings" ? "block" : "none" }}><SettingsView stories={stories} onSettingsChange={setAppSettings} initialSettings={appSettings} /></div>
+
       </main>
 
       {showUserMenu && <div onClick={() => setShowUserMenu(false)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={setAppSettings} initialSettings={appSettings} />
       <ToastContainer />
     </div>
   );

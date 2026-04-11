@@ -705,36 +705,135 @@ Summary only. No preamble.`;
 
           {/* ── Brand ── */}
           {section==="brand" && (
-            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+              {/* Onboarding */}
+              {obStep==="chat" ? (
+                <div style={{ borderRadius:10, border:"1px solid var(--border)", overflow:"hidden" }}>
+                  <div style={{ padding:"12px 14px", background:"var(--bg2)", borderBottom:"1px solid var(--border2)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ fontSize:12, fontWeight:600, color:"var(--t1)" }}>Brand onboarding</span>
+                    <button onClick={()=>{setObStep(null);setObMessages([]);setObDraft(null);}} style={{ fontSize:11, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer" }}>Cancel</button>
+                  </div>
+                  <div style={{ height:200, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:8 }}>
+                    {obMessages.map((m,i)=>(
+                      <div key={i} style={{ display:"flex", justifyContent:m.role==="user"?"flex-end":"flex-start" }}>
+                        <div style={{ maxWidth:"85%", padding:"8px 12px", borderRadius:8, fontSize:12, lineHeight:1.5, background:m.role==="user"?"var(--t1)":"var(--fill2)", color:m.role==="user"?"var(--bg)":"var(--t2)" }}>
+                          {m.text}
+                        </div>
+                      </div>
+                    ))}
+                    {obLoading && <div style={{ fontSize:11, color:"var(--t4)" }}>Thinking...</div>}
+                  </div>
+                  {obDraft && (
+                    <div style={{ padding:"10px 14px", background:"rgba(74,155,127,0.06)", borderTop:"1px solid rgba(74,155,127,0.15)", borderBottom:"1px solid var(--border2)" }}>
+                      <div style={{ fontSize:11, color:"#4A9B7F", fontWeight:600, marginBottom:6 }}>✓ Extracted brand profile</div>
+                      {Object.entries(obDraft).filter(([,v])=>v).map(([k,v])=>(
+                        <div key={k} style={{ fontSize:11, color:"var(--t2)", marginBottom:2 }}>
+                          <span style={{ color:"var(--t4)" }}>{k}:</span> {Array.isArray(v)?v.join(", "):String(v)}
+                        </div>
+                      ))}
+                      <button onClick={applyObDraft} style={{ marginTop:8, padding:"5px 14px", borderRadius:6, fontSize:11, fontWeight:600, background:"#4A9B7F", color:"white", border:"none", cursor:"pointer" }}>
+                        Apply to brand profile
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ padding:"10px 14px", borderTop:"1px solid var(--border2)", display:"flex", gap:8 }}>
+                    <input value={obInput} onChange={e=>setObInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!obLoading&&obInput.trim()&&sendObMessage(obInput)} placeholder="Type or drop a file..." style={{ ...inputStyle, fontSize:12 }}/>
+                    <label style={{ padding:"6px 14px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer", flexShrink:0 }}>
+                      Upload<input type="file" accept=".pdf,.txt,.md,.doc,.docx" style={{ display:"none" }} onChange={e=>{const f=e.target.files[0];if(f)handleAssetUpload(f,"brand_guide");}}/>
+                    </label>
+                    <button onClick={()=>!obLoading&&obInput.trim()&&sendObMessage(obInput)} disabled={obLoading||!obInput.trim()} style={{ padding:"6px 14px", borderRadius:7, fontSize:11, fontWeight:600, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer", flexShrink:0 }}>Send</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", borderRadius:9, background:"var(--fill2)", border:"1px solid var(--border)" }}>
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)" }}>Brand brief onboarding</div>
+                    <div style={{ fontSize:11, color:"var(--t3)" }}>Drop a brand doc or answer questions to auto-fill your profile</div>
+                  </div>
+                  <button onClick={startOnboarding} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>Start</button>
+                </div>
+              )}
+
+              {/* Fields */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                 <div>
                   <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Brand name</div>
-                  <input value={settings.brand.name} onChange={e=>upd("brand.name",e.target.value)} style={inputStyle} placeholder="Uncle Carter"/>
+                  <input value={settings.brand.name||""} onChange={e=>upd("brand.name",e.target.value)} style={inputStyle} placeholder="Uncle Carter"/>
                 </div>
                 <div>
                   <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Content type</div>
-                  <select value={settings.brand.content_type} onChange={e=>upd("brand.content_type",e.target.value)} style={selStyle}>
+                  <select value={settings.brand.content_type||"narrative"} onChange={e=>upd("brand.content_type",e.target.value)} style={selStyle}>
                     {["narrative","advertising","educational","product","custom"].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}
                   </select>
                 </div>
               </div>
               <div>
                 <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Voice</div>
-                <textarea value={settings.brand.voice} onChange={e=>upd("brand.voice",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Calm, warm, slightly mischievous..."/>
+                <textarea value={settings.brand.voice||""} onChange={e=>upd("brand.voice",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Calm, warm, slightly mischievous..."/>
               </div>
               <div>
                 <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Avoid</div>
-                <textarea value={settings.brand.avoid} onChange={e=>upd("brand.avoid",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Hot takes, clichés..."/>
+                <textarea value={settings.brand.avoid||""} onChange={e=>upd("brand.avoid",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Hot takes, clichés..."/>
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                 {["goal_primary","goal_secondary"].map(k=>(
                   <div key={k}>
                     <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>{k==="goal_primary"?"Primary goal":"Secondary goal"}</div>
-                    <select value={settings.brand[k]} onChange={e=>upd(`brand.${k}`,e.target.value)} style={selStyle}>
+                    <select value={settings.brand[k]||"community"} onChange={e=>upd(`brand.${k}`,e.target.value)} style={selStyle}>
                       {["community","reach","conversion","awareness"].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}
                     </select>
                   </div>
                 ))}
+              </div>
+
+              {/* Context Library */}
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Context Library</div>
+                    <div style={{ fontSize:11, color:"var(--t4)", marginTop:2 }}>Brand docs the AI reads as summaries — raw files stay private.</div>
+                  </div>
+                  <label style={{ padding:"5px 12px", borderRadius:7, fontSize:11, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
+                    <Plus size={11}/> Upload
+                    <input type="file" accept=".pdf,.txt,.md,.doc,.docx" style={{ display:"none" }} onChange={e=>{const f=e.target.files[0];if(f)handleAssetUpload(f);}}/>
+                  </label>
+                </div>
+                <div onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)} onDrop={handleFileDrop}
+                  style={{ borderRadius:9, border:`2px dashed ${dragOver?"var(--t2)":"var(--border)"}`, padding:"16px", textAlign:"center", marginBottom:8, background:dragOver?"var(--fill2)":"transparent" }}>
+                  <div style={{ fontSize:12, color:"var(--t3)" }}>{dragOver?"Drop to upload":"Drag files here — PDF, TXT, MD, DOC"}</div>
+                  <div style={{ fontSize:11, color:"var(--t4)", marginTop:3 }}>Max 10MB · Stored securely · AI reads summaries only</div>
+                </div>
+                {assetError && <div style={{ fontSize:11, color:"#C0666A", marginBottom:6, padding:"6px 10px", borderRadius:6, background:"rgba(192,102,106,0.08)", border:"1px solid rgba(192,102,106,0.2)" }}>{assetError}</div>}
+                {uploadingAsset && <div style={{ fontSize:11, color:"var(--t3)", marginBottom:6 }}>Uploading and extracting summary...</div>}
+                {assetsLoading ? (
+                  <div style={{ fontSize:11, color:"var(--t4)" }}>Loading...</div>
+                ) : assets.length===0 ? (
+                  <div style={{ fontSize:11, color:"var(--t4)", textAlign:"center", padding:"12px 0" }}>No assets yet</div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                    {assets.map(asset=>(
+                      <div key={asset.id} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)" }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)", marginBottom:2 }}>{asset.file_name}</div>
+                          <div style={{ fontSize:11, color:"var(--t3)" }}>{asset.content_summary||"No summary extracted"}</div>
+                          <div style={{ fontSize:10, color:"var(--t4)", marginTop:3 }}>Uploaded {new Date(asset.created_at).toLocaleDateString()} · Summary only accessible to AI</div>
+                        </div>
+                        <button onClick={()=>handleAssetDelete(asset.id)} style={{ width:22, height:22, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                          <Trash2 size={11} color="var(--t4)"/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ marginTop:8, padding:"10px 12px", borderRadius:8, border:"1px dashed var(--border)", display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ fontSize:14 }}>📁</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:12, color:"var(--t2)" }}>Google Drive integration</div>
+                    <div style={{ fontSize:11, color:"var(--t4)" }}>Link a folder — AI fetches on demand. OAuth read-only.</div>
+                  </div>
+                  <span style={{ fontSize:10, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t4)", border:"1px solid var(--border)", flexShrink:0 }}>Coming soon</span>
+                </div>
               </div>
             </div>
           )}

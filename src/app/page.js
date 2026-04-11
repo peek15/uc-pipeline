@@ -12,9 +12,11 @@ import AnalyzeView from "@/components/AnalyzeView";
 import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
+import SettingsView from "@/components/SettingsView";
+import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "2.9.2";
+const VERSION = "3.0";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -22,6 +24,7 @@ const TABS = [
   { key: "script",   label: "Script",   Icon: FileText },
   { key: "calendar", label: "Calendar", Icon: Clock },
   { key: "analyze",  label: "Analyze",  Icon: BarChart3 },
+  { key: "settings", label: "Settings", Icon: Settings },
 ];
 
 export default function Home() {
@@ -34,7 +37,8 @@ export default function Home() {
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
   const [undoStack,       setUndoStack]       = useState([]);
-  const [researchState,   setResearchState]   = useState(null); // persisted across tab switches
+  const [researchState,   setResearchState]   = useState(null);
+  const [appSettings,     setAppSettings]     = useState(null); // persisted across tab switches
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
 
@@ -365,8 +369,9 @@ export default function Home() {
           />
         </div>
         <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView   stories={stories} onUpdate={updateStory} /></div>
-        <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} /></div>
+        <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
         <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
+        <div style={{ display: tab==="settings" ? "block" : "none" }}><SettingsView stories={stories} onSettingsChange={setAppSettings} initialSettings={appSettings} /></div>
       </main>
 
       {showUserMenu && <div onClick={() => setShowUserMenu(false)} style={{ position:"fixed", inset:0, zIndex:30 }} />}

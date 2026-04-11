@@ -14,7 +14,7 @@ function isPast(d)  { const t = new Date(); t.setHours(0,0,0,0); return d < t; }
 function CoverageSummary({ stories, weekOffset }) {
   const today = new Date(); today.setHours(0,0,0,0);
   const horizon = new Date(today.getTime() + 21*86400000);
-  const totalSlots = Math.round(21/7*CADENCE); // 15
+  const totalSlots = Math.round(21/7*cadence); // 15
 
   const scheduled = stories.filter(s => {
     if (!s.scheduled_date) return false;
@@ -65,7 +65,7 @@ function CoverageSummary({ stories, weekOffset }) {
   );
 }
 
-export default function CalendarView({ stories, onUpdate, onProduce }) {
+export default function CalendarView({ stories, onUpdate, onProduce, settings }) {
   const [weekOffset,  setWeekOffset]  = useState(0);
   const [showAssign,  setShowAssign]  = useState(null); // day index
   const [platform,    setPlatform]    = useState("All");
@@ -128,25 +128,60 @@ export default function CalendarView({ stories, onUpdate, onProduce }) {
     }).sort((a,b)=>b.score-a.score).map(x=>x.s);
   };
 
-  // Auto-fill week with best stories per empty slot
+  // Auto-fill week respecting cadence + format mix + sequence rules
   const autoFillWeek = () => {
-    const emptyFuture = days.filter(d => !isPast(d) && getForDay(d).length === 0);
+    const futureDays = days.filter(d => !isPast(d) && getForDay(d).length === 0);
+    // Respect weekly cadence — only fill up to target
+    const alreadyScheduled = days.filter(d => !isPast(d) && getForDay(d).length > 0).length;
+    const slotsToFill = Math.max(0, cadence - alreadyScheduled);
+    const emptyFuture = futureDays.slice(0, slotsToFill);
+    if (!emptyFuture.length) return;
+
+    // Calculate target count per format this week based on mix percentages
+    const targets = {};
+    for (const [fmt, pct] of Object.entries(formatMix)) {
+      targets[fmt] = Math.round((pct/100) * cadence);
+    }
+    // Count already scheduled formats this week
+    const scheduled = days.flatMap(d => getForDay(d));
+    const fmtCounts = {};
+    for (const s of scheduled) { fmtCounts[s.format||"standard"] = (fmtCounts[s.format||"standard"]||0)+1; }
+
     let available = [...ready];
+    let lastFormat = scheduled[scheduled.length-1]?.format || null;
+    const placed = [];
+
     for (const d of emptyFuture) {
       if (!available.length) break;
-      const used = days.flatMap(day => getForDay(day));
-      const usedFormats    = used.map(s=>s.format).filter(Boolean);
-      const usedArchetypes = used.map(s=>s.archetype).filter(Boolean);
-      const scored = available.map(s => {
-        let score = 0;
-        if (!usedFormats.includes(s.format))     score += 3;
-        if (!usedArchetypes.includes(s.archetype)) score += 2;
-        if (s.score_total) score += s.score_total/100;
-        return { s, score };
-      }).sort((a,b) => b.score - a.score);
-      const pick = scored[0]?.s;
+
+      // Pick format that still needs filling, respecting sequence rules
+      const neededFormats = Object.entries(targets)
+        .filter(([f, target]) => (fmtCounts[f]||0) < target && f !== "special_edition")
+        .sort((a,b) => ((fmtCounts[a[0]]||0)/a[1]) - ((fmtCounts[b[0]]||0)/b[1]))
+        .map(([f])=>f);
+
+      // Apply sequence rules
+      const allowedFormats = neededFormats.filter(f => {
+        if (seqRules.no_consecutive_classics && f==="classics" && lastFormat==="classics") return false;
+        if (seqRules.no_consecutive_performance_special && f==="performance_special" && lastFormat==="performance_special") return false;
+        if (seqRules.no_consecutive_same_format && f===lastFormat) return false;
+        return true;
+      });
+
+      const targetFormat = allowedFormats[0] || neededFormats[0] || "standard";
+
+      // Pick best available story matching target format
+      const candidates = available
+        .filter(s => (s.format||"standard") === targetFormat)
+        .sort((a,b) => ((b.score_total||0)+(b.reach_score||0)) - ((a.score_total||0)+(a.reach_score||0)));
+
+      // Fall back to any format if none available
+      const pick = candidates[0] || available.sort((a,b) => ((b.score_total||0)+(b.reach_score||0)) - ((a.score_total||0)+(a.reach_score||0)))[0];
+
       if (pick) {
         onUpdate(pick.id, { scheduled_date: fmt(d) });
+        fmtCounts[pick.format||"standard"] = (fmtCounts[pick.format||"standard"]||0)+1;
+        lastFormat = pick.format||"standard";
         available = available.filter(s => s.id !== pick.id);
       }
     }

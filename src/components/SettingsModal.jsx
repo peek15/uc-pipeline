@@ -532,9 +532,7 @@ ${fileText.slice(0,3000)}` : text };
     setObInput("");
     setObLoading(true);
 
-    const history = newMessages.map(m => `${m.role==="user"?"User":"Assistant"}: ${m.text}`).join("
-
-");
+    const history = newMessages.map(m => `${m.role==="user"?"User":"Assistant"}: ${m.text}`).join("\n\n");
     const currentBrand = JSON.stringify(settings.brand, null, 2);
 
     const prompt = `You are an onboarding assistant helping set up a brand profile for an AI content production tool.

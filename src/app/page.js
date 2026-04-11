@@ -14,7 +14,7 @@ import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "2.7.5";
+const VERSION = "2.8";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },

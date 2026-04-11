@@ -4,17 +4,17 @@ import { X, ChevronLeft, ChevronRight, Plus, Circle } from "lucide-react";
 import { STAGES, ACCENT, ARCHETYPES, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
 
 const PLATFORMS = ["TikTok","Instagram","YouTube","All"];
-const CADENCE   = 5; // target per week
+const DEFAULT_CADENCE = 5;
 
 function fmt(d)     { return d.toISOString().split("T")[0]; }
 function isToday(d) { return fmt(d) === fmt(new Date()); }
 function isPast(d)  { const t = new Date(); t.setHours(0,0,0,0); return d < t; }
 
 // 3-week coverage summary
-function CoverageSummary({ stories, weekOffset }) {
+function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
   const today = new Date(); today.setHours(0,0,0,0);
   const horizon = new Date(today.getTime() + 21*86400000);
-  const totalSlots = Math.round(21/7*cadence); // 15
+  const totalSlots = Math.round(21/7*cadence);
 
   const scheduled = stories.filter(s => {
     if (!s.scheduled_date) return false;
@@ -256,7 +256,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
     <div className="animate-fade-in">
 
       {/* 3-week coverage */}
-      <CoverageSummary stories={stories} weekOffset={weekOffset} />
+      <CoverageSummary stories={stories} weekOffset={weekOffset} cadence={cadence} />
 
       {/* Auto-produce banner */}
       {needsScript > 0 && (

@@ -168,3 +168,40 @@ textarea:focus-visible {
   outline: 1.5px solid var(--t2);
   outline-offset: 2px;
 }
+
+/* ── Theme overrides (from Settings > Appearance) ── */
+[data-theme="dark"] {
+  --bg:    #1A1917;
+  --bg2:   #242220;
+  --bg3:   #2E2C2A;
+  --card:  #242220;
+  --sheet: #1E1C1A;
+  --nav:   rgba(26,25,23,0.92);
+  --t1: #EEECEA;
+  --t2: #A8A5A1;
+  --t3: #6B6965;
+  --t4: #3A3835;
+  --border:    rgba(255,255,255,0.07);
+  --border2:   rgba(255,255,255,0.05);
+  --border-in: rgba(255,255,255,0.09);
+  --fill:  rgba(255,255,255,0.03);
+  --fill2: rgba(255,255,255,0.06);
+}
+
+[data-theme="light"] {
+  --bg:    #F7F6F3;
+  --bg2:   #EDECE9;
+  --bg3:   #E4E2DE;
+  --card:  #F2F0ED;
+  --sheet: #F7F6F3;
+  --nav:   rgba(247,246,243,0.92);
+  --t1: #111110;
+  --t2: #4A4A47;
+  --t3: #888884;
+  --t4: #C5C4BF;
+  --border:    rgba(0,0,0,0.07);
+  --border2:   rgba(0,0,0,0.05);
+  --border-in: rgba(0,0,0,0.10);
+  --fill:  rgba(0,0,0,0.03);
+  --fill2: rgba(0,0,0,0.05);
+}

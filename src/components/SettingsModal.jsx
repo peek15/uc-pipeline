@@ -691,7 +691,7 @@ Summary only. No preamble.`;
           {SECTIONS.map(s=>(
             <button key={s.key} onClick={()=>setSection(s.key)} style={{
               display:"flex", alignItems:"center", justifyContent:"space-between",
-              padding:"9px 16px", fontSize:13, fontWeight:section===s.key?500:400,
+              padding:"9px 16px", fontSize:13, fontWeight:section===s.key?500:400, letterSpacing:"-0.01em",
               background:section===s.key?"var(--fill2)":"transparent",
               color:section===s.key?"var(--t1)":s.danger?"rgba(192,102,106,0.7)":"var(--t3)",
               border:"none", cursor:"pointer", textAlign:"left", width:"100%",
@@ -780,28 +780,28 @@ Summary only. No preamble.`;
               {/* Fields */}
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                 <div>
-                  <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Brand name</div>
+                  <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>Brand name</div>
                   <input value={settings.brand.name||""} onChange={e=>upd("brand.name",e.target.value)} style={inputStyle} placeholder="Uncle Carter"/>
                 </div>
                 <div>
-                  <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Content type</div>
+                  <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>Content type</div>
                   <select value={settings.brand.content_type||"narrative"} onChange={e=>upd("brand.content_type",e.target.value)} style={selStyle}>
                     {["narrative","advertising","educational","product","custom"].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}
                   </select>
                 </div>
               </div>
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Voice</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>Voice</div>
                 <textarea value={settings.brand.voice||""} onChange={e=>upd("brand.voice",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Calm, warm, slightly mischievous..."/>
               </div>
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Avoid</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>Avoid</div>
                 <textarea value={settings.brand.avoid||""} onChange={e=>upd("brand.avoid",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Hot takes, clichés..."/>
               </div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                 {["goal_primary","goal_secondary"].map(k=>(
                   <div key={k}>
-                    <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>{k==="goal_primary"?"Primary goal":"Secondary goal"}</div>
+                    <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>{k==="goal_primary"?"Primary goal":"Secondary goal"}</div>
                     <select value={settings.brand[k]||"community"} onChange={e=>upd(`brand.${k}`,e.target.value)} style={selStyle}>
                       {["community","reach","conversion","awareness"].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}
                     </select>
@@ -813,7 +813,7 @@ Summary only. No preamble.`;
               <div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                   <div>
-                    <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Context Library</div>
+                    <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em" }}>Context Library</div>
                     <div style={{ fontSize:11, color:"var(--t4)", marginTop:2 }}>Brand docs the AI reads as summaries — raw files stay private.</div>
                   </div>
                   <label style={{ padding:"5px 12px", borderRadius:7, fontSize:11, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
@@ -864,7 +864,7 @@ Summary only. No preamble.`;
           {section==="strategy" && (
             <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Weekly cadence</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Weekly cadence</div>
                 <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Target number of episodes published per week. Auto-fill and production alerts use this number.</div>
                 <div style={{ display:"flex", gap:5 }}>
                   {[1,2,3,4,5,6,7].map(n=>(
@@ -874,7 +874,7 @@ Summary only. No preamble.`;
               </div>
               <div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Format mix</div>
+                  <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em" }}>Format mix</div>
                   <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:fmtTotal===100?"#4A9B7F":"#C0666A", fontWeight:600 }}>{fmtTotal}%</span>
                 </div>
                 <div style={{ fontSize:11, color:"var(--t3)", marginBottom:14 }}>How your weekly publishing slots are split across formats. Must total 100%.</div>
@@ -904,7 +904,7 @@ Summary only. No preamble.`;
 
               {/* Content defaults */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>Content defaults</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>Content defaults</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
                   {[
                     { key:"auto_translate", label:"Auto-translate after script generation", hint:"EN → FR/ES/PT automatically" },
@@ -1242,7 +1242,7 @@ Summary only. No preamble.`;
                   { label:"Until Stage 3", value:Math.max(0,100-stories.filter(s=>s.status==="published").length) },
                 ].map(m=>(
                   <div key={m.label} style={{ padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
-                    <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>{m.label}</div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>{m.label}</div>
                     <div style={{ fontSize:18, fontWeight:400, color:"var(--t1)", letterSpacing:"-0.02em" }}>{m.value}</div>
                   </div>
                 ))}
@@ -1266,7 +1266,7 @@ Summary only. No preamble.`;
 
               {/* Theme */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>Theme</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Theme</div>
                 <div style={{ display:"flex", gap:8 }}>
                   {[{key:"system",label:"System",hint:"Follows OS setting"},{key:"light",label:"Light"},{key:"dark",label:"Dark"}].map(t=>(
                     <button key={t.key} onClick={()=>upd("appearance.theme",t.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.theme||"system")===t.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.theme||"system")===t.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>
@@ -1279,7 +1279,7 @@ Summary only. No preamble.`;
 
               {/* Density */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>Density</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Density</div>
                 <div style={{ display:"flex", gap:8 }}>
                   {[{key:"compact",label:"Compact",hint:"Smaller cards, more stories visible"},{key:"comfortable",label:"Comfortable",hint:"Balanced (default)"},{key:"spacious",label:"Spacious",hint:"More breathing room"}].map(d=>(
                     <button key={d.key} onClick={()=>upd("appearance.density",d.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>
@@ -1292,7 +1292,7 @@ Summary only. No preamble.`;
 
               {/* Default tab */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Default tab on load</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Default tab on load</div>
                 <select value={settings.appearance?.default_tab||"pipeline"} onChange={e=>upd("appearance.default_tab",e.target.value)} style={selStyle}>
                   {["pipeline","research","script","calendar","analyze"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
                 </select>
@@ -1309,20 +1309,20 @@ Summary only. No preamble.`;
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
               <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
                 {[
-                  { label:"Workspace name", value:"Uncle Carter Pipeline", editable:false },
+                  { label:"Workspace", value:"Uncle Carter Pipeline", editable:false },
                   { label:"Workspace ID",   value:"00000000-0000-0000-0000-000000000001", editable:false, mono:true },
                   { label:"Plan",           value:"Peek Studios — Internal", editable:false },
                 ].map(({label,value,editable,mono})=>(
                   <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>
-                    <span style={{ fontSize:13, color:"var(--t2)" }}>{label}</span>
-                    <span style={{ fontSize:12, color:editable?"var(--t1)":"var(--t3)", fontFamily:mono?"'DM Mono',monospace":"inherit" }}>{value}</span>
+                    <span style={{ fontSize:13, color:"var(--t3)" }}>{label}</span>
+                    <span style={{ fontSize:13, color:editable?"var(--t1)":"var(--t4)", fontFamily:mono?"'DM Mono',monospace":"inherit" }}>{value}</span>
                   </div>
                 ))}
               </div>
 
               {/* Team members */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>Team members</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Team members</div>
                 <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:12, color:"var(--t2)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                   <div>
                     <div style={{ fontWeight:500 }}>Théo Mauroy</div>
@@ -1338,7 +1338,7 @@ Summary only. No preamble.`;
 
               {/* API */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>API access</div>
+                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>API access</div>
                 <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:12, color:"var(--t3)" }}>
                   API access for programmatic integration is available on Creative Engine Track 3. Contact us to enable.
                 </div>
@@ -1359,7 +1359,7 @@ Summary only. No preamble.`;
               ].map(({label,hint,action,color})=>(
                 <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)", marginBottom:3 }}>{label}</div>
+                    <div style={{ fontSize:13, color:"var(--t1)", marginBottom:3 }}>{label}</div>
                     <div style={{ fontSize:11, color:"var(--t3)" }}>{hint}</div>
                   </div>
                   <button style={{ padding:"6px 14px", borderRadius:7, fontSize:11, fontWeight:500, background:"transparent", color, border:`0.5px solid ${color}`, cursor:"pointer", flexShrink:0, marginLeft:16 }}>

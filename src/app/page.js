@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.4.4";
+const VERSION = "3.5";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -59,7 +59,19 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (user) { setLoading(true); getStories().then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false)); }
+    if (user) {
+      setLoading(true);
+      // Load stories
+      getStories().then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
+      // Load saved settings from brand profile
+      supabase.from("brand_profiles").select("brief_doc").eq("id","00000000-0000-0000-0000-000000000001").single()
+        .then(({ data }) => {
+          if (data?.brief_doc) {
+            setAppSettings(data.brief_doc);
+            applyTheme(data.brief_doc?.appearance?.theme || "system");
+          }
+        }).catch(() => {});
+    }
     else setLoading(false);
   }, [user]);
 
@@ -131,6 +143,28 @@ export default function Home() {
       toast("Undone");
     }
   }, [undoStack, updateStory]);
+
+  // Apply theme to document
+  const applyTheme = (theme) => {
+    const root = document.documentElement;
+    if (theme === "dark") {
+      root.setAttribute("data-theme", "dark");
+      root.style.colorScheme = "dark";
+    } else if (theme === "light") {
+      root.setAttribute("data-theme", "light");
+      root.style.colorScheme = "light";
+    } else {
+      root.removeAttribute("data-theme");
+      root.style.colorScheme = "light dark";
+    }
+  };
+
+  // Apply theme whenever settings change
+  useEffect(() => {
+    if (appSettings?.appearance?.theme) {
+      applyTheme(appSettings.appearance.theme);
+    }
+  }, [appSettings?.appearance?.theme]);
 
   // Production shortcut — Cmd+J: jump to research with top recommendation
   const handleProductionShortcut = useCallback(() => {
@@ -394,7 +428,7 @@ export default function Home() {
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={setAppSettings} initialSettings={appSettings} version={VERSION} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); }} initialSettings={appSettings} version={VERSION} />
       <ToastContainer />
     </div>
   );

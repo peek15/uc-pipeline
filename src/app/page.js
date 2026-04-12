@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.3";
+const VERSION = "3.3.1";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -263,7 +263,8 @@ export default function Home() {
 
           {/* Left — brand + stage pills */}
           <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-            <span className="font-display" style={{ fontSize:15, fontWeight:600, letterSpacing:"-0.02em", color:"var(--t1)" }}>Uncle Carter</span>
+<span className="font-display" style={{ fontSize:15, fontWeight:600, letterSpacing:"-0.02em", color:"var(--t1)" }}>Uncle Carter</span>
+            <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 5px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>v{VERSION}</span>
             <div style={{ width:"1px", height:16, background:"var(--border)" }}/>
             <div style={{ display:"flex", gap:2 }}>
               {[

@@ -769,9 +769,17 @@ Summary only. No preamble.`;
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
             <div style={{ fontSize:16, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.01em" }}>{SECTIONS.find(s=>s.key===section)?.label}</div>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              {section==="rules" && rulesTab==="scheduling" && (
+              {section==="rules" && rulesTab==="scheduling" && (<>
                 <button onClick={addRule} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
                   <Plus size={12}/> Add rule
+                </button>
+                <button onClick={()=>{suggestRules();runAudit();}} disabled={suggestRunning||auditRunning} style={{ padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                  {suggestRunning||auditRunning?"Analysing...":"AI audit"}
+                </button>
+              </>)}
+              {section==="rules" && rulesTab==="alerts" && (
+                <button onClick={()=>runAudit()} disabled={auditRunning} style={{ padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                  {auditRunning?"Analysing...":"AI audit"}
                 </button>
               )}
               {section==="programmes" && (
@@ -790,6 +798,9 @@ Summary only. No preamble.`;
             <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
 
               {/* Onboarding */}
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, marginBottom:16 }}>
+                Define your brand voice, content type, and goals. The AI uses this to generate scripts, score stories, and make recommendations that match your brand.
+              </div>
               {obStep==="chat" ? (
                 <div style={{ borderRadius:10, border:"1px solid var(--border)", overflow:"hidden" }}>
                   <div style={{ padding:"12px 14px", background:"var(--bg2)", borderBottom:"1px solid var(--border2)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -1131,11 +1142,8 @@ Summary only. No preamble.`;
 
               {rulesTab==="alerts" && (
                 <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                    <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>These thresholds control when the Production Alert triggers.</div>
-                    <button onClick={()=>runAudit()} disabled={auditRunning} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer", flexShrink:0, marginLeft:12 }}>
-                      {auditRunning?"Analysing...":"AI audit & suggest"}
-                    </button>
+                  <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, marginBottom:16 }}>
+                    Thresholds that control when the Production Alert triggers and how far ahead it plans. Adjust based on your publishing rhythm.
                   </div>
                   {[
                     { key:"stock_healthy", label:"Healthy stock threshold", hint:"Stories ready — above this = green", min:5, max:60, step:5 },
@@ -1162,10 +1170,43 @@ Summary only. No preamble.`;
                       </div>
                     );
                   })}
+                  {/* Custom threshold */}
+                  <div style={{ marginTop:8, paddingTop:16, borderTop:"0.5px solid var(--border2)" }}>
+                    <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Custom threshold</div>
+                    <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Add a named threshold with a custom value for tracking any metric that matters to your workflow.</div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <input placeholder="Threshold name" id="custom-threshold-name"
+                        style={{ flex:1, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}/>
+                      <input type="number" placeholder="Value" id="custom-threshold-val"
+                        style={{ width:70, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                      <button onClick={()=>{
+                        const n=document.getElementById("custom-threshold-name")?.value?.trim();
+                        const v=parseInt(document.getElementById("custom-threshold-val")?.value)||0;
+                        if(!n)return;
+                        const key="custom_"+n.toLowerCase().replace(/\s+/g,"_");
+                        upd(`strategy.alerts.${key}`,v);
+                        if(document.getElementById("custom-threshold-name")) document.getElementById("custom-threshold-name").value="";
+                        if(document.getElementById("custom-threshold-val")) document.getElementById("custom-threshold-val").value="";
+                      }} style={{ padding:"7px 14px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
+                        Add
+                      </button>
+                    </div>
+                    {/* Show custom thresholds */}
+                    {Object.entries(settings.strategy?.alerts||{}).filter(([k])=>k.startsWith("custom_")).map(([k,v])=>(
+                      <div key={k} style={{ display:"flex", alignItems:"center", gap:10, marginTop:8, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border2)" }}>
+                        <span style={{ fontSize:12, color:"var(--t2)", flex:1 }}>{k.replace("custom_","").replace(/_/g," ")}</span>
+                        <span style={{ fontSize:12, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{v}</span>
+                        <button onClick={()=>{ const a={...settings.strategy?.alerts}; delete a[k]; upd("strategy.alerts",a); }} style={{ fontSize:11, color:"var(--t4)", background:"transparent", border:"none", cursor:"pointer", padding:"0 4px" }}>×</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
               {rulesTab==="scheduling" && (<div>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, marginBottom:16 }}>
+                Rules are applied in priority order — Rule 1 takes precedence over Rule 2. The auto-fill calendar respects these rules when scheduling stories.
+              </div>
               {/* Conflict banner */}
               {conflicts.length>0 && (
                 <div style={{ padding:"12px 14px", borderRadius:9, background:"rgba(192,102,106,0.08)", border:"1px solid rgba(192,102,106,0.2)", marginBottom:16 }}>
@@ -1186,13 +1227,6 @@ Summary only. No preamble.`;
                   </div>
                 </div>
               )}
-
-              {/* AI audit */}
-              <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-                <button onClick={()=>{suggestRules();runAudit();}} disabled={suggestRunning||auditRunning} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                  {suggestRunning||auditRunning?"Analysing...":"AI audit & suggest"}
-                </button>
-              </div>
 
               {/* AI audit + suggestions — merged bubble */}
               {(auditResult || suggestions.length > 0) && (
@@ -1294,6 +1328,9 @@ Summary only. No preamble.`;
           {/* ── Intelligence ── */}
           {section==="intelligence" && (
             <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>
+                The intelligence layer activates automatically as you publish content. No manual configuration — it learns from every video, performance snapshot, and editorial decision.
+              </div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10 }}>
                 {[
                   { label:"Published",     value:stories.filter(s=>s.status==="published").length },
@@ -1368,6 +1405,9 @@ Summary only. No preamble.`;
           {/* ── Workspace ── */}
           {section==="workspace" && (
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>
+                Your workspace contains all stories, scripts, and settings. Team members share the same workspace with different access levels.
+              </div>
               <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
                 {[
                   { label:"Workspace", value:"Uncle Carter Pipeline", editable:false },

@@ -376,6 +376,11 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [rulesTab, setRulesTab] = useState("scheduling");
 
   const [progExpandIdx, setProgExpandIdx] = useState(null);
+  const [showCustomThreshold, setShowCustomThreshold] = useState(false);
+  const [customThresholdName, setCustomThresholdName] = useState("");
+  const [customThresholdValue, setCustomThresholdValue] = useState("");
+  const [customThresholdMetric, setCustomThresholdMetric] = useState("views");
+  const [customThresholdOp, setCustomThresholdOp] = useState("above");
 
   // No early return — hooks must always run regardless of isOpen
   const upd = (path, val) => {
@@ -777,16 +782,22 @@ Summary only. No preamble.`;
                   {suggestRunning||auditRunning?"Analysing...":"AI audit"}
                 </button>
               </>)}
-              {section==="rules" && rulesTab==="alerts" && (
+              {section==="rules" && rulesTab==="alerts" && (<>
+                <button onClick={()=>setShowCustomThreshold(s=>!s)} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
+                  <Plus size={12}/> Add threshold
+                </button>
                 <button onClick={()=>runAudit()} disabled={auditRunning} style={{ padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
                   {auditRunning?"Analysing...":"AI audit"}
                 </button>
-              )}
-              {section==="programmes" && (
+              </>)}
+              {section==="programmes" && (<>
                 <button onClick={()=>addProgramme()} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
                   <Plus size={12}/> New programme
                 </button>
-              )}
+                <button onClick={()=>{suggestProgrammes();runStratAudit();}} disabled={progRunning||stratRunning} style={{ padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                  {progRunning||stratRunning?"Analysing...":"AI audit"}
+                </button>
+              </>)}
               <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
                 <X size={13} color="var(--t3)"/>
               </button>
@@ -1170,36 +1181,67 @@ Summary only. No preamble.`;
                       </div>
                     );
                   })}
-                  {/* Custom threshold */}
-                  <div style={{ marginTop:8, paddingTop:16, borderTop:"0.5px solid var(--border2)" }}>
-                    <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Custom threshold</div>
-                    <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Add a named threshold with a custom value for tracking any metric that matters to your workflow.</div>
-                    <div style={{ display:"flex", gap:8 }}>
-                      <input placeholder="Threshold name" id="custom-threshold-name"
-                        style={{ flex:1, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}/>
-                      <input type="number" placeholder="Value" id="custom-threshold-val"
-                        style={{ width:70, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
-                      <button onClick={()=>{
-                        const n=document.getElementById("custom-threshold-name")?.value?.trim();
-                        const v=parseInt(document.getElementById("custom-threshold-val")?.value)||0;
-                        if(!n)return;
-                        const key="custom_"+n.toLowerCase().replace(/\s+/g,"_");
-                        upd(`strategy.alerts.${key}`,v);
-                        if(document.getElementById("custom-threshold-name")) document.getElementById("custom-threshold-name").value="";
-                        if(document.getElementById("custom-threshold-val")) document.getElementById("custom-threshold-val").value="";
-                      }} style={{ padding:"7px 14px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
-                        Add
-                      </button>
-                    </div>
-                    {/* Show custom thresholds */}
-                    {Object.entries(settings.strategy?.alerts||{}).filter(([k])=>k.startsWith("custom_")).map(([k,v])=>(
-                      <div key={k} style={{ display:"flex", alignItems:"center", gap:10, marginTop:8, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border2)" }}>
-                        <span style={{ fontSize:12, color:"var(--t2)", flex:1 }}>{k.replace("custom_","").replace(/_/g," ")}</span>
-                        <span style={{ fontSize:12, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{v}</span>
-                        <button onClick={()=>{ const a={...settings.strategy?.alerts}; delete a[k]; upd("strategy.alerts",a); }} style={{ fontSize:11, color:"var(--t4)", background:"transparent", border:"none", cursor:"pointer", padding:"0 4px" }}>×</button>
+                  {/* Custom threshold — shown when Add threshold clicked in header */}
+                  {showCustomThreshold && (
+                    <div style={{ marginTop:8, padding:"14px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--card)" }}>
+                      <div style={{ fontSize:13, color:"var(--t1)", marginBottom:4 }}>New threshold</div>
+                      <div style={{ fontSize:11, color:"var(--t3)", marginBottom:12 }}>
+                        Define a custom alert condition. When the metric crosses this value, it will appear in the Production Alert banner.
                       </div>
-                    ))}
-                  </div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        <input value={customThresholdName} onChange={e=>setCustomThresholdName(e.target.value)}
+                          placeholder="Name (e.g. Min watch completion rate)"
+                          style={{ width:"100%", padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}/>
+                        <div style={{ display:"flex", gap:8 }}>
+                          <select value={customThresholdMetric} onChange={e=>setCustomThresholdMetric(e.target.value)}
+                            style={{ flex:1, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}>
+                            <option value="views">Views</option>
+                            <option value="completion">Watch completion %</option>
+                            <option value="saves">Saves</option>
+                            <option value="shares">Shares</option>
+                            <option value="follows">Follows generated</option>
+                            <option value="score">Story score</option>
+                            <option value="reach_score">Reach score</option>
+                            <option value="stock">Stories in stock</option>
+                          </select>
+                          <select value={customThresholdOp} onChange={e=>setCustomThresholdOp(e.target.value)}
+                            style={{ width:90, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}>
+                            <option value="above">above</option>
+                            <option value="below">below</option>
+                          </select>
+                          <input type="number" value={customThresholdValue} onChange={e=>setCustomThresholdValue(e.target.value)}
+                            placeholder="Value"
+                            style={{ width:80, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                        </div>
+                        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+                          <button onClick={()=>{setShowCustomThreshold(false);setCustomThresholdName("");setCustomThresholdValue("");}} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, background:"transparent", border:"0.5px solid var(--border)", color:"var(--t3)", cursor:"pointer" }}>Cancel</button>
+                          <button onClick={()=>{
+                            if(!customThresholdName.trim()||!customThresholdValue) return;
+                            const key="custom_"+customThresholdName.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_");
+                            upd(`strategy.alerts.${key}`, {
+                              label: customThresholdName.trim(),
+                              metric: customThresholdMetric,
+                              operator: customThresholdOp,
+                              value: parseInt(customThresholdValue),
+                            });
+                            setCustomThresholdName(""); setCustomThresholdValue(""); setShowCustomThreshold(false);
+                          }} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
+                            Save threshold
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Existing custom thresholds */}
+                  {Object.entries(settings.strategy?.alerts||{}).filter(([k])=>k.startsWith("custom_")).map(([k,v])=>(
+                    <div key={k} style={{ display:"flex", alignItems:"center", gap:10, marginTop:8, padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border2)" }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:12, color:"var(--t1)" }}>{v?.label||k.replace("custom_","").replace(/_/g," ")}</div>
+                        <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>{v?.metric} {v?.operator} {v?.value}</div>
+                      </div>
+                      <button onClick={()=>{ const a={...settings.strategy?.alerts}; delete a[k]; upd("strategy.alerts",a); }} style={{ fontSize:12, color:"var(--t4)", background:"transparent", border:"none", cursor:"pointer", padding:"0 4px" }}>×</button>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1454,16 +1496,16 @@ Summary only. No preamble.`;
                 These actions are irreversible. Take care.
               </div>
               {[
-                { label:"Reset all settings", hint:"Restore all settings to default values. Your stories and scripts are not affected.", action:"Reset settings", color:"#C49A3C" },
-                { label:"Clear dismissed alerts", hint:"Restore all dismissed production alerts.", action:"Clear alerts", color:"#C49A3C" },
-                { label:"Export all stories", hint:"Download all stories and scripts as a CSV file.", action:"Export", color:"var(--t2)" },
-              ].map(({label,hint,action,color})=>(
+                { label:"Reset all settings", hint:"Restore all settings to default values. Your stories and scripts are not affected.", action:"Reset settings", color:"var(--t3)", onClick:()=>{ setSettings(DEFAULT_SETTINGS); try{localStorage.removeItem("uc_settings");}catch{}; } },
+                { label:"Clear dismissed alerts", hint:"Restore all dismissed production alerts.", action:"Clear alerts", color:"var(--t3)", onClick:()=>{ try{localStorage.removeItem("uc_dismissed_alerts");}catch{}; } },
+                { label:"Export all stories", hint:"Download all stories and scripts as a CSV file.", action:"Export", color:"var(--t2)", onClick:()=>{ if(typeof window!=="undefined"){const d=encodeURIComponent(JSON.stringify(stories,null,2));const a=document.createElement("a");a.href="data:application/json;charset=utf-8,"+d;a.download="uncle-carter-stories.json";a.click();} } },
+              ].map(({label,hint,action,color,onClick})=>(
                 <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:13, color:"var(--t1)", marginBottom:3 }}>{label}</div>
                     <div style={{ fontSize:11, color:"var(--t3)" }}>{hint}</div>
                   </div>
-                  <button style={{ padding:"6px 14px", borderRadius:7, fontSize:11, fontWeight:500, background:"transparent", color, border:`0.5px solid ${color}`, cursor:"pointer", flexShrink:0, marginLeft:16 }}>
+                  <button onClick={onClick} style={{ padding:"6px 14px", borderRadius:7, fontSize:11, fontWeight:500, background:"transparent", color, border:`0.5px solid ${color}`, cursor:"pointer", flexShrink:0, marginLeft:16 }}>
                     {action}
                   </button>
                 </div>

@@ -863,6 +863,9 @@ Summary only. No preamble.`;
           {/* ── Strategy ── */}
           {section==="strategy" && (
             <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+                Set your publishing rhythm and editorial defaults. Programme weights (how often each format appears) are configured in <button onClick={()=>setSection("programmes")} style={{ fontSize:12, color:"var(--t1)", background:"none", border:"none", cursor:"pointer", textDecoration:"underline", padding:0 }}>Programmes</button>.
+              </div>
               <div>
                 <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Weekly cadence</div>
                 <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Target number of episodes published per week. Auto-fill and production alerts use this number.</div>
@@ -872,36 +875,6 @@ Summary only. No preamble.`;
                   ))}
                 </div>
               </div>
-              <div>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                  <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em" }}>Format mix</div>
-                  <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:fmtTotal===100?"#4A9B7F":"#C0666A", fontWeight:600 }}>{fmtTotal}%</span>
-                </div>
-                <div style={{ fontSize:11, color:"var(--t3)", marginBottom:14 }}>How your weekly publishing slots are split across formats. Must total 100%.</div>
-                {FORMATS.map(f=>{
-                  const val = settings.strategy?.format_mix?.[f.key]||0;
-                  return (
-                    <div key={f.key} style={{ marginBottom:16 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-                        <span style={{ width:8, height:8, borderRadius:2, background:f.color, display:"inline-block", flexShrink:0 }}/>
-                        <span style={{ fontSize:13, color:"var(--t1)", flex:1 }}>{f.label}</span>
-                        <input type="number" min="0" max="100" step="5" value={val}
-                          onChange={e=>upd(`strategy.format_mix.${f.key}`,Math.min(100,Math.max(0,parseInt(e.target.value)||0)))}
-                          style={{ width:48, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
-                        <span style={{ fontSize:12, color:"var(--t3)" }}>%</span>
-                      </div>
-                      <div style={{ position:"relative", height:3, borderRadius:2, background:"var(--bg3)", cursor:"pointer" }}>
-                        <div style={{ position:"absolute", left:0, top:0, height:"100%", width:`${val}%`, background:f.color, borderRadius:2, transition:"width 0.15s" }}/>
-                        <input type="range" min="0" max="100" step="5" value={val}
-                          onChange={e=>upd(`strategy.format_mix.${f.key}`,parseInt(e.target.value))}
-                          style={{ position:"absolute", inset:0, width:"100%", opacity:0, cursor:"pointer", height:"100%", margin:0 }}/>
-                      </div>
-                    </div>
-                  );
-                })}
-                {fmtTotal!==100 && <div style={{ fontSize:11, color:"#C0666A", display:"flex", alignItems:"center", gap:5 }}><AlertCircle size={11}/>Must total 100%</div>}
-              </div>
-
               {/* Content defaults */}
               <div>
                 <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>Content defaults</div>
@@ -1011,8 +984,19 @@ Summary only. No preamble.`;
                   <div style={{ padding:"12px 14px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                     {/* Weight */}
                     <div>
-                      <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Cadence weight · {prog.weight||0}%</div>
-                      <input type="range" min="0" max="100" step="5" value={prog.weight||0} onChange={e=>updProg(i,{...prog,weight:parseInt(e.target.value)})} style={{ width:"100%" }}/>
+                      <div style={{ fontSize:11, color:"var(--t3)", marginBottom:6 }}>Weekly slot share</div>
+                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                        <input type="number" min="0" max="100" step="5" value={prog.weight||0}
+                          onChange={e=>updProg(i,{...prog,weight:Math.min(100,Math.max(0,parseInt(e.target.value)||0))})}
+                          style={{ width:48, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                        <span style={{ fontSize:12, color:"var(--t3)" }}>%</span>
+                      </div>
+                      <div style={{ position:"relative", height:3, borderRadius:2, background:"var(--bg3)" }}>
+                        <div style={{ position:"absolute", left:0, top:0, height:"100%", width:`${prog.weight||0}%`, background:prog.color||"var(--t3)", borderRadius:2, transition:"width 0.15s" }}/>
+                        <input type="range" min="0" max="100" step="5" value={prog.weight||0}
+                          onChange={e=>updProg(i,{...prog,weight:parseInt(e.target.value)})}
+                          style={{ position:"absolute", inset:0, width:"100%", opacity:0, cursor:"pointer", height:"100%", margin:0 }}/>
+                      </div>
                     </div>
 
                     {/* Angle suggestions */}

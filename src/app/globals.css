@@ -205,3 +205,23 @@ textarea:focus-visible {
   --fill:  rgba(0,0,0,0.03);
   --fill2: rgba(0,0,0,0.05);
 }
+
+/* ── Density modes ── */
+[data-density="compact"] {
+  --card-padding-y: 7px;
+  --card-padding-x: 11px;
+  --card-gap: 2px;
+  --section-gap: 20px;
+}
+[data-density="comfortable"] {
+  --card-padding-y: 10px;
+  --card-padding-x: 12px;
+  --card-gap: 3px;
+  --section-gap: 28px;
+}
+[data-density="spacious"] {
+  --card-padding-y: 14px;
+  --card-padding-x: 16px;
+  --card-gap: 6px;
+  --section-gap: 36px;
+}

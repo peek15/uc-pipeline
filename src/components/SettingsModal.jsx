@@ -322,6 +322,9 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     }
   }, [section, isOpen]);
 
+  const [rulesTab, setRulesTab] = useState("scheduling");
+
+  // ⚠ ALL useState/useEffect hooks must be ABOVE this line (Rules of Hooks)
   if (!isOpen) return null;
 
   const upd = (path, val) => {
@@ -665,8 +668,6 @@ Summary only. No preamble.`;
       setAssets(prev => prev.filter(a => a.id !== assetId));
     } catch(e) { setAssetError(e.message); }
   };
-
-  const [rulesTab, setRulesTab] = useState("scheduling"); // scheduling | alerts
 
   const inputStyle = { width:"100%", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", fontFamily:"inherit" };
   const selStyle = { ...inputStyle };

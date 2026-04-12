@@ -269,7 +269,8 @@ const ROLES = [
 
 const PRESET_COLORS = ["#C49A3C","#4A9B7F","#C0666A","#8B7EC8","#5B8FB9","#B87333","#7B9E6B","#9B7B6E"];
 
-export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings }) {
+export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="" }) {
+  const VERSION_NUM = version;
   const [section,  setSection]  = useState("brand");
   const [settings, setSettings] = useState(initialSettings||DEFAULT_SETTINGS);
   const [saved,    setSaved]    = useState(false);
@@ -863,7 +864,8 @@ Summary only. No preamble.`;
           {section==="strategy" && (
             <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Weekly cadence</div>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Weekly cadence</div>
+                <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Target number of episodes published per week. Auto-fill and production alerts use this number.</div>
                 <div style={{ display:"flex", gap:5 }}>
                   {[1,2,3,4,5,6,7].map(n=>(
                     <button key={n} onClick={()=>upd("strategy.weekly_cadence",n)} style={{ width:36, height:36, borderRadius:7, fontSize:13, fontWeight:600, background:settings.strategy?.weekly_cadence===n?"var(--t1)":"var(--fill2)", color:settings.strategy?.weekly_cadence===n?"var(--bg)":"var(--t3)", border:"1px solid var(--border)", cursor:"pointer" }}>{n}</button>
@@ -875,16 +877,24 @@ Summary only. No preamble.`;
                   <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Format mix</div>
                   <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:fmtTotal===100?"#4A9B7F":"#C0666A", fontWeight:600 }}>{fmtTotal}%</span>
                 </div>
+                <div style={{ fontSize:11, color:"var(--t3)", marginBottom:14 }}>How your weekly publishing slots are split across formats. Must total 100%.</div>
                 {FORMATS.map(f=>{
                   const val = settings.strategy?.format_mix?.[f.key]||0;
                   return (
-                    <div key={f.key} style={{ marginBottom:12 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div key={f.key} style={{ marginBottom:16 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
                         <span style={{ width:8, height:8, borderRadius:2, background:f.color, display:"inline-block", flexShrink:0 }}/>
-                        <span style={{ fontSize:12, color:"var(--t2)", flex:1 }}>{f.label}</span>
-                        <input type="range" min="0" max="100" step="5" value={val} onChange={e=>upd(`strategy.format_mix.${f.key}`,parseInt(e.target.value))} style={{ width:120 }}/>
-                        <input type="number" min="0" max="100" step="5" value={val} onChange={e=>upd(`strategy.format_mix.${f.key}`,Math.min(100,Math.max(0,parseInt(e.target.value)||0)))} style={{ width:44, padding:"3px 6px", borderRadius:5, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", textAlign:"center" }}/>
-                        <span style={{ fontSize:12, color:"var(--t3)", width:12 }}>%</span>
+                        <span style={{ fontSize:13, color:"var(--t1)", flex:1 }}>{f.label}</span>
+                        <input type="number" min="0" max="100" step="5" value={val}
+                          onChange={e=>upd(`strategy.format_mix.${f.key}`,Math.min(100,Math.max(0,parseInt(e.target.value)||0)))}
+                          style={{ width:48, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                        <span style={{ fontSize:12, color:"var(--t3)" }}>%</span>
+                      </div>
+                      <div style={{ position:"relative", height:3, borderRadius:2, background:"var(--bg3)", cursor:"pointer" }}>
+                        <div style={{ position:"absolute", left:0, top:0, height:"100%", width:`${val}%`, background:f.color, borderRadius:2, transition:"width 0.15s" }}/>
+                        <input type="range" min="0" max="100" step="5" value={val}
+                          onChange={e=>upd(`strategy.format_mix.${f.key}`,parseInt(e.target.value))}
+                          style={{ position:"absolute", inset:0, width:"100%", opacity:0, cursor:"pointer", height:"100%", margin:0 }}/>
                       </div>
                     </div>
                   );
@@ -1075,14 +1085,21 @@ Summary only. No preamble.`;
                   ].map(({key,label,hint,min,max,step})=>{
                     const val = settings.strategy?.alerts?.[key] ?? (key==="stock_healthy"?20:key==="stock_low"?10:21);
                     return (
-                      <div key={key}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
-                          <div>
-                            <div style={{ fontSize:13, color:"var(--t1)" }}>{label} <span style={{ fontSize:12, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t2)" }}>{val}{key==="horizon_days"?" days":""}</span></div>
-                            <div style={{ fontSize:11, color:"var(--t3)" }}>{hint}</div>
-                          </div>
+                      <div key={key} style={{ marginBottom:16 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                          <span style={{ fontSize:13, color:"var(--t1)", flex:1 }}>{label}</span>
+                          <input type="number" min={min} max={max} step={step} value={val}
+                            onChange={e=>upd(`strategy.alerts.${key}`,Math.min(max,Math.max(min,parseInt(e.target.value)||min)))}
+                            style={{ width:52, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                          <span style={{ fontSize:12, color:"var(--t3)", width:28 }}>{key==="horizon_days"?"days":""}</span>
                         </div>
-                        <input type="range" min={min} max={max} step={step} value={val} onChange={e=>upd(`strategy.alerts.${key}`,parseInt(e.target.value))} style={{ width:"100%" }}/>
+                        <div style={{ fontSize:11, color:"var(--t3)", marginBottom:6 }}>{hint}</div>
+                        <div style={{ position:"relative", height:3, borderRadius:2, background:"var(--bg3)" }}>
+                          <div style={{ position:"absolute", left:0, top:0, height:"100%", width:`${((val-min)/(max-min))*100}%`, background:"var(--t1)", borderRadius:2, transition:"width 0.15s" }}/>
+                          <input type="range" min={min} max={max} step={step} value={val}
+                            onChange={e=>upd(`strategy.alerts.${key}`,parseInt(e.target.value))}
+                            style={{ position:"absolute", inset:0, width:"100%", opacity:0, cursor:"pointer", height:"100%", margin:0 }}/>
+                        </div>
                       </div>
                     );
                   })}
@@ -1226,12 +1243,16 @@ Summary only. No preamble.`;
                 ].map(m=>(
                   <div key={m.label} style={{ padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                     <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>{m.label}</div>
-                    <div style={{ fontSize:20, fontWeight:500, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{m.value}</div>
+                    <div style={{ fontSize:18, fontWeight:400, color:"var(--t1)", letterSpacing:"-0.02em" }}>{m.value}</div>
                   </div>
                 ))}
               </div>
               <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                 Score weights, voice patterns, visual intelligence, and predictive scoring activate automatically as published content accumulates. No manual configuration needed — the system learns from every published video.
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderTop:"0.5px solid var(--border2)", marginTop:4 }}>
+                <span style={{ fontSize:11, color:"var(--t4)" }}>Uncle Carter Pipeline</span>
+                <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:"var(--t4)" }}>v{VERSION_NUM}</span>
               </div>
             </div>
           )}

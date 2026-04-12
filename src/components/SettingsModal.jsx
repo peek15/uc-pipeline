@@ -768,9 +768,21 @@ Summary only. No preamble.`;
         <div style={{ flex:1, overflowY:"auto", padding:"24px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
             <div style={{ fontSize:16, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.01em" }}>{SECTIONS.find(s=>s.key===section)?.label}</div>
-            <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"1px solid var(--border)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <X size={13} color="var(--t3)"/>
-            </button>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              {section==="rules" && rulesTab==="scheduling" && (
+                <button onClick={addRule} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
+                  <Plus size={12}/> Add rule
+                </button>
+              )}
+              {section==="programmes" && (
+                <button onClick={()=>addProgramme()} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
+                  <Plus size={12}/> New programme
+                </button>
+              )}
+              <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <X size={13} color="var(--t3)"/>
+              </button>
+            </div>
           </div>
 
           {/* ── Brand ── */}
@@ -963,12 +975,9 @@ Summary only. No preamble.`;
                 Programmes define your content formats — name, role, cadence weight, and angle suggestions. The auto-fill and intelligence layer use these to plan and score content.
               </div>
 
-              {/* AI tools */}
-              <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
-                <button onClick={()=>addProgramme()} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
-                  <Plus size={12}/> New programme
-                </button>
-                <button onClick={()=>{suggestProgrammes();runStratAudit();}} disabled={progRunning||stratRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+              {/* AI audit */}
+              <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+                <button onClick={()=>{suggestProgrammes();runStratAudit();}} disabled={progRunning||stratRunning} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
                   {progRunning||stratRunning?"Analysing...":"AI audit & suggest"}
                 </button>
               </div>
@@ -1178,42 +1187,43 @@ Summary only. No preamble.`;
                 </div>
               )}
 
-              {/* AI suggestions */}
-              <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
-                <button onClick={addRule} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
-                  <Plus size={12}/> Add rule
-                </button>
-                <button onClick={()=>{suggestRules();runAudit();}} disabled={suggestRunning||auditRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+              {/* AI audit */}
+              <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+                <button onClick={()=>{suggestRules();runAudit();}} disabled={suggestRunning||auditRunning} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
                   {suggestRunning||auditRunning?"Analysing...":"AI audit & suggest"}
                 </button>
               </div>
 
-              {/* AI suggestions list */}
-              {suggestions.length>0 && (
-                <div style={{ padding:"12px 14px", borderRadius:9, background:"rgba(196,154,60,0.06)", border:"1px solid rgba(196,154,60,0.2)", marginBottom:16 }}>
-                  <div style={{ fontSize:11, fontWeight:600, color:"#C49A3C", marginBottom:8 }}>⚡ AI suggested rules</div>
-                  {suggestions.map((s,i)=>(
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)" }}>{s.label}</div>
-                        <div style={{ fontSize:11, color:"var(--t3)" }}>{s.reasoning}</div>
-                      </div>
-                      <button onClick={()=>{ upd("strategy.rules",[...rules,{id:crypto.randomUUID(),active:true,...(s.config||{}),type:s.type}]); setSuggestions(sugg=>sugg.filter((_,j)=>j!==i)); }} style={{ padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:600, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer", flexShrink:0 }}>
-                        Add
-                      </button>
+              {/* AI audit + suggestions — merged bubble */}
+              {(auditResult || suggestions.length > 0) && (
+                <div style={{ borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)", marginBottom:16, overflow:"hidden" }}>
+                  {auditResult && (
+                    <div style={{ padding:"14px 16px", fontSize:12, color:"var(--t2)", lineHeight:1.7, whiteSpace:"pre-wrap", borderBottom: suggestions.length>0 ? "0.5px solid var(--border2)" : "none" }}>
+                      {auditResult}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Audit result */}
-              {auditResult && (
-                <div style={{ padding:"12px 14px", borderRadius:9, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:16, fontSize:12, color:"var(--t2)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>
-                  {auditResult}
-                  <div style={{ marginTop:8 }}>
-                    <textarea value={aiAuditText} onChange={e=>setAiAuditText(e.target.value)} placeholder="Add context for a follow-up audit..." rows={2} style={{ ...inputStyle, fontSize:12, resize:"none" }}/>
-                    <button onClick={runAudit} disabled={auditRunning} style={{ marginTop:6, padding:"5px 12px", borderRadius:6, fontSize:11, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                      Re-audit with context
+                  )}
+                  {suggestions.length > 0 && (
+                    <div style={{ padding:"12px 16px" }}>
+                      <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Suggested rules</div>
+                      {suggestions.map((s,i)=>(
+                        <div key={i} style={{ padding:"10px 12px", borderRadius:8, background:"var(--card)", border:"0.5px solid var(--border2)", marginBottom:6 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:13, color:"var(--t1)", marginBottom:3 }}>{s.label}</div>
+                              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.5 }}>{s.reasoning}</div>
+                            </div>
+                            <button onClick={()=>{ upd("strategy.rules",[...rules,{id:crypto.randomUUID(),active:true,...(s.config||{}),type:s.type}]); setSuggestions(sugg=>sugg.filter((_,j)=>j!==i)); }} style={{ padding:"5px 12px", borderRadius:6, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer", flexShrink:0 }}>
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ padding:"10px 16px", borderTop:"0.5px solid var(--border2)", display:"flex", gap:8, alignItems:"center" }}>
+                    <textarea value={aiAuditText} onChange={e=>setAiAuditText(e.target.value)} placeholder="Add context for follow-up..." rows={1} style={{ flex:1, padding:"6px 10px", borderRadius:7, background:"var(--card)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", resize:"none", fontFamily:"inherit" }}/>
+                    <button onClick={()=>{suggestRules();runAudit();}} disabled={suggestRunning||auditRunning} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer", flexShrink:0 }}>
+                      {suggestRunning||auditRunning?"Analysing...":"Re-run"}
                     </button>
                   </div>
                 </div>

@@ -27,6 +27,17 @@ const DEFAULT_SETTINGS = {
       no_consecutive_same_format: false,
     },
     rules: [],
+    alerts: {
+      stock_healthy: 20,
+      stock_low:     10,
+      horizon_days:  21,
+    },
+    defaults: {
+      auto_translate:    true,
+      auto_score:        true,
+      default_language:  "EN",
+      default_hook_type: "",
+    },
     programmes: [
       { id:"standard",           name:"Standard",            color:"#C49A3C", role:"reach",     weight:60, angle_suggestions:["redemption","rivalry","legacy","pressure"], custom_fields:[] },
       { id:"classics",           name:"Classics",            color:"#4A9B7F", role:"community", weight:25, angle_suggestions:["sacrifice","legacy","brotherhood","loyalty"], custom_fields:[] },
@@ -236,9 +247,12 @@ const SECTIONS = [
   { key:"brand",       label:"Brand Profile" },
   { key:"strategy",    label:"Content Strategy" },
   { key:"programmes",  label:"Programmes" },
-  { key:"rules",       label:"Programming Rules" },
+  { key:"rules",       label:"Rules & Alerts" },
+  { key:"appearance",  label:"Appearance" },
+  { key:"workspace",   label:"Workspace" },
   { key:"providers",   label:"Providers" },
   { key:"intelligence",label:"Intelligence" },
+  { key:"danger",      label:"Danger Zone",  danger:true },
 ];
 
 const ROLES = [
@@ -652,6 +666,8 @@ Summary only. No preamble.`;
     } catch(e) { setAssetError(e.message); }
   };
 
+  const [rulesTab, setRulesTab] = useState("scheduling"); // scheduling | alerts
+
   const inputStyle = { width:"100%", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", fontFamily:"inherit" };
   const selStyle = { ...inputStyle };
 
@@ -671,7 +687,7 @@ Summary only. No preamble.`;
               display:"flex", alignItems:"center", justifyContent:"space-between",
               padding:"9px 16px", fontSize:13, fontWeight:section===s.key?500:400,
               background:section===s.key?"var(--fill2)":"transparent",
-              color:section===s.key?"var(--t1)":"var(--t3)",
+              color:section===s.key?"var(--t1)":s.danger?"rgba(192,102,106,0.7)":"var(--t3)",
               border:"none", cursor:"pointer", textAlign:"left", width:"100%",
             }}>
               <span>{s.label}</span>
@@ -876,6 +892,36 @@ Summary only. No preamble.`;
                 })}
                 {fmtTotal!==100 && <div style={{ fontSize:11, color:"#C0666A", display:"flex", alignItems:"center", gap:5 }}><AlertCircle size={11}/>Must total 100%</div>}
               </div>
+
+              {/* Content defaults */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>Content defaults</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+                  {[
+                    { key:"auto_translate", label:"Auto-translate after script generation", hint:"EN → FR/ES/PT automatically" },
+                    { key:"auto_score",     label:"Auto-score stories on research",         hint:"AI scores every result" },
+                  ].map(({key,label,hint})=>(
+                    <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>
+                      <div>
+                        <div style={{ fontSize:13, color:"var(--t1)" }}>{label}</div>
+                        <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>{hint}</div>
+                      </div>
+                      <button onClick={()=>upd(`strategy.defaults.${key}`,!settings.strategy?.defaults?.[key])} style={{ width:40,height:22,borderRadius:11,border:"none",cursor:"pointer",background:settings.strategy?.defaults?.[key]?"var(--t1)":"var(--t4)",position:"relative",transition:"background 0.2s",flexShrink:0 }}>
+                        <div style={{ position:"absolute",top:3,left:settings.strategy?.defaults?.[key]?20:3,width:16,height:16,borderRadius:"50%",background:"var(--bg)",transition:"left 0.2s" }}/>
+                      </button>
+                    </div>
+                  ))}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>
+                    <div>
+                      <div style={{ fontSize:13, color:"var(--t1)" }}>Default language</div>
+                      <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>Language for new stories</div>
+                    </div>
+                    <select value={settings.strategy?.defaults?.default_language||"EN"} onChange={e=>upd("strategy.defaults.default_language",e.target.value)} style={{ ...selStyle, width:"auto", fontSize:12, padding:"4px 8px" }}>
+                      {["EN","FR","ES","PT","DE","IT"].map(l=><option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1006,9 +1052,45 @@ Summary only. No preamble.`;
             </div>
           )}
 
-          {/* ── Rules ── */}
+          {/* ── Rules & Alerts ── */}
           {section==="rules" && (
             <div>
+              {/* Sub-tabs */}
+              <div style={{ display:"flex", gap:2, marginBottom:20, padding:"4px", borderRadius:9, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+                {[{key:"scheduling",label:"Scheduling rules"},{key:"alerts",label:"Alert thresholds"}].map(t=>(
+                  <button key={t.key} onClick={()=>setRulesTab(t.key)} style={{ flex:1, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:rulesTab===t.key?500:400, background:rulesTab===t.key?"var(--card)":"transparent", color:rulesTab===t.key?"var(--t1)":"var(--t3)", border:rulesTab===t.key?"0.5px solid var(--border)":"none", cursor:"pointer" }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {rulesTab==="alerts" && (
+                <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                  <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>
+                    These thresholds control when the Production Alert triggers. Adjust to match your target buffer.
+                  </div>
+                  {[
+                    { key:"stock_healthy", label:"Healthy stock threshold", hint:"Stories ready — above this = green", min:5, max:60, step:5 },
+                    { key:"stock_low",     label:"Low stock threshold",     hint:"Stories ready — below this = red",  min:2, max:30, step:2 },
+                    { key:"horizon_days",  label:"Planning horizon",        hint:"Days ahead to calculate coverage",  min:7, max:42, step:7 },
+                  ].map(({key,label,hint,min,max,step})=>{
+                    const val = settings.strategy?.alerts?.[key] ?? (key==="stock_healthy"?20:key==="stock_low"?10:21);
+                    return (
+                      <div key={key}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+                          <div>
+                            <div style={{ fontSize:13, color:"var(--t1)" }}>{label} <span style={{ fontSize:12, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t2)" }}>{val}{key==="horizon_days"?" days":""}</span></div>
+                            <div style={{ fontSize:11, color:"var(--t3)" }}>{hint}</div>
+                          </div>
+                        </div>
+                        <input type="range" min={min} max={max} step={step} value={val} onChange={e=>upd(`strategy.alerts.${key}`,parseInt(e.target.value))} style={{ width:"100%" }}/>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {rulesTab==="scheduling" && (<div>
               {/* Conflict banner */}
               {conflicts.length>0 && (
                 <div style={{ padding:"12px 14px", borderRadius:9, background:"rgba(192,102,106,0.08)", border:"1px solid rgba(192,102,106,0.2)", marginBottom:16 }}>
@@ -1080,6 +1162,7 @@ Summary only. No preamble.`;
               {rules.map((rule,i)=>(
                 <RuleBuilder key={rule.id||i} rule={rule} index={i} onChange={v=>updRule(i,v)} onDelete={()=>delRule(i)} conflicts={conflicts} totalRules={rules.length}/>
               ))}
+              </div>)}
             </div>
           )}
 
@@ -1145,14 +1228,134 @@ Summary only. No preamble.`;
                   { label:"Until Stage 2", value:Math.max(0,50-stories.filter(s=>s.status==="published").length) },
                   { label:"Until Stage 3", value:Math.max(0,100-stories.filter(s=>s.status==="published").length) },
                 ].map(m=>(
-                  <div key={m.label} style={{ padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)" }}>
+                  <div key={m.label} style={{ padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                     <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>{m.label}</div>
                     <div style={{ fontSize:22, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{m.value}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)" }}>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                 Score weights, voice patterns, visual intelligence, and predictive scoring activate automatically as published content accumulates. No manual configuration needed — the system learns from every published video.
+              </div>
+            </div>
+          )}
+
+          {/* ── Appearance ── */}
+          {section==="appearance" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>
+                Display settings. Theme follows your system preference by default — override here if needed.
+              </div>
+
+              {/* Theme */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>Theme</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[{key:"system",label:"System",hint:"Follows OS setting"},{key:"light",label:"Light"},{key:"dark",label:"Dark"}].map(t=>(
+                    <button key={t.key} onClick={()=>upd("appearance.theme",t.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.theme||"system")===t.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.theme||"system")===t.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>
+                      <div style={{ fontSize:12, fontWeight:500, color:(settings.appearance?.theme||"system")===t.key?"var(--bg)":"var(--t1)" }}>{t.label}</div>
+                      {t.hint&&<div style={{ fontSize:10, color:(settings.appearance?.theme||"system")===t.key?"rgba(255,255,255,0.6)":"var(--t3)", marginTop:2 }}>{t.hint}</div>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Density */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>Density</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[{key:"compact",label:"Compact",hint:"Smaller cards, more stories visible"},{key:"comfortable",label:"Comfortable",hint:"Balanced (default)"},{key:"spacious",label:"Spacious",hint:"More breathing room"}].map(d=>(
+                    <button key={d.key} onClick={()=>upd("appearance.density",d.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>
+                      <div style={{ fontSize:12, fontWeight:500, color:(settings.appearance?.density||"comfortable")===d.key?"var(--bg)":"var(--t1)" }}>{d.label}</div>
+                      <div style={{ fontSize:10, color:(settings.appearance?.density||"comfortable")===d.key?"rgba(255,255,255,0.6)":"var(--t3)", marginTop:2 }}>{d.hint}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Default tab */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Default tab on load</div>
+                <select value={settings.appearance?.default_tab||"pipeline"} onChange={e=>upd("appearance.default_tab",e.target.value)} style={selStyle}>
+                  {["pipeline","research","script","calendar","analyze"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                </select>
+              </div>
+
+              <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:11, color:"var(--t4)" }}>
+                Brand color customization is available for Track 3 Creative Engine clients. Contact us to configure.
+              </div>
+            </div>
+          )}
+
+          {/* ── Workspace ── */}
+          {section==="workspace" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+                {[
+                  { label:"Workspace name", value:"Uncle Carter Pipeline", editable:false },
+                  { label:"Workspace ID",   value:"00000000-0000-0000-0000-000000000001", editable:false, mono:true },
+                  { label:"Plan",           value:"Peek Studios — Internal", editable:false },
+                ].map(({label,value,editable,mono})=>(
+                  <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>
+                    <span style={{ fontSize:13, color:"var(--t2)" }}>{label}</span>
+                    <span style={{ fontSize:12, color:editable?"var(--t1)":"var(--t3)", fontFamily:mono?"'DM Mono',monospace":"inherit" }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Team members */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>Team members</div>
+                <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:12, color:"var(--t2)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div>
+                    <div style={{ fontWeight:500 }}>Théo Mauroy</div>
+                    <div style={{ fontSize:11, color:"var(--t3)" }}>Owner · admin@peekmedia.cc</div>
+                  </div>
+                  <span style={{ fontSize:10, padding:"2px 8px", borderRadius:99, background:"var(--bg3)", color:"var(--t3)", border:"0.5px solid var(--border)" }}>Owner</span>
+                </div>
+                <button style={{ marginTop:8, width:"100%", padding:"8px", borderRadius:8, fontSize:12, color:"var(--t3)", background:"transparent", border:"0.5px dashed var(--border)", cursor:"pointer" }}>
+                  + Invite team member
+                </button>
+                <div style={{ marginTop:6, fontSize:11, color:"var(--t4)" }}>Team member roles: Owner, Admin, Editor, Viewer. Multi-user access available on Creative Engine plans.</div>
+              </div>
+
+              {/* API */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>API access</div>
+                <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:12, color:"var(--t3)" }}>
+                  API access for programmatic integration is available on Creative Engine Track 3. Contact us to enable.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Danger Zone ── */}
+          {section==="danger" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, marginBottom:4 }}>
+                These actions are irreversible. Take care.
+              </div>
+              {[
+                { label:"Reset all settings", hint:"Restore all settings to default values. Your stories and scripts are not affected.", action:"Reset settings", color:"#C49A3C" },
+                { label:"Clear dismissed alerts", hint:"Restore all dismissed production alerts.", action:"Clear alerts", color:"#C49A3C" },
+                { label:"Export all stories", hint:"Download all stories and scripts as a CSV file.", action:"Export", color:"var(--t2)" },
+              ].map(({label,hint,action,color})=>(
+                <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)", marginBottom:3 }}>{label}</div>
+                    <div style={{ fontSize:11, color:"var(--t3)" }}>{hint}</div>
+                  </div>
+                  <button style={{ padding:"6px 14px", borderRadius:7, fontSize:11, fontWeight:500, background:"transparent", color, border:`0.5px solid ${color}`, cursor:"pointer", flexShrink:0, marginLeft:16 }}>
+                    {action}
+                  </button>
+                </div>
+              ))}
+              <div style={{ padding:"12px 14px", borderRadius:9, border:"0.5px solid rgba(192,102,106,0.3)", background:"rgba(192,102,106,0.05)", marginTop:4 }}>
+                <div style={{ fontSize:12, fontWeight:500, color:"#C0666A", marginBottom:6 }}>Delete workspace</div>
+                <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Permanently delete this workspace, all stories, scripts, and settings. This cannot be undone. Your assets in Supabase Storage will be removed.</div>
+                <button style={{ padding:"6px 14px", borderRadius:7, fontSize:11, fontWeight:600, background:"rgba(192,102,106,0.1)", color:"#C0666A", border:"0.5px solid rgba(192,102,106,0.3)", cursor:"pointer" }}>
+                  Delete workspace
+                </button>
               </div>
             </div>
           )}

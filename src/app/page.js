@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.5.1";
+const VERSION = "3.5.2";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -64,14 +64,24 @@ export default function Home() {
       // Load stories
       getStories().then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
       // Load saved settings from brand profile
+// Load appearance from localStorage immediately (fast, no network)
+      try {
+        const cached = localStorage.getItem("uc_settings");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setAppSettings(parsed);
+          applyTheme(parsed?.appearance?.theme || "system");
+          if (parsed?.appearance?.default_tab) setTab(parsed.appearance.default_tab);
+        }
+      } catch {}
+      // Then sync from Supabase (source of truth)
       supabase.from("brand_profiles").select("brief_doc").eq("id","00000000-0000-0000-0000-000000000001").single()
-        .then(({ data }) => {
+        .then(({ data, error }) => {
           if (data?.brief_doc) {
             setAppSettings(data.brief_doc);
+            localStorage.setItem("uc_settings", JSON.stringify(data.brief_doc));
             applyTheme(data.brief_doc?.appearance?.theme || "system");
-            if (data.brief_doc?.appearance?.default_tab) {
-              setTab(data.brief_doc.appearance.default_tab);
-            }
+            if (data.brief_doc?.appearance?.default_tab) setTab(data.brief_doc.appearance.default_tab);
           }
         }).catch(() => {});
     }
@@ -431,7 +441,7 @@ export default function Home() {
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); }} initialSettings={appSettings} version={VERSION} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem("uc_settings", JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} />
       <ToastContainer />
     </div>
   );

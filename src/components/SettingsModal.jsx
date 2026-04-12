@@ -269,6 +269,51 @@ const ROLES = [
 
 const PRESET_COLORS = ["#C49A3C","#4A9B7F","#C0666A","#8B7EC8","#5B8FB9","#B87333","#7B9E6B","#9B7B6E"];
 
+function ProgDiscuss({ programme, callClaude, brandName }) {
+  const [msgs, setMsgs] = useState([{ role:"assistant", text:`This programme is designed for ${programme.role} content. ${programme.rationale} What would you like to adjust or explore?` }]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const send = async () => {
+    if (!input.trim()) return;
+    const userMsg = { role:"user", text:input };
+    const history = [...msgs, userMsg];
+    setMsgs(history);
+    setInput("");
+    setLoading(true);
+    try {
+      const prompt = `You are helping refine a content programme called "${programme.name}" for "${brandName}".
+Programme details: role=${programme.role}, weight=${programme.weight}%, angles=${(programme.angle_suggestions||[]).join(", ")}.
+Rationale: ${programme.rationale}
+
+Conversation:
+${history.map(m=>`${m.role==="user"?"User":"Assistant"}: ${m.text}`).join("\n")}
+
+Respond helpfully and concisely. Suggest specific adjustments if asked.`;
+      const response = await callClaude(prompt, 400, "haiku");
+      setMsgs(h => [...h, { role:"assistant", text:response }]);
+    } catch { setMsgs(h => [...h, { role:"assistant", text:"Something went wrong." }]); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ borderTop:"0.5px solid var(--border2)", background:"var(--bg2)" }}>
+      <div style={{ maxHeight:160, overflowY:"auto", padding:"12px 14px", display:"flex", flexDirection:"column", gap:8 }}>
+        {msgs.map((m,i)=>(
+          <div key={i} style={{ display:"flex", justifyContent:m.role==="user"?"flex-end":"flex-start" }}>
+            <div style={{ maxWidth:"85%", padding:"7px 11px", borderRadius:8, fontSize:12, lineHeight:1.5, background:m.role==="user"?"var(--t1)":"var(--fill2)", color:m.role==="user"?"var(--bg)":"var(--t2)" }}>{m.text}</div>
+          </div>
+        ))}
+        {loading && <div style={{ fontSize:11, color:"var(--t4)" }}>Thinking...</div>}
+      </div>
+      <div style={{ padding:"8px 14px", borderTop:"0.5px solid var(--border2)", display:"flex", gap:8 }}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!loading&&send()} placeholder="Ask about this programme..." style={{ flex:1, padding:"6px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}/>
+        <button onClick={send} disabled={loading||!input.trim()} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>Send</button>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="" }) {
   const VERSION_NUM = version;
   const [section,  setSection]  = useState("brand");
@@ -329,6 +374,8 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   }, [section, isOpen]);
 
   const [rulesTab, setRulesTab] = useState("scheduling");
+
+  const [progExpandIdx, setProgExpandIdx] = useState(null);
 
   // No early return — hooks must always run regardless of isOpen
   const upd = (path, val) => {
@@ -441,6 +488,7 @@ JSON only.`;
         provider_config: settings.providers,
       });
       if (onSettingsChange) onSettingsChange(settings);
+      try { localStorage.setItem("uc_settings", JSON.stringify(settings)); } catch {}
       setSaved(true);
       setTimeout(()=>setSaved(false), 2000);
     } catch(e) { console.error(e); }
@@ -869,10 +917,11 @@ Summary only. No preamble.`;
               <div>
                 <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Weekly cadence</div>
                 <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Target number of episodes published per week. Auto-fill and production alerts use this number.</div>
-                <div style={{ display:"flex", gap:5 }}>
-                  {[1,2,3,4,5,6,7].map(n=>(
-                    <button key={n} onClick={()=>upd("strategy.weekly_cadence",n)} style={{ width:36, height:36, borderRadius:7, fontSize:13, fontWeight:600, background:settings.strategy?.weekly_cadence===n?"var(--t1)":"var(--fill2)", color:settings.strategy?.weekly_cadence===n?"var(--bg)":"var(--t3)", border:"1px solid var(--border)", cursor:"pointer" }}>{n}</button>
-                  ))}
+                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                  <input type="number" min="1" max="14" value={settings.strategy?.weekly_cadence||4}
+                    onChange={e=>upd("strategy.weekly_cadence", Math.min(14,Math.max(1,parseInt(e.target.value)||1)))}
+                    style={{ width:72, padding:"8px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:16, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                  <span style={{ fontSize:12, color:"var(--t3)" }}>episodes per week</span>
                 </div>
               </div>
               {/* Content defaults */}
@@ -929,14 +978,31 @@ Summary only. No preamble.`;
                 <div style={{ padding:"12px 14px", borderRadius:9, background:"rgba(196,154,60,0.06)", border:"1px solid rgba(196,154,60,0.2)", marginBottom:16 }}>
                   <div style={{ fontSize:11, fontWeight:600, color:"#C49A3C", marginBottom:10 }}>⚡ AI suggested programmes</div>
                   {progAudit.map((p,i)=>(
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8, padding:"8px 10px", borderRadius:7, background:"var(--fill2)", borderLeft:`3px solid ${p.color||"var(--border)"}` }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:12, fontWeight:600, color:"var(--t1)" }}>{p.name} <span style={{ fontSize:10, color:"var(--t3)", fontWeight:400 }}>· {p.role} · {p.weight}%</span></div>
-                        <div style={{ fontSize:11, color:"var(--t3)", marginTop:2 }}>{p.rationale}</div>
+                    <div key={i} style={{ marginBottom:10, borderRadius:9, border:"0.5px solid var(--border)", overflow:"hidden", borderLeft:`3px solid ${p.color||"var(--border)"}` }}>
+                      <div style={{ padding:"12px 14px", background:"var(--fill2)" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)", marginBottom:3 }}>{p.name}</div>
+                            <div style={{ display:"flex", gap:8, marginBottom:6 }}>
+                              <span style={{ fontSize:11, color:"var(--t3)" }}>{p.role}</span>
+                              <span style={{ fontSize:11, color:"var(--t3)" }}>·</span>
+                              <span style={{ fontSize:11, color:"var(--t3)" }}>{p.weight}% of slots</span>
+                            </div>
+                            <div style={{ fontSize:12, color:"var(--t2)", lineHeight:1.5 }}>{p.rationale}</div>
+                          </div>
+                          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                            <button onClick={()=>{ addProgramme({id:crypto.randomUUID(),...p,angle_suggestions:p.angle_suggestions||[],custom_fields:[]}); setProgAudit(a=>a.filter((_,j)=>j!==i)); }} style={{ padding:"5px 12px", borderRadius:6, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
+                              Add
+                            </button>
+                            <button onClick={()=>setProgExpandIdx(i===progExpandIdx?null:i)} style={{ padding:"5px 10px", borderRadius:6, fontSize:12, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                              {i===progExpandIdx?"↑":"Discuss"}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <button onClick={()=>{ addProgramme({id:crypto.randomUUID(),...p,angle_suggestions:p.angle_suggestions||[],custom_fields:[]}); setProgAudit(a=>a.filter((_,j)=>j!==i)); }} style={{ padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:600, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer", flexShrink:0 }}>
-                        Add
-                      </button>
+                      {i===progExpandIdx && (
+                        <ProgDiscuss programme={p} callClaude={callClaude} brandName={settings.brand.name}/>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1264,6 +1330,7 @@ Summary only. No preamble.`;
               {/* Density */}
               <div>
                 <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Density</div>
+                <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Affects card spacing and padding throughout the app.</div>
                 <div style={{ display:"flex", gap:8 }}>
                   {[{key:"compact",label:"Compact",hint:"Smaller cards, more stories visible"},{key:"comfortable",label:"Comfortable",hint:"Balanced (default)"},{key:"spacious",label:"Spacious",hint:"More breathing room"}].map(d=>(
                     <button key={d.key} onClick={()=>upd("appearance.density",d.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>

@@ -308,7 +308,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
             {!items.length&&<div style={{padding:"24px 0",textAlign:"center",color:"var(--t4)",fontSize:12}}>No stories</div>}
 
-            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            <div style={{display:"flex",flexDirection:"column",gap:"var(--card-gap, 2px)"}}>
               {items.map(s=>{
                 const isSelected = selected.has(s.id);
                 const isExpanded = expanded.has(s.id);
@@ -335,7 +335,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                     }}>
 
                     {/* Main row */}
-                    <div style={{display:"grid",gridTemplateColumns:"24px 1fr auto auto",alignItems:"center",gap:10,padding:"10px 12px",cursor:"pointer"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"24px 1fr auto auto",alignItems:"center",gap:10,padding:"var(--card-padding-y, 10px) var(--card-padding-x, 12px)",cursor:"pointer"}}>
                       {/* Checkbox */}
                       <div onClick={e=>{e.stopPropagation();setSelected(sel=>{const n=new Set(sel);n.has(s.id)?n.delete(s.id):n.add(s.id);return n;})}}
                         style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${isSelected?"var(--t1)":"var(--t4)"}`,background:isSelected?"var(--t1)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>

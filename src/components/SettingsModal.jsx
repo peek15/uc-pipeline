@@ -45,6 +45,11 @@ const DEFAULT_SETTINGS = {
       { id:"special_edition",    name:"Special Edition",     color:"#8B7EC8", role:"special",   weight:0,  angle_suggestions:[], custom_fields:[] },
     ],
   },
+  appearance: {
+    theme:       "system",
+    density:     "comfortable",
+    default_tab: "pipeline",
+  },
   providers: {
     script:   { provider:"anthropic", model:"claude-haiku-4-5-20251001", status:"configured" },
     voice:    { provider:"elevenlabs", voice_id:"", model_id:"eleven_multilingual_v2", stability:0.5, similarity_boost:0.75, status:"needs_key" },
@@ -313,10 +318,10 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const WORKSPACE_ID     = "00000000-0000-0000-0000-000000000001";
 
   useEffect(() => {
-    if (section === "brand" && isOpen) {
+    if (section === "brand" && isOpen && assets.length === 0) {
       setAssetsLoading(true);
       listAssets(BRAND_PROFILE_ID)
-        .then(data => setAssets(data))
+        .then(data => setAssets(data||[]))
         .catch(() => setAssets([]))
         .finally(() => setAssetsLoading(false));
     }
@@ -324,9 +329,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
 
   const [rulesTab, setRulesTab] = useState("scheduling");
 
-  // ⚠ ALL useState/useEffect hooks must be ABOVE this line (Rules of Hooks)
-  if (!isOpen) return null;
-
+  // No early return — hooks must always run regardless of isOpen
   const upd = (path, val) => {
     setSettings(s => {
       const n = JSON.parse(JSON.stringify(s));
@@ -672,10 +675,11 @@ Summary only. No preamble.`;
   const inputStyle = { width:"100%", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", fontFamily:"inherit" };
   const selStyle = { ...inputStyle };
 
+  if (!isOpen) return null;
   return (
     <div style={{ position:"fixed", inset:0, zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)", padding:24 }}
       onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{ width:"100%", maxWidth:820, height:"85vh", display:"flex", borderRadius:14, overflow:"hidden", background:"var(--sheet)", boxShadow:"0 32px 80px rgba(0,0,0,0.3)" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ width:"100%", maxWidth:"100%", height:"100vh", borderRadius:0, display:"flex", borderRadius:14, overflow:"hidden", background:"var(--sheet)", boxShadow:"0 32px 80px rgba(0,0,0,0.3)" }}>
 
         {/* ── Left nav ── */}
         <div style={{ width:200, borderRight:"1px solid var(--border2)", padding:"20px 0", flexShrink:0, display:"flex", flexDirection:"column" }}>
@@ -874,19 +878,13 @@ Summary only. No preamble.`;
                 {FORMATS.map(f=>{
                   const val = settings.strategy?.format_mix?.[f.key]||0;
                   return (
-                    <div key={f.key} style={{ marginBottom:10 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                          <span style={{ width:8, height:8, borderRadius:2, background:f.color, display:"inline-block" }}/>
-                          <span style={{ fontSize:12, color:"var(--t2)" }}>{f.label}</span>
-                        </div>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <input type="range" min="0" max="100" step="5" value={val} onChange={e=>upd(`strategy.format_mix.${f.key}`,parseInt(e.target.value))} style={{ width:100 }}/>
-                          <span style={{ fontSize:12, fontWeight:700, fontFamily:"'DM Mono',monospace", color:f.color, width:32, textAlign:"right" }}>{val}%</span>
-                        </div>
-                      </div>
-                      <div style={{ height:3, borderRadius:2, background:"var(--bg3)" }}>
-                        <div style={{ height:"100%", width:`${val}%`, background:f.color, borderRadius:2, transition:"width 0.2s" }}/>
+                    <div key={f.key} style={{ marginBottom:12 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <span style={{ width:8, height:8, borderRadius:2, background:f.color, display:"inline-block", flexShrink:0 }}/>
+                        <span style={{ fontSize:12, color:"var(--t2)", flex:1 }}>{f.label}</span>
+                        <input type="range" min="0" max="100" step="5" value={val} onChange={e=>upd(`strategy.format_mix.${f.key}`,parseInt(e.target.value))} style={{ width:120 }}/>
+                        <input type="number" min="0" max="100" step="5" value={val} onChange={e=>upd(`strategy.format_mix.${f.key}`,Math.min(100,Math.max(0,parseInt(e.target.value)||0)))} style={{ width:44, padding:"3px 6px", borderRadius:5, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", textAlign:"center" }}/>
+                        <span style={{ fontSize:12, color:"var(--t3)", width:12 }}>%</span>
                       </div>
                     </div>
                   );
@@ -938,11 +936,8 @@ Summary only. No preamble.`;
                 <button onClick={()=>addProgramme()} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
                   <Plus size={12}/> New programme
                 </button>
-                <button onClick={suggestProgrammes} disabled={progRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                  <Zap size={12} color="#C49A3C"/> {progRunning?"Thinking...":"AI suggest programmes"}
-                </button>
-                <button onClick={runStratAudit} disabled={stratRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                  <RefreshCw size={12}/> {stratRunning?"Auditing...":"Strategy audit"}
+                <button onClick={()=>{suggestProgrammes();runStratAudit();}} disabled={progRunning||stratRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                  {progRunning||stratRunning?"Analysing...":"AI audit & suggest"}
                 </button>
               </div>
 
@@ -1067,8 +1062,11 @@ Summary only. No preamble.`;
 
               {rulesTab==="alerts" && (
                 <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                  <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>
-                    These thresholds control when the Production Alert triggers. Adjust to match your target buffer.
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                    <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>These thresholds control when the Production Alert triggers.</div>
+                    <button onClick={()=>runAudit()} disabled={auditRunning} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer", flexShrink:0, marginLeft:12 }}>
+                      {auditRunning?"Analysing...":"AI audit & suggest"}
+                    </button>
                   </div>
                   {[
                     { key:"stock_healthy", label:"Healthy stock threshold", hint:"Stories ready — above this = green", min:5, max:60, step:5 },
@@ -1118,11 +1116,8 @@ Summary only. No preamble.`;
                 <button onClick={addRule} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
                   <Plus size={12}/> Add rule
                 </button>
-                <button onClick={suggestRules} disabled={suggestRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                  <Zap size={12} color="#C49A3C"/> {suggestRunning?"Thinking...":"AI suggest rules"}
-                </button>
-                <button onClick={runAudit} disabled={auditRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                  <RefreshCw size={12}/> {auditRunning?"Auditing...":"Strategy audit"}
+                <button onClick={()=>{suggestRules();runAudit();}} disabled={suggestRunning||auditRunning} style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                  {suggestRunning||auditRunning?"Analysing...":"AI audit & suggest"}
                 </button>
               </div>
 
@@ -1231,7 +1226,7 @@ Summary only. No preamble.`;
                 ].map(m=>(
                   <div key={m.label} style={{ padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                     <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>{m.label}</div>
-                    <div style={{ fontSize:22, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{m.value}</div>
+                    <div style={{ fontSize:20, fontWeight:500, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{m.value}</div>
                   </div>
                 ))}
               </div>

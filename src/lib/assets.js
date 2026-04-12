@@ -123,7 +123,7 @@ export async function listAssets(brandProfileId) {
     .from("story_documents")
     .select("*")
     .eq("brand_profile_id", brandProfileId)
-    .is("story_id", null) // brand-level assets only (no story_id)
+    .is("story_id", null)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);

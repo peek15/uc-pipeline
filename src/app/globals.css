@@ -5,72 +5,92 @@
 @tailwind utilities;
 
 :root {
-  --bg:    #ffffff;
-  --bg2:   #f5f5f5;
-  --bg3:   #ebebeb;
-  --card:  #ffffff;
-  --sheet: #ffffff;
-  --nav:   rgba(255,255,255,0.90);
+  /* ── Backgrounds ── */
+  --bg:    #F7F6F3;  /* warm off-white page */
+  --bg2:   #EDECE9;  /* surfaces, panels */
+  --bg3:   #E4E2DE;  /* deeper fills */
+  --card:  #F2F0ED;  /* cards — lift without stark contrast */
+  --sheet: #F7F6F3;  /* modals, sheets */
+  --nav:   rgba(247,246,243,0.92);
 
-  --t1: #0a0a0a;
-  --t2: #4a4a4a;
-  --t3: #909090;
-  --t4: #c8c8c8;
+  /* ── Text ── */
+  --t1: #111110;  /* primary */
+  --t2: #4A4A47;  /* secondary */
+  --t3: #888884;  /* tertiary */
+  --t4: #C5C4BF;  /* hints, disabled */
 
+  /* ── Borders ── */
   --border:    rgba(0,0,0,0.07);
-  --border2:   rgba(0,0,0,0.04);
+  --border2:   rgba(0,0,0,0.05);
   --border-in: rgba(0,0,0,0.10);
 
+  /* ── Fills ── */
   --fill:  rgba(0,0,0,0.03);
-  --fill2: rgba(0,0,0,0.055);
+  --fill2: rgba(0,0,0,0.05);
 
-  --c-new:       #0a0a0a;
-  --c-approved:  #3a3a3a;
-  --c-scripted:  #5a5a5a;
-  --c-produced:  #808080;
-  --c-published: #aaaaaa;
-  --c-rejected:  #cccccc;
+  /* ── Stage colors ── */
+  --c-new:       #111110;
+  --c-approved:  #3a3a38;
+  --c-scripted:  #5a5a57;
+  --c-produced:  #888884;
+  --c-published: #AAAAAA;
+  --c-rejected:  #C5C4BF;
 
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-  --shadow:    0 2px 10px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
-  --shadow-lg: 0 8px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05);
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow:    0 2px 8px rgba(0,0,0,0.07), 0 0 0 0.5px rgba(0,0,0,0.05);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.06);
+
+  /* ── Gold accent ── */
+  --gold: #C49A3C;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg:    #090909;
-    --bg2:   #121212;
-    --bg3:   #1c1c1c;
-    --card:  #111111;
-    --sheet: #161616;
-    --nav:   rgba(9,9,9,0.90);
+    /* ── Backgrounds — warm near-black ── */
+    --bg:    #1A1917;  /* warm near-black */
+    --bg2:   #242220;  /* cards, panels */
+    --bg3:   #2E2C2A;  /* deeper fills */
+    --card:  #242220;
+    --sheet: #1E1C1A;
+    --nav:   rgba(26,25,23,0.92);
 
-    --t1: #f2f2f2;
-    --t2: #999999;
-    --t3: #555555;
-    --t4: #2a2a2a;
+    /* ── Text — warm grays with real separation ── */
+    --t1: #EEECEA;  /* primary — warm near-white */
+    --t2: #A8A5A1;  /* secondary — good contrast from t1 */
+    --t3: #6B6965;  /* tertiary — clearly muted */
+    --t4: #3A3835;  /* hints — barely visible */
 
+    /* ── Borders ── */
     --border:    rgba(255,255,255,0.07);
-    --border2:   rgba(255,255,255,0.04);
+    --border2:   rgba(255,255,255,0.05);
     --border-in: rgba(255,255,255,0.09);
 
+    /* ── Fills ── */
     --fill:  rgba(255,255,255,0.03);
-    --fill2: rgba(255,255,255,0.05);
+    --fill2: rgba(255,255,255,0.06);
 
-    --c-new:       #f2f2f2;
-    --c-approved:  #c0c0c0;
-    --c-scripted:  #909090;
-    --c-produced:  #636363;
-    --c-published: #404040;
-    --c-rejected:  #2a2a2a;
+    /* ── Stage colors ── */
+    --c-new:       #EEECEA;
+    --c-approved:  #C0BDBA;
+    --c-scripted:  #A8A5A1;
+    --c-produced:  #6B6965;
+    --c-published: #4A4845;
+    --c-rejected:  #2E2C2A;
 
+    /* ── Shadows ── */
     --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
-    --shadow:    0 2px 10px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
-    --shadow-lg: 0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);
+    --shadow:    0 2px 10px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.05);
+    --shadow-lg: 0 8px 40px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.06);
   }
 }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
 
 body {
   background: var(--bg);
@@ -88,24 +108,63 @@ body {
 .font-serif   { font-family: Georgia, 'Times New Roman', serif; }
 
 @keyframes spin    { to { transform: rotate(360deg); } }
-@keyframes fadeIn  { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn  { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
 
-.anim-fade       { animation: fadeIn 0.2s ease forwards; }
+.anim-fade       { animation: fadeIn 0.18s ease forwards; }
 .anim-slide      { animation: slideUp 0.22s cubic-bezier(0.32,0.72,0,1) forwards; }
 .anim-spin       { animation: spin 0.8s linear infinite; }
-.animate-fade-in { animation: fadeIn 0.2s ease forwards; }
+.animate-fade-in { animation: fadeIn 0.18s ease forwards; }
 
+/* ── Scrollbar ── */
 ::-webkit-scrollbar       { width: 3px; height: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--t4); border-radius: 2px; }
 
+/* ── Form elements ── */
 select option { background: var(--bg2); color: var(--t1); }
 input, textarea, select { font-family: inherit; }
 
+/* ── Custom slider ── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg3);
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--t1);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--t3);
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.1);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--t1);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--t3);
+  cursor: pointer;
+}
+
+/* ── Focus styles ── */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible { outline: 1.5px solid var(--t1); outline-offset: 2px; }
-
-@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+textarea:focus-visible {
+  outline: 1.5px solid var(--t2);
+  outline-offset: 2px;
+}

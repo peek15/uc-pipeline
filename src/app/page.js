@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.2.3";
+const VERSION = "3.3";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -30,7 +30,7 @@ export default function Home() {
   const [user, setUser]               = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError]     = useState(null);
-  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(null); // "actions" | "user" | null
   const [stories, setStories]         = useState([]);
   const [tab, setTab]                 = useState("pipeline");
   const [selected, setSelected]       = useState(null);
@@ -261,63 +261,79 @@ export default function Home() {
       <header style={{ position:"sticky", top:0, zIndex:20, background:"var(--nav)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderBottom:"1px solid var(--border)" }}>
         <div style={{ maxWidth:1200, margin:"0 auto", padding:"0 24px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
 
-          {/* Left */}
-          <div style={{ display:"flex", alignItems:"center", gap:20 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span className="font-display" style={{ fontSize:15, fontWeight:700, letterSpacing:"-0.03em", color:"var(--t1)" }}>Uncle Carter</span>
-              <span style={{ fontSize:11, color:"var(--t3)" }}>Pipeline</span>
-              <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 5px", borderRadius:3, border:"1px solid var(--border)", background:"var(--fill2)" }}>v{VERSION}</span>
-            </div>
-            <div style={{ display:"flex", gap:3 }}>
+          {/* Left — brand + stage pills */}
+          <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+            <span className="font-display" style={{ fontSize:15, fontWeight:600, letterSpacing:"-0.02em", color:"var(--t1)" }}>Uncle Carter</span>
+            <div style={{ width:"1px", height:16, background:"var(--border)" }}/>
+            <div style={{ display:"flex", gap:2 }}>
               {[
-                {k:"accepted",  dot:"#909090"},
+                {k:"accepted",  dot:"var(--t4)"},
                 {k:"approved",  dot:"#5B8FB9"},
                 {k:"scripted",  dot:"#8B7EC8"},
                 {k:"produced",  dot:"#C49A3C"},
                 {k:"published", dot:"#4A9B7F"},
-              ].map(({k, dot}) => (
-                <div key={k} style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", border:"1px solid var(--border2)" }}>
-                  <span style={{ width:6, height:6, borderRadius:"50%", background: (counts[k]||0) > 0 ? dot : "var(--t4)", flexShrink:0, display:"inline-block" }} />
-                  <span style={{ fontSize:11, fontWeight:700, color:"var(--t1)", fontFamily:"'DM Mono',monospace" }}>{counts[k]||0}</span>
+              ].map(({k, dot}) => (counts[k]||0) > 0 ? (
+                <div key={k} style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"var(--fill2)", border:"0.5px solid var(--border2)" }}>
+                  <span style={{ width:5, height:5, borderRadius:"50%", background:dot, flexShrink:0, display:"inline-block" }} />
+                  <span style={{ fontSize:11, color:"var(--t2)", fontFamily:"'DM Mono',monospace" }}>{counts[k]}</span>
                   <span style={{ fontSize:10, color:"var(--t3)" }}>{STAGES[k].label}</span>
                 </div>
-              ))}
+              ) : null)}
+              {bankSize > 0 && (
+                <div style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"rgba(74,155,127,0.08)", border:"0.5px solid rgba(74,155,127,0.2)" }}>
+                  <span style={{ width:5, height:5, borderRadius:"50%", background:"#4A9B7F", display:"inline-block" }} />
+                  <span style={{ fontSize:10, fontWeight:500, color:"#4A9B7F" }}>{bankSize} ready</span>
+                </div>
+              )}
             </div>
-            {bankSize > 0 && (
-              <div style={{ display:"flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:99, background:"rgba(74,155,127,0.1)", border:"1px solid rgba(74,155,127,0.2)" }}>
-                <span style={{ width:6, height:6, borderRadius:"50%", background:"#4A9B7F", display:"inline-block" }} />
-                <span style={{ fontSize:10, fontWeight:600, color:"#4A9B7F" }}>{bankSize} ready</span>
-              </div>
-            )}
           </div>
 
-          {/* Right */}
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <button onClick={importCSV} style={{ height:32, padding:"0 12px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)", cursor:"pointer", display:"flex", alignItems:"center", gap:6, color:"var(--t3)", fontSize:12 }}>
-              <Upload size={13} /> Import
-            </button>
-            <button onClick={exportCSV} style={{ height:32, padding:"0 12px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)", cursor:"pointer", display:"flex", alignItems:"center", gap:6, color:"var(--t3)", fontSize:12 }}>
-              <Download size={13} /> Export
-            </button>
+          {/* Right — actions + user */}
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            {/* Collapsed actions menu */}
             <div style={{ position:"relative" }}>
-              <button onClick={() => setShowUserMenu(!showUserMenu)} style={{ height:32, padding:"0 10px 0 6px", borderRadius:8, display:"flex", alignItems:"center", gap:6, background:"var(--fill2)", border:"1px solid var(--border)", cursor:"pointer" }}>
+              <button onClick={()=>setShowUserMenu(m=>m==="actions"?null:"actions")} style={{ width:32, height:32, borderRadius:8, background:"transparent", border:"0.5px solid var(--border)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)" }}>
+                <span style={{ fontSize:16, lineHeight:1, letterSpacing:1 }}>···</span>
+              </button>
+              {showUserMenu==="actions" && (
+                <div style={{ position:"absolute", right:0, top:38, width:160, zIndex:40, background:"var(--sheet)", borderRadius:10, padding:4, border:"0.5px solid var(--border)", boxShadow:"var(--shadow-lg)" }}>
+                  <button onClick={()=>{importCSV();setShowUserMenu(null);}} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <Upload size={12}/> Import CSV
+                  </button>
+                  <button onClick={()=>{exportCSV();setShowUserMenu(null);}} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <Download size={12}/> Export CSV
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* User menu */}
+            <div style={{ position:"relative" }}>
+              <button onClick={()=>setShowUserMenu(m=>m==="user"?null:"user")} style={{ height:32, padding:"0 8px 0 4px", borderRadius:8, display:"flex", alignItems:"center", gap:6, background:"transparent", border:"0.5px solid var(--border)", cursor:"pointer" }}>
                 {user.user_metadata?.avatar_url
                   ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:22, height:22, borderRadius:99, objectFit:"cover" }} />
-                  : <div style={{ width:22, height:22, borderRadius:99, background:"var(--bg3)", display:"flex", alignItems:"center", justifyContent:"center" }}><User size={12} color="var(--t3)" /></div>
+                  : <div style={{ width:22, height:22, borderRadius:99, background:"var(--bg3)", display:"flex", alignItems:"center", justifyContent:"center" }}><User size={11} color="var(--t3)" /></div>
                 }
-                <span onClick={()=>setShowSettings(s=>!s)} style={{ fontSize:12, color:"var(--t2)", maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }}>{user.user_metadata?.full_name || user.email}</span>
-                <ChevronDown size={12} color="var(--t3)" />
+                <span onClick={e=>{e.stopPropagation();setShowSettings(s=>!s);}} style={{ fontSize:12, color:"var(--t2)", maxWidth:110, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }} title="Open settings">{user.user_metadata?.full_name || user.email}</span>
+                <ChevronDown size={11} color="var(--t4)" />
               </button>
-              {showUserMenu && (
-                <div style={{ position:"absolute", right:0, top:38, width:200, zIndex:40, background:"var(--sheet)", borderRadius:10, padding:6, border:"1px solid var(--border)", boxShadow:"var(--shadow-lg)" }}>
-                  <div style={{ padding:"8px 10px", borderBottom:"1px solid var(--border2)", marginBottom:4 }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:"var(--t1)" }}>{user.user_metadata?.full_name||"User"}</div>
+              {showUserMenu==="user" && (
+                <div style={{ position:"absolute", right:0, top:38, width:200, zIndex:40, background:"var(--sheet)", borderRadius:10, padding:4, border:"0.5px solid var(--border)", boxShadow:"var(--shadow-lg)" }}>
+                  <div style={{ padding:"8px 10px", marginBottom:2 }}>
+                    <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)" }}>{user.user_metadata?.full_name||"User"}</div>
                     <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>{user.email}</div>
+                    <div style={{ fontSize:10, color:"var(--t4)", marginTop:2, fontFamily:"'DM Mono',monospace" }}>v{VERSION}</div>
                   </div>
-                  <button onClick={handleSignOut} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontWeight:500, fontFamily:"inherit" }}
-                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"}
-                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <LogOut size={13} /> Sign out
+                  <div style={{ height:"0.5px", background:"var(--border2)", margin:"0 4px 4px" }}/>
+                  <button onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <Settings size={12}/> Settings
+                  </button>
+                  <button onClick={handleSignOut} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <LogOut size={12}/> Sign out
                   </button>
                 </div>
               )}
@@ -375,7 +391,7 @@ export default function Home() {
 
       </main>
 
-      {showUserMenu && <div onClick={() => setShowUserMenu(false)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
+      {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
       <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={setAppSettings} initialSettings={appSettings} />
       <ToastContainer />

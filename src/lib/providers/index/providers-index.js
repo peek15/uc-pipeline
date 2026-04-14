@@ -8,9 +8,9 @@
 // Each provider slot must implement:
 //   execute(params) → { result, cost_estimate, provider_name }
 
-import { voiceProviders  } from "./voice/providers-voice";
-import { visualProviders } from "./visual/providers-visual";
-import { assemblyProviders } from "./assembly/providers-assembly";
+import { voiceProviders  } from "../voice/providers-voice";
+import { visualProviders } from "../visual/providers-visual";
+import { assemblyProviders } from "../assembly/providers-assembly";
 
 // ── Route to correct provider via config ──
 export async function executeProvider(slot, brandProfileConfig, params) {

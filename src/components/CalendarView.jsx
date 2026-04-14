@@ -369,7 +369,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                     const ready4 = [!!s.script, !!s.script_fr, !!s.script_es, !!s.script_pt].filter(Boolean).length;
                     return (
                       <div key={s.id} style={{
-                        display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:7, marginBottom:3,
+                        display:"flex", alignItems:"center", gap:8, padding:"var(--card-padding-y, 8px) var(--card-padding-x, 10px)", borderRadius:7, marginBottom:"var(--card-gap, 3px)",
                         background:"var(--card)", borderLeft:`3px solid ${ac}`,
                       }}>
                         <div style={{ flex:1, minWidth:0 }}>

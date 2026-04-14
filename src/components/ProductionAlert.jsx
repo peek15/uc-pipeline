@@ -3,33 +3,40 @@ import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, TrendingUp, Calendar, FileText, X, ArrowRight, RefreshCw } from "lucide-react";
 import { FORMAT_MAP, FORMATS, ARCHETYPES, ACCENT } from "@/lib/constants";
 
-const HEALTHY_STOCK = 20;
-const LOW_STOCK     = 10;
-const HORIZON_DAYS  = 21;
-const CADENCE       = 5; // posts per week
+// ── Fallback defaults (match DEFAULT_SETTINGS in SettingsModal) ──
+const DEFAULT_HEALTHY = 20;
+const DEFAULT_LOW     = 10;
+const DEFAULT_HORIZON = 21;
+const DEFAULT_CADENCE = 5; // posts per week — not yet in settings, keep as constant
+
+function getThresholds(settings) {
+  const alerts = settings?.strategy?.alerts || {};
+  return {
+    HEALTHY_STOCK: alerts.stock_healthy ?? DEFAULT_HEALTHY,
+    LOW_STOCK:     alerts.stock_low     ?? DEFAULT_LOW,
+    HORIZON_DAYS:  alerts.horizon_days  ?? DEFAULT_HORIZON,
+  };
+}
 
 function getReadyStories(stories) {
   return stories.filter(s => ["approved","scripted","produced"].includes(s.status));
 }
 
-function getDaysUntilGap(stories, ready) {
+function getDaysUntilGap(stories, ready, HORIZON_DAYS, CADENCE) {
   const scheduled = stories.filter(s => s.scheduled_date && s.status !== "rejected");
   const today = new Date();
   const horizon = new Date(today.getTime() + HORIZON_DAYS * 86400000);
 
-  // Count scheduled slots in horizon
   const scheduledInHorizon = scheduled.filter(s => {
     const d = new Date(s.scheduled_date);
     return d >= today && d <= horizon;
   }).length;
 
-  // Total slots in horizon (5/week * 3 weeks)
   const totalSlots = Math.round(HORIZON_DAYS / 7 * CADENCE);
   const covered = scheduledInHorizon + ready.length;
   const gap = totalSlots - covered;
 
   if (gap <= 0) return null;
-  // Days until we run out
   const daysOfBuffer = Math.floor(covered / CADENCE * 7);
   return Math.max(0, daysOfBuffer);
 }
@@ -40,7 +47,7 @@ function getFormatBalance(stories, ready) {
 
   for (const fmt of FORMATS) {
     if (fmt.key === "special_edition") continue;
-    const readyCount = ready.filter(s => s.format === fmt.key).length;
+    const readyCount     = ready.filter(s => s.format === fmt.key).length;
     const scheduledCount = scheduled.filter(s => s.format === fmt.key).length;
     const total = readyCount + scheduledCount;
     if (total < 2) {
@@ -54,18 +61,17 @@ function getBestPerformers(stories) {
   const published = stories.filter(s => s.status === "published" && s.metrics_completion);
   if (published.length < 5) return null;
 
-  // Group by archetype + era combo
   const combos = {};
   for (const s of published) {
     const key = `${s.archetype}|${s.era}`;
     if (!combos[key]) combos[key] = { archetype: s.archetype, era: s.era, completions: [], count: 0 };
-    combos[key].completions.push(parseFloat(s.metrics_completion)||0);
+    combos[key].completions.push(parseFloat(s.metrics_completion) || 0);
     combos[key].count++;
   }
   const sorted = Object.values(combos)
     .filter(c => c.count >= 2)
-    .map(c => ({ ...c, avg: c.completions.reduce((a,b)=>a+b,0)/c.completions.length }))
-    .sort((a,b) => b.avg - a.avg);
+    .map(c => ({ ...c, avg: c.completions.reduce((a, b) => a + b, 0) / c.completions.length }))
+    .sort((a, b) => b.avg - a.avg);
   return sorted[0] || null;
 }
 
@@ -74,7 +80,7 @@ function getMissingTranslations(stories) {
   return scripted.filter(s => !s.script_fr || !s.script_es || !s.script_pt).length;
 }
 
-function getCalendarGaps(stories) {
+function getCalendarGaps(stories, HORIZON_DAYS, CADENCE) {
   const today = new Date();
   const horizon = new Date(today.getTime() + HORIZON_DAYS * 86400000);
   const totalSlots = Math.round(HORIZON_DAYS / 7 * CADENCE);
@@ -86,19 +92,23 @@ function getCalendarGaps(stories) {
   return { totalSlots, scheduled, empty: Math.max(0, totalSlots - scheduled) };
 }
 
-export default function ProductionAlert({ stories, onNavigate, onPrefillResearch, forceExpanded, onToggle }) {
+export default function ProductionAlert({ stories, onNavigate, onPrefillResearch, forceExpanded, onToggle, settings }) {
   const [dismissed, setDismissed] = useState(new Set());
   const [_expanded, _setExpanded] = useState(true);
-  const expanded  = forceExpanded !== undefined ? forceExpanded : _expanded;
+  const expanded    = forceExpanded !== undefined ? forceExpanded : _expanded;
   const setExpanded = onToggle || _setExpanded;
+
+  // ── Read thresholds from settings (with fallback) ──
+  const { HEALTHY_STOCK, LOW_STOCK, HORIZON_DAYS } = getThresholds(settings);
+  const CADENCE = settings?.strategy?.weekly_cadence ?? DEFAULT_CADENCE;
 
   const ready        = getReadyStories(stories);
   const stockLevel   = ready.length;
-  const daysUntilGap = getDaysUntilGap(stories, ready);
+  const daysUntilGap = getDaysUntilGap(stories, ready, HORIZON_DAYS, CADENCE);
   const formatAlerts = getFormatBalance(stories, ready);
   const bestPerformer= getBestPerformers(stories);
   const missingTrans = getMissingTranslations(stories);
-  const calGaps      = getCalendarGaps(stories);
+  const calGaps      = getCalendarGaps(stories, HORIZON_DAYS, CADENCE);
 
   const stockColor  = stockLevel >= HEALTHY_STOCK ? "#4A9B7F" : stockLevel >= LOW_STOCK ? "#C49A3C" : "#C0666A";
   const stockLabel  = stockLevel >= HEALTHY_STOCK ? "Healthy" : stockLevel >= LOW_STOCK ? "Low" : "Critical";
@@ -123,7 +133,7 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
       id: "gap",
       icon: Calendar,
       color: "#C0666A",
-      text: `Coverage gap in ~${daysUntilGap} days based on current stock + calendar (${calGaps.scheduled}/${calGaps.totalSlots} slots filled in next 3 weeks).`,
+      text: `Coverage gap in ~${daysUntilGap} days based on current stock + calendar (${calGaps.scheduled}/${calGaps.totalSlots} slots filled in next ${Math.round(HORIZON_DAYS / 7)} weeks).`,
       action: { label: "Fill calendar", fn: () => onNavigate("calendar") },
     });
   }
@@ -135,7 +145,7 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
       id: `fmt-${format.key}`,
       icon: ArrowRight,
       color: format.color,
-      text: `Low on ${format.label} stories — only ${total} ready or scheduled in next 3 weeks.`,
+      text: `Low on ${format.label} stories — only ${total} ready or scheduled in next ${Math.round(HORIZON_DAYS / 7)} weeks.`,
       action: { label: `Research ${format.label}`, fn: () => { onPrefillResearch({ format: format.key }); onNavigate("research"); } },
       dismissible: true,
     });
@@ -159,7 +169,7 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
       id: "trans",
       icon: FileText,
       color: "#C49A3C",
-      text: `${missingTrans} scripted ${missingTrans===1?"story":"stories"} missing FR/ES/PT translations — blocking full publishing readiness.`,
+      text: `${missingTrans} scripted ${missingTrans === 1 ? "story" : "stories"} missing FR/ES/PT translations — blocking full publishing readiness.`,
       action: { label: "Go to Script", fn: () => onNavigate("script") },
       dismissible: true,
     });
@@ -179,18 +189,20 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
   return (
     <div style={{ borderRadius:10, border:"1px solid var(--border)", background:"var(--card)", marginBottom:20, overflow:"hidden" }}>
       {/* Header */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderBottom: expanded ? "1px solid var(--border2)" : "none", cursor:"pointer" }}
-        onClick={() => setExpanded(e=>!e)}>
+      <div
+        style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderBottom: expanded ? "1px solid var(--border2)" : "none", cursor:"pointer" }}
+        onClick={() => setExpanded(e => !e)}
+      >
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span style={{ width:8, height:8, borderRadius:"50%", background:stockColor, display:"inline-block" }} />
           <span style={{ fontSize:12, fontWeight:600, color:"var(--t1)" }}>
             Production · {stockLabel} · {stockLevel} ready
           </span>
-          {!expanded && <span style={{ fontSize:11, color:"var(--t3)" }}>· {visibleBullets.length} alert{visibleBullets.length!==1?"s":""}</span>}
+          {!expanded && <span style={{ fontSize:11, color:"var(--t3)" }}>· {visibleBullets.length} alert{visibleBullets.length !== 1 ? "s" : ""}</span>}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌘J</span>
-          <span style={{ fontSize:12, color:"var(--t4)" }}>{expanded?"↑":"↓"}</span>
+          <span style={{ fontSize:12, color:"var(--t4)" }}>{expanded ? "↑" : "↓"}</span>
         </div>
       </div>
 
@@ -211,7 +223,7 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
                   )}
                 </div>
                 {b.dismissible && (
-                  <button onClick={()=>setDismissed(d=>new Set([...d,b.id]))} style={{ width:18, height:18, borderRadius:4, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <button onClick={() => setDismissed(d => new Set([...d, b.id]))} style={{ width:18, height:18, borderRadius:4, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                     <X size={11} color="var(--t4)" />
                   </button>
                 )}

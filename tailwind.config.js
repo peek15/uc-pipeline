@@ -4,33 +4,53 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        brand: {
-          gold: "#B8860B",
-          dark: "#000000",
-          card: "rgba(255,255,255,0.04)",
-          border: "rgba(255,255,255,0.06)",
-        },
+        // ── Backgrounds ──
+        bg:    'var(--bg)',
+        bg2:   'var(--bg2)',
+        bg3:   'var(--bg3)',
+        card:  'var(--card)',
+        sheet: 'var(--sheet)',
+
+        // ── Text ──
+        t1: 'var(--t1)',
+        t2: 'var(--t2)',
+        t3: 'var(--t3)',
+        t4: 'var(--t4)',
+
+        // ── Borders ──
+        border:     'var(--border)',
+        'border2':  'var(--border2)',
+        'border-in':'var(--border-in)',
+
+        // ── Fills ──
+        fill:  'var(--fill)',
+        fill2: 'var(--fill2)',
+
+        // ── Accent ──
+        gold: 'var(--gold)',
+
+        // ── Stage colors ──
         stage: {
-          new: "#5AC8FA",
-          approved: "#34C759",
-          scripted: "#AF52DE",
-          produced: "#FF9F0A",
-          published: "#B8860B",
-          rejected: "#FF3B30",
-          archived: "#8E8E93",
-        },
-        lang: {
-          en: "#5AC8FA",
-          fr: "#007AFF",
-          es: "#FF9500",
-          pt: "#34C759",
+          new:       'var(--c-new)',
+          approved:  'var(--c-approved)',
+          scripted:  'var(--c-scripted)',
+          produced:  'var(--c-produced)',
+          published: 'var(--c-published)',
+          rejected:  'var(--c-rejected)',
         },
       },
+
       fontFamily: {
-        display: ["'SF Pro Display'", "-apple-system", "system-ui", "sans-serif"],
-        body: ["'SF Pro Text'", "-apple-system", "system-ui", "sans-serif"],
-        mono: ["'SF Mono'", "ui-monospace", "monospace"],
-        serif: ["'New York'", "Georgia", "serif"],
+        display: ["'DM Sans'", "-apple-system", "system-ui", "sans-serif"],
+        body:    ["'DM Sans'", "-apple-system", "system-ui", "sans-serif"],
+        mono:    ["'DM Mono'", "ui-monospace", "monospace"],
+        serif:   ["Georgia", "'Times New Roman'", "serif"],
+      },
+
+      boxShadow: {
+        sm: 'var(--shadow-sm)',
+        DEFAULT: 'var(--shadow)',
+        lg: 'var(--shadow-lg)',
       },
     },
   },

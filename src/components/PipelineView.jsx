@@ -293,7 +293,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         if (!items.length&&stageFilter==="all") return null;
         const st = STAGES[stKey];
         return (
-          <div key={stKey} style={{marginBottom:32}}>
+          <div key={stKey} style={{marginBottom:"var(--section-gap, 32px)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:8,borderBottom:"1px solid var(--border)"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:12,fontWeight:600,color:"var(--t1)",letterSpacing:"0.04em",textTransform:"uppercase"}}>{st.label}</span>

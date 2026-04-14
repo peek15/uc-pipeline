@@ -384,7 +384,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
               const scoreData = scores[i];
               const fmt = FORMAT_MAP[s.format || format || suggestFormat(s.era)];
               return (
-                <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"1px solid var(--border)", borderLeft:`3px solid ${fmt?.color||"var(--border)"}` }}>
+                <div key={i} className="animate-fade-in" style={{ padding:"var(--card-padding-y, 16px) var(--card-padding-x, 18px)", borderRadius:10, background:"var(--card)", border:"1px solid var(--border)", borderLeft:`3px solid ${fmt?.color||"var(--border)"}` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>

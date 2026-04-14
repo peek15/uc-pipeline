@@ -388,7 +388,7 @@ No markdown.`;
               }}>
 
               {/* Header row */}
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px" }}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"var(--card-padding-y, 12px) var(--card-padding-x, 14px)" }}
                 onClick={e => { e.stopPropagation(); setFocusedIdx(idx); setExpandedIds(ex => { const n = new Set(ex); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; }); }}>
                 <div style={{ minWidth:0, flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", letterSpacing:"-0.01em", marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>

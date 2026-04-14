@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal, Mic, CheckCircle } from "lucide-react";
 import { LANGS, SCRIPT_SYSTEM, ACCENT } from "@/lib/constants";
 import { callClaude, callClaudeStream } from "@/lib/db";
-import { executeProvider } from "@/lib/providers";
+import { executeProvider } from "@/lib/providers/providers-index";
 import { downloadVoiceBlob, getVoiceStatus, getVoiceProvider, VOICE_PROVIDER_CONFIG } from "@/lib/providers/voice/providers-voice";
 
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }

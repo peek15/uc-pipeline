@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.5.6";
+const VERSION = "3.5.8";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -41,6 +41,7 @@ export default function Home() {
   const [showSettings,    setShowSettings]    = useState(false); // persisted across tab switches
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
+  const [syncError,       setSyncError]       = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -83,7 +84,7 @@ export default function Home() {
             applyTheme(data.brief_doc?.appearance?.theme || "system");
             if (data.brief_doc?.appearance?.default_tab) setTab(data.brief_doc.appearance.default_tab);
           }
-        }).catch(() => {});
+        }).catch(() => { setSyncError(true); });
     }
     else setLoading(false);
   }, [user]);
@@ -411,6 +412,13 @@ export default function Home() {
       {/* ── Content ── */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 80px" }}>
 
+        {/* Supabase sync error — non-blocking warning */}
+        {syncError && (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 14px", borderRadius:8, background:"rgba(196,154,60,0.08)", border:"0.5px solid rgba(196,154,60,0.25)", marginBottom:10, fontSize:12, color:"var(--t2)" }}>
+            <span>Settings loaded from cache — Supabase sync failed. Changes may not be saved.</span>
+            <button onClick={() => setSyncError(false)} style={{ background:"transparent", border:"none", cursor:"pointer", color:"var(--t3)", fontSize:16, lineHeight:1, padding:"0 2px" }}>×</button>
+          </div>
+        )}
         {/* ProductionAlert — always visible on all tabs */}
         <ProductionAlert
           stories={stories}
@@ -418,6 +426,7 @@ export default function Home() {
           onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
           forceExpanded={showCmdK}
           onToggle={() => setShowCmdK(s=>!s)}
+          settings={appSettings}
         />
 
         {/* All tabs mounted always — CSS hides inactive ones to preserve state */}

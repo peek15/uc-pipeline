@@ -72,6 +72,7 @@ export default function Home() {
           const parsed = JSON.parse(cached);
           setAppSettings(parsed);
           applyTheme(parsed?.appearance?.theme || "system");
+          applyDensity(parsed?.appearance?.density || "comfortable");
           if (parsed?.appearance?.default_tab) setTab(parsed.appearance.default_tab);
         }
       } catch {}
@@ -82,6 +83,7 @@ export default function Home() {
             setAppSettings(data.brief_doc);
             localStorage.setItem("uc_settings", JSON.stringify(data.brief_doc));
             applyTheme(data.brief_doc?.appearance?.theme || "system");
+            applyDensity(data.brief_doc?.appearance?.density || "comfortable");
             if (data.brief_doc?.appearance?.default_tab) setTab(data.brief_doc.appearance.default_tab);
           }
         }).catch(() => { setSyncError(true); });
@@ -173,12 +175,20 @@ export default function Home() {
     }
   };
 
-  // Apply theme whenever settings change
+  const applyDensity = (density) => {
+    const root = document.documentElement;
+    root.setAttribute("data-density", density || "comfortable");
+  };
+
+  // Apply theme + density whenever settings change
   useEffect(() => {
     if (appSettings?.appearance?.theme) {
       applyTheme(appSettings.appearance.theme);
     }
-  }, [appSettings?.appearance?.theme]);
+    if (appSettings?.appearance?.density) {
+      applyDensity(appSettings.appearance.density);
+    }
+  }, [appSettings?.appearance?.theme, appSettings?.appearance?.density]);
 
   // Production shortcut — Cmd+J: jump to research with top recommendation
   const handleProductionShortcut = useCallback(() => {
@@ -450,7 +460,7 @@ export default function Home() {
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem("uc_settings", JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); applyDensity(s?.appearance?.density || "comfortable"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem("uc_settings", JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} />
       <ToastContainer />
     </div>
   );

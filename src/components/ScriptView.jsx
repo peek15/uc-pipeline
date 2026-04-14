@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal, Mic, CheckCircle } from "lucide-react";
-import { LANGS, SCRIPT_SYSTEM, ACCENT } from "@/lib/constants";
+import { LANGS, SCRIPT_SYSTEM, ACCENT, FORMAT_MAP } from "@/lib/constants";
 import { callClaude, callClaudeStream } from "@/lib/db";
 import { executeProvider } from "@/lib/providers/index/providers-index";
 import { downloadVoiceBlob, getVoiceStatus, getVoiceProvider, VOICE_PROVIDER_CONFIG } from "@/lib/providers/voice/providers-voice";
@@ -110,16 +110,7 @@ export default function ScriptView({ stories, onUpdate, settings }) {
   useEffect(() => {
     if (focusedStory) {
       setTimeout(() => {
-        document.getElementById(`script-${focusedStory.id}`)?.scrollIntoView({ block:"nearest", behavior:"smooth" });
-      }, 50);
-    }
-  }, [focusedIdx]);
-
-  // Scroll focused story into view when focusedIdx changes
-  useEffect(() => {
-    if (focusedStory) {
-      setTimeout(() => {
-        document.getElementById(`script-${focusedStory.id}`)?.scrollIntoView({ block:"nearest", behavior:"smooth" });
+        document.getElementById(`script-${focusedStory.id}`)?.scrollIntoView({ block:"center", behavior:"smooth" });
       }, 50);
     }
   }, [focusedIdx]);
@@ -138,7 +129,7 @@ export default function ScriptView({ stories, onUpdate, settings }) {
           : Math.max(focusedIdx - 1, 0);
         setFocusedIdx(next);
         setTimeout(() => {
-          document.getElementById(`script-${ready[next]?.id}`)?.scrollIntoView({ block:"nearest", behavior:"smooth" });
+          document.getElementById(`script-${ready[next]?.id}`)?.scrollIntoView({ block:"center", behavior:"smooth" });
         }, 50);
       }
       if (e.key === "ArrowRight") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.add(focusedStory.id); return n; }); }
@@ -430,6 +421,7 @@ No markdown.`;
           const isStreaming = s.id in streaming;
           const availLangs  = getAvailableLangs(s);
           const ac          = ACCENT[s.archetype] || "var(--border)";
+          const fmt         = FORMAT_MAP[s.format];
           const isLoadingEn  = loading === `en-${s.id}`;
           const isLoadingFr  = loading === `fr-${s.id}`;
           const isLoadingEs  = loading === `es-${s.id}`;
@@ -445,7 +437,7 @@ No markdown.`;
                 borderTop:    isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
                 borderRight:  isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
                 borderBottom: isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
-                borderLeft:   `3px solid ${ac}`,
+                borderLeft:   fmt ? `3px solid ${fmt.color}` : `3px solid var(--border2)`,
                 background:   isFocused ? "var(--fill2)" : "var(--card)",
                 transition:   "background 0.1s",
               }}>

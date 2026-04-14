@@ -71,7 +71,8 @@ export default function Home() {
           const parsed = JSON.parse(cached);
           setAppSettings(parsed);
           applyTheme(parsed?.appearance?.theme || "system");
-          if (parsed?.appearance?.default_tab) setTab(parsed.appearance.default_tab);
+          // Only apply default_tab if no last tab saved
+          if (parsed?.appearance?.default_tab && !localStorage.getItem("uc_last_tab")) setTab(parsed.appearance.default_tab);
         }
       } catch {}
       // Then sync from Supabase (source of truth)
@@ -81,7 +82,8 @@ export default function Home() {
             setAppSettings(data.brief_doc);
             localStorage.setItem("uc_settings", JSON.stringify(data.brief_doc));
             applyTheme(data.brief_doc?.appearance?.theme || "system");
-            if (data.brief_doc?.appearance?.default_tab) setTab(data.brief_doc.appearance.default_tab);
+            // Only apply default_tab if no last tab saved
+            if (data.brief_doc?.appearance?.default_tab && !localStorage.getItem("uc_last_tab")) setTab(data.brief_doc.appearance.default_tab);
           }
         }).catch(() => {});
     }

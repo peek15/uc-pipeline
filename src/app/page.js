@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.5.8";
+const VERSION = "3.6.0";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -452,7 +452,7 @@ export default function Home() {
             onPrefillUsed={() => setResearchPrefill(null)}
           />
         </div>
-        <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView   stories={stories} onUpdate={updateStory} /></div>
+        <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView stories={stories} onUpdate={updateStory} settings={appSettings} /></div>
         <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
         <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
 

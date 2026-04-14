@@ -1,12 +1,25 @@
 "use client";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal, Mic, CheckCircle } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, Search, SlidersHorizontal, Mic, CheckCircle } from "lucide-react";
 import { LANGS, SCRIPT_SYSTEM, ACCENT, FORMAT_MAP } from "@/lib/constants";
 import { callClaude, callClaudeStream } from "@/lib/db";
 import { executeProvider } from "@/lib/providers/index/providers-index";
 import { downloadVoiceBlob, getVoiceStatus, getVoiceProvider, VOICE_PROVIDER_CONFIG } from "@/lib/providers/voice/providers-voice";
 
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
+
+function ScoreBar({ score, label, max=25 }) {
+  if (score == null) return null;
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+      <span style={{ fontSize:10, color:"var(--t3)", width:90, flexShrink:0 }}>{label}</span>
+      <div style={{ flex:1, height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden" }}>
+        <div style={{ height:"100%", width:`${(score/max)*100}%`, background:"var(--t1)", borderRadius:2 }} />
+      </div>
+      <span style={{ fontSize:10, fontFamily:"'DM Mono',monospace", color:"var(--t2)", width:20, textAlign:"right" }}>{score}</span>
+    </div>
+  );
+}
 
 function ProgressSteps({ steps, current }) {
   return (
@@ -29,39 +42,40 @@ function ProgressSteps({ steps, current }) {
 }
 
 export default function ScriptView({ stories, onUpdate, settings }) {
-  // ── All state first — before any useMemo ──
-  const [focusedIdx,   setFocusedIdx]   = useState(0);
-  const [expandedIds,  setExpandedIds]  = useState(new Set());
-  const [viewLangMap,  setViewLangMap]  = useState({});
+  // ── All state above any early return ──
+  const [focusedIdx,    setFocusedIdx]    = useState(0);
+  const [expandedIds,   setExpandedIds]   = useState(new Set());
+  const [selected,      setSelected]      = useState(new Set());
+  const [viewLangMap,   setViewLangMap]   = useState({});
+  const [loading,       setLoading]       = useState(null);
+  const [streaming,     setStreaming]     = useState({});
+  const [localLangs,    setLocalLangs]    = useState({});
+  const [error,         setError]         = useState(null);
+  const [copied,        setCopied]        = useState(false);
+  const [batchMode,     setBatchMode]     = useState(false);
+  const [batchDone,     setBatchDone]     = useState(0);
+  const [batchStep,     setBatchStep]     = useState("");
+  const [autoTranslate, setAutoTranslate] = useState(true);
+  const [search,        setSearch]        = useState("");
+  const [showScripted,  setShowScripted]  = useState(false);
+  const [filterLang,    setFilterLang]    = useState("");
+  const [filterArch,    setFilterArch]    = useState("");
+  const [filterEra,     setFilterEra]     = useState("");
+  const [sortBy,        setSortBy]        = useState("date_desc");
+  const [showFilters,   setShowFilters]   = useState(false);
+  const [voiceLoading,  setVoiceLoading]  = useState({});
+  const [voiceError,    setVoiceError]    = useState({});
+  const [voiceDone,     setVoiceDone]     = useState({});
+
   const getViewLang = (id) => viewLangMap[id] || "en";
   const setViewLang = (id, lang) => setViewLangMap(m => ({ ...m, [id]: lang }));
-  const [loading,      setLoading]      = useState(null);
-  const [streaming,    setStreaming]     = useState({});
-  const [localLangs,   setLocalLangs]   = useState({});
-  const [error,        setError]        = useState(null);
-  const [copied,       setCopied]       = useState(false);
-  const [batchMode,    setBatchMode]    = useState(false);
-  const [batchDone,    setBatchDone]    = useState(0);
-  const [batchStep,    setBatchStep]    = useState("");
-  const [autoTranslate,setAutoTranslate] = useState(true);
-  const [search,      setSearch]      = useState("");
-  const [filterStatus,setFilterStatus]= useState("all");
-  const [filterLang,  setFilterLang]  = useState("");
-  const [filterArch,  setFilterArch]  = useState("");
-  const [filterEra,   setFilterEra]   = useState("");
-  const [sortBy,      setSortBy]      = useState("date_desc");
-  const [showFilters, setShowFilters] = useState(false);
-  const [voiceLoading, setVoiceLoading] = useState({}); // { [storyId-lang]: true }
-  const [voiceError,   setVoiceError]   = useState({}); // { [storyId]: "error msg" }
-  const [voiceDone,    setVoiceDone]    = useState({}); // { [storyId-lang]: true }
 
-  // ── Derived state ──
-  const allReady = stories.filter(s => ["approved","scripted"].includes(s.status));
+  // ── Derived ──
+  const allEligible = stories.filter(s => ["approved","scripted"].includes(s.status));
 
   const ready = useMemo(() => {
-    let list = allReady.filter(s => {
-      if (filterStatus === "unscripted" && s.script) return false;
-      if (filterStatus === "scripted"   && !s.script) return false;
+    let list = allEligible.filter(s => {
+      if (!showScripted && s.status === "scripted" && s.script) return false;
       if (filterArch && s.archetype !== filterArch) return false;
       if (filterEra  && s.era       !== filterEra)  return false;
       if (filterLang) {
@@ -87,26 +101,25 @@ export default function ScriptView({ stories, onUpdate, settings }) {
       return 0;
     });
     return list;
-  }, [allReady, filterStatus, filterLang, filterArch, filterEra, search, sortBy, localLangs]);
+  }, [allEligible, showScripted, filterLang, filterArch, filterEra, search, sortBy, localLangs]);
 
-  const activeFilterCount = [filterStatus!=="all", filterLang, filterArch, filterEra].filter(Boolean).length;
-  const clearFilters = () => { setFilterStatus("all"); setFilterLang(""); setFilterArch(""); setFilterEra(""); setSearch(""); setSortBy("date_desc"); };
+  const activeFilterCount = [filterLang, filterArch, filterEra].filter(Boolean).length;
+  const clearFilters = () => { setFilterLang(""); setFilterArch(""); setFilterEra(""); setSearch(""); setSortBy("date_desc"); };
 
-  const focusedStory = ready[focusedIdx] || null;
+  const focusedStory  = ready[focusedIdx] || null;
+  const unscripted    = ready.filter(s => !s.script);
+  const STEPS         = autoTranslate ? ["EN","FR","ES","PT"] : ["EN"];
+  const scriptedCount = allEligible.filter(s => s.status === "scripted" && s.script).length;
 
-  // Get script text — check local cache first, then story props
   const getScript = (story, lang) => {
     if (!story) return null;
     if (lang === "en") return streaming[story.id] !== undefined ? streaming[story.id] : story.script;
     return localLangs[story.id]?.[lang] ?? story[`script_${lang}`] ?? null;
   };
 
-  // Get all available langs for a story
-  const getAvailableLangs = (story) => {
-    return LANGS.filter(l => !!getScript(story, l.key));
-  };
+  const getAvailableLangs = (story) => LANGS.filter(l => !!getScript(story, l.key));
 
-  // Scroll focused story into view when focusedIdx changes
+  // ── Scroll focused into view ──
   useEffect(() => {
     if (focusedStory) {
       setTimeout(() => {
@@ -115,7 +128,7 @@ export default function ScriptView({ stories, onUpdate, settings }) {
     }
   }, [focusedIdx]);
 
-  // Keyboard navigation
+  // ── Keyboard navigation ──
   useEffect(() => {
     const handler = (e) => {
       const tag = document.activeElement?.tagName;
@@ -134,18 +147,17 @@ export default function ScriptView({ stories, onUpdate, settings }) {
       }
       if (e.key === "ArrowRight") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.add(focusedStory.id); return n; }); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.delete(focusedStory.id); return n; }); }
-      if (e.key === " ") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.has(focusedStory.id) ? n.delete(focusedStory.id) : n.add(focusedStory.id); return n; }); }
-      // Cmd+G = generate/rewrite focused story
+      if (e.key === " ")          { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.has(focusedStory.id) ? n.delete(focusedStory.id) : n.add(focusedStory.id); return n; }); }
+      if (e.key === "Enter" && !e.metaKey) { e.preventDefault(); if (!loading && !focusedStory.script) generate(focusedStory); }
       if (e.metaKey && e.key === "g") { e.preventDefault(); if (!loading) generate(focusedStory); }
-      // Cmd+T = translate all for focused story
       if (e.metaKey && e.key === "t") { e.preventDefault(); if (!loading && focusedStory.script) translateAll(focusedStory); }
-      // Cmd+C when expanded = copy current lang
+      if (e.metaKey && e.key === "a") { e.preventDefault(); setSelected(new Set(ready.map(s => s.id))); }
+      if (e.key === "Escape") { setSelected(new Set()); }
       if (e.metaKey && e.key === "c" && expandedIds.has(focusedStory.id)) {
-        const vl2 = getViewLang(focusedStory.id);
-        const sc = getScript(focusedStory, vl2);
-        if (sc) { navigator.clipboard.writeText(sc); setCopied(`${focusedStory.id}-${vl2}`); setTimeout(()=>setCopied(false),2000); }
+        const vl = getViewLang(focusedStory.id);
+        const sc = getScript(focusedStory, vl);
+        if (sc) { navigator.clipboard.writeText(sc); setCopied(`${focusedStory.id}-${vl}`); setTimeout(() => setCopied(false), 2000); }
       }
-      // 1-4 keys = switch lang when expanded
       if (expandedIds.has(focusedStory.id)) {
         const langMap = { "1":"en","2":"fr","3":"es","4":"pt" };
         if (langMap[e.key]) { const l = langMap[e.key]; if (getScript(focusedStory, l)) setViewLang(focusedStory.id, l); }
@@ -155,8 +167,9 @@ export default function ScriptView({ stories, onUpdate, settings }) {
     return () => window.removeEventListener("keydown", handler);
   }, [focusedIdx, focusedStory, ready, loading, expandedIds, viewLangMap, localLangs, streaming]);
 
+  // ── Script generation ──
   const translateLang = async (story, lang, scriptText) => {
-    const langName = LANGS.find(l=>l.key===lang)?.name||lang;
+    const langName = LANGS.find(l => l.key === lang)?.name || lang;
     const prompt = `Translate this Uncle Carter sports storytelling script to ${langName}. Keep the same tone: calm, warm, storytelling uncle. Translate "Forty seconds." and the closing line naturally. Same rhythm. 110-150 words.\n\nReturn ONLY the translated script.\n\nOriginal:\n${scriptText}`;
     return await callClaude(prompt, 600);
   };
@@ -172,42 +185,22 @@ export default function ScriptView({ stories, onUpdate, settings }) {
       setStreaming(s => { const n = {...s}; delete n[story.id]; return n; });
       await onUpdate(story.id, { script: enText, script_version: (story.script_version||0)+1, status: "scripted" });
 
-      // Auto-suggest reach score if not already set
       if (!story.reach_score) {
         try {
-          const reachPrompt = `You are scoring an Uncle Carter NBA story for reach potential (discoverability by new viewers).
-
-Score this story 0-100 on reach potential based on:
-- Name recognition of the subject (40%) — how famous is the player/moment?
-- Recency (25%) — how recently was this in public consciousness?
-- Search volume proxy (20%) — how often is this topic searched?
-- Trending relevance (15%) — is this connected to current news?
-
-Story: "${story.title}"
-Players: ${story.players||"Unknown"}
-Era: ${story.era||"Unknown"}
-Angle: ${story.angle||""}
-
-Return ONLY a JSON object: { "reach_score": number, "reasoning": "1 sentence" }
-No markdown.`;
+          const reachPrompt = `You are scoring an Uncle Carter NBA story for reach potential.\n\nScore 0-100:\n- Name recognition (40%)\n- Recency (25%)\n- Search volume proxy (20%)\n- Trending relevance (15%)\n\nStory: "${story.title}"\nPlayers: ${story.players||"Unknown"}\nEra: ${story.era||"Unknown"}\nAngle: ${story.angle||""}\n\nReturn ONLY: { "reach_score": number, "reasoning": "1 sentence" }`;
           const reachText = await callClaude(reachPrompt, 200, "haiku");
-          const clean = reachText.replace(/\`\`\`json\s*/g,"").replace(/\`\`\`\s*/g,"").trim();
+          const clean = reachText.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
           let parsed = null;
           try { parsed = JSON.parse(clean); } catch {}
-          if (!parsed) { const m = clean.match(/\{[\s\S]*\}/); if(m) try{parsed=JSON.parse(m[0]);}catch{} }
-          if (parsed?.reach_score) {
-            await onUpdate(story.id, { reach_score: Math.min(100, Math.max(0, Math.round(parsed.reach_score))) });
-          }
-        } catch {} // reach score is non-blocking
+          if (!parsed) { const m = clean.match(/\{[\s\S]*\}/); if (m) try { parsed = JSON.parse(m[0]); } catch {} }
+          if (parsed?.reach_score) await onUpdate(story.id, { reach_score: Math.min(100, Math.max(0, Math.round(parsed.reach_score))) });
+        } catch {}
       }
 
       if (withTranslate) {
-        const newLangs = {};
         for (const lang of ["fr","es","pt"]) {
           setLoading(`${lang}-${story.id}`);
           const translated = await translateLang(story, lang, enText);
-          newLangs[lang] = translated;
-          // Save locally immediately so UI updates
           setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id]||{}), [lang]: translated } }));
           await onUpdate(story.id, { [`script_${lang}`]: translated });
           await new Promise(r => setTimeout(r, 300));
@@ -217,26 +210,36 @@ No markdown.`;
   };
 
   const generateAll = async () => {
-    const queue = ready.filter(s => !s.script);
+    const queue = unscripted;
     setBatchMode(true); setBatchDone(0); setError(null);
     for (let i = 0; i < queue.length; i++) {
-      const s = queue[i];
-      setBatchStep(s.title.length > 35 ? s.title.slice(0,35)+"..." : s.title);
-      await generate(s, autoTranslate);
+      setBatchStep(queue[i].title.length > 35 ? queue[i].title.slice(0,35)+"..." : queue[i].title);
+      await generate(queue[i], autoTranslate);
       setBatchDone(i + 1);
       if (i < queue.length - 1) await new Promise(r => setTimeout(r, 500));
     }
     setBatchMode(false); setBatchStep("");
   };
 
+  const generateSelected = async () => {
+    const queue = ready.filter(s => selected.has(s.id) && !s.script);
+    setBatchMode(true); setBatchDone(0); setError(null);
+    for (let i = 0; i < queue.length; i++) {
+      setBatchStep(queue[i].title.length > 35 ? queue[i].title.slice(0,35)+"..." : queue[i].title);
+      await generate(queue[i], autoTranslate);
+      setBatchDone(i + 1);
+      if (i < queue.length - 1) await new Promise(r => setTimeout(r, 500));
+    }
+    setBatchMode(false); setBatchStep(""); setSelected(new Set());
+  };
+
   const translateAll = async (story) => {
     setError(null);
     try {
-      const scriptText = story.script;
       for (const lang of ["fr","es","pt"]) {
         if (getScript(story, lang)) continue;
         setLoading(`${lang}-${story.id}`);
-        const translated = await translateLang(story, lang, scriptText);
+        const translated = await translateLang(story, lang, story.script);
         setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id]||{}), [lang]: translated } }));
         await onUpdate(story.id, { [`script_${lang}`]: translated });
         await new Promise(r => setTimeout(r, 300));
@@ -248,15 +251,11 @@ No markdown.`;
     const slug = story.title.slice(0,30).replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
     const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
-    LANGS.forEach(l => {
-      const sc = getScript(story, l.key);
-      if (sc) zip.file(`UC-${slug}_${l.key}.txt`, sc);
-    });
+    LANGS.forEach(l => { const sc = getScript(story, l.key); if (sc) zip.file(`UC-${slug}_${l.key}.txt`, sc); });
     const blob = await zip.generateAsync({ type:"blob" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `UC-${slug}-voice-pack.zip`; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `UC-${slug}-script-pack.zip`; a.click();
   };
 
-  // ── Voice generation ──
   const generateVoiceForLang = async (story, lang, apiKey) => {
     const key = `${story.id}-${lang}`;
     setVoiceLoading(v => ({ ...v, [key]: true }));
@@ -265,18 +264,12 @@ No markdown.`;
       const script = getScript(story, lang);
       if (!script) throw new Error(`No ${lang.toUpperCase()} script available.`);
       const slug = story.title.slice(0,30).replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
-      const result = await executeProvider("voice", settings?.providers, {
-        script, lang, storySlug: slug,
-        apiKey,
-      });
+      const result = await executeProvider("voice", settings?.providers, { script, lang, storySlug: slug, apiKey });
       downloadVoiceBlob(result);
       setVoiceDone(v => ({ ...v, [key]: true }));
-      // Check if all available langs are done — if so, advance to produced
       const availKeys = LANGS.filter(l => !!getScript(story, l.key)).map(l => `${story.id}-${l.key}`);
       const allDone = availKeys.every(k => k === key || voiceDone[k]);
-      if (allDone && story.status === "scripted") {
-        await onUpdate(story.id, { status: "produced" });
-      }
+      if (allDone && story.status === "scripted") await onUpdate(story.id, { status: "produced" });
     } catch (err) {
       setVoiceError(v => ({ ...v, [story.id]: err.message }));
     } finally {
@@ -285,42 +278,36 @@ No markdown.`;
   };
 
   const generateAllVoices = async (story, apiKey) => {
-    const availLangs = LANGS.filter(l => !!getScript(story, l.key)).map(l => l.key);
-    for (const lang of availLangs) {
-      await generateVoiceForLang(story, lang, apiKey);
-      await new Promise(r => setTimeout(r, 500));
-    }
+    const langs = LANGS.filter(l => !!getScript(story, l.key)).map(l => l.key);
+    for (const lang of langs) { await generateVoiceForLang(story, lang, apiKey); await new Promise(r => setTimeout(r, 500)); }
   };
 
-  const markAsProduced = async (story) => {
-    await onUpdate(story.id, { status: "produced" });
-  };
-
-  const unscripted = ready.filter(s => !s.script);
-  const STEPS = autoTranslate ? ["EN","FR","ES","PT"] : ["EN"];
-
-  if (!ready.length) return (
+  // ── Empty state ──
+  if (!allEligible.length) return (
     <div style={{ textAlign:"center", padding:"80px 0", color:"var(--t4)" }} className="animate-fade-in">
       <FileText size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }} />
-      <div style={{ fontSize:13 }}>Approve stories to start scripting</div>
+      <div style={{ fontSize:13 }}>Approve stories in Pipeline to start scripting</div>
     </div>
   );
 
   return (
     <div className="animate-fade-in">
 
-      {/* Options + batch bar */}
+      {/* ── Options bar ── */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:12 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:12, color:"var(--t2)" }}>Auto-translate</span>
-          <button onClick={() => setAutoTranslate(a=>!a)} style={{ width:36, height:20, borderRadius:10, border:"none", cursor:"pointer", background: autoTranslate ? "var(--t1)" : "var(--t4)", position:"relative", transition:"background 0.2s" }}>
+          <button onClick={() => setAutoTranslate(a => !a)} style={{ width:36, height:20, borderRadius:10, border:"none", cursor:"pointer", background: autoTranslate ? "var(--t1)" : "var(--t4)", position:"relative", transition:"background 0.2s" }}>
             <div style={{ position:"absolute", top:2, left: autoTranslate ? 18 : 2, width:16, height:16, borderRadius:"50%", background:"var(--bg)", transition:"left 0.2s" }} />
           </button>
+          {scriptedCount > 0 && (
+            <button onClick={() => setShowScripted(v => !v)} style={{ fontSize:11, color: showScripted ? "var(--t1)" : "var(--t3)", background:"transparent", border:"0.5px solid var(--border)", borderRadius:5, padding:"2px 8px", cursor:"pointer" }}>
+              {showScripted ? "Hide" : "Show"} scripted ({scriptedCount})
+            </button>
+          )}
           {batchMode && batchStep && (
             <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:8 }}>
-              <ProgressSteps steps={STEPS} current={
-                loading?.startsWith("fr") ? 1 : loading?.startsWith("es") ? 2 : loading?.startsWith("pt") ? 3 : 0
-              } />
+              <ProgressSteps steps={STEPS} current={loading?.startsWith("fr") ? 1 : loading?.startsWith("es") ? 2 : loading?.startsWith("pt") ? 3 : 0} />
               <span style={{ fontSize:11, color:"var(--t3)" }}>{batchStep}</span>
               <span style={{ fontSize:11, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>{batchDone}/{unscripted.length + batchDone}</span>
             </div>
@@ -337,20 +324,38 @@ No markdown.`;
         )}
       </div>
 
+      {/* ── Bulk action bar ── */}
+      {selected.size > 0 && (
+        <div className="animate-fade-in" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderRadius:10, background:"var(--t1)", color:"var(--bg)", marginBottom:12 }}>
+          <span style={{ fontSize:12, fontWeight:600 }}>{selected.size} selected</span>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={generateSelected} disabled={!!loading} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--bg)", color:"var(--t1)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
+              <Layers size={12} /> Generate scripts
+            </button>
+            <button onClick={() => ready.filter(s => selected.has(s.id) && s.script).forEach(s => translateAll(s))} disabled={!!loading} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"rgba(255,255,255,0.1)", color:"var(--bg)", border:"1px solid rgba(255,255,255,0.2)", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
+              <Layers size={12} /> Translate missing
+            </button>
+            <button onClick={() => setSelected(new Set())} style={{ padding:"6px 10px", borderRadius:7, fontSize:12, background:"transparent", color:"rgba(255,255,255,0.5)", border:"none", cursor:"pointer" }}>
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Filter bar ── */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:8, marginBottom:12, alignItems:"center" }}>
         <div style={{ position:"relative" }}>
           <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--t3)", pointerEvents:"none" }} />
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title or player..."
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title or player..."
             style={{ width:"100%", padding:"8px 12px 8px 32px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", fontSize:13, outline:"none" }} />
         </div>
-        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ padding:"8px 10px", borderRadius:8, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding:"8px 10px", borderRadius:8, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
           <option value="date_desc">Newest first</option>
           <option value="date_asc">Oldest first</option>
           <option value="score_desc">Score: high → low</option>
           <option value="title_asc">Title A → Z</option>
         </select>
-        <button onClick={() => setShowFilters(f=>!f)} style={{
+        <button onClick={() => setShowFilters(f => !f)} style={{
           height:36, padding:"0 12px", borderRadius:8, fontSize:12, fontWeight:500,
           background: showFilters || activeFilterCount > 0 ? "var(--t1)" : "var(--fill2)",
           color:      showFilters || activeFilterCount > 0 ? "var(--bg)"  : "var(--t2)",
@@ -368,89 +373,92 @@ No markdown.`;
 
       {showFilters && (
         <div className="animate-fade-in" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:8, padding:"12px 14px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:12 }}>
-          {/* Status */}
-          <div>
-            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Status</div>
-            <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
-              <option value="all">All</option>
-              <option value="unscripted">No script yet</option>
-              <option value="scripted">Has script</option>
-            </select>
-          </div>
-          {/* Missing lang */}
           <div>
             <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Missing lang</div>
-            <select value={filterLang} onChange={e=>setFilterLang(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+            <select value={filterLang} onChange={e => setFilterLang(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
               <option value="">Any</option>
               <option value="fr">Missing FR</option>
               <option value="es">Missing ES</option>
               <option value="pt">Missing PT</option>
             </select>
           </div>
-          {/* Archetype */}
           <div>
             <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Archetype</div>
-            <select value={filterArch} onChange={e=>setFilterArch(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+            <select value={filterArch} onChange={e => setFilterArch(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
               <option value="">Any</option>
-              {[...new Set(allReady.map(s=>s.archetype).filter(Boolean))].sort().map(a => <option key={a} value={a}>{a}</option>)}
+              {[...new Set(allEligible.map(s => s.archetype).filter(Boolean))].sort().map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
-          {/* Era */}
           <div>
             <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Era</div>
-            <select value={filterEra} onChange={e=>setFilterEra(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
+            <select value={filterEra} onChange={e => setFilterEra(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
               <option value="">Any</option>
-              {[...new Set(allReady.map(s=>s.era).filter(Boolean))].sort().map(e => <option key={e} value={e}>{e}</option>)}
+              {[...new Set(allEligible.map(s => s.era).filter(Boolean))].sort().map(e => <option key={e} value={e}>{e}</option>)}
             </select>
           </div>
         </div>
       )}
 
-      {/* Result count */}
       {(search || activeFilterCount > 0) && (
         <div style={{ fontSize:12, color:"var(--t3)", marginBottom:10 }}>
           {ready.length} {ready.length === 1 ? "story" : "stories"} found
         </div>
       )}
 
-      {/* Story list */}
-      <div style={{ display:"flex", flexDirection:"column", gap:2 }}>
+      {/* ── Story list ── */}
+      <div style={{ display:"flex", flexDirection:"column", gap:"var(--card-gap, 2px)" }}>
         {ready.map((s, idx) => {
-          const isFocused   = idx === focusedIdx;
-          const isExpanded  = expandedIds.has(s.id);
-          const isStreaming = s.id in streaming;
-          const availLangs  = getAvailableLangs(s);
-          const ac          = ACCENT[s.archetype] || "var(--border)";
-          const fmt         = FORMAT_MAP[s.format];
-          const isLoadingEn  = loading === `en-${s.id}`;
-          const isLoadingFr  = loading === `fr-${s.id}`;
-          const isLoadingEs  = loading === `es-${s.id}`;
-          const isLoadingPt  = loading === `pt-${s.id}`;
+          const isFocused     = idx === focusedIdx;
+          const isExpanded    = expandedIds.has(s.id);
+          const isSelected    = selected.has(s.id);
+          const isStreaming   = s.id in streaming;
+          const availLangs    = getAvailableLangs(s);
+          const ac            = ACCENT[s.archetype] || "var(--border)";
+          const fmt           = FORMAT_MAP[s.format];
+          const players       = Array.isArray(s.players) ? s.players.join(", ") : (s.players||"");
+          const hasScore      = s.score_total != null;
+          const dateStr       = s.created_at ? new Date(s.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"}) : "";
+          const isLoadingEn   = loading === `en-${s.id}`;
+          const isLoadingFr   = loading === `fr-${s.id}`;
+          const isLoadingEs   = loading === `es-${s.id}`;
+          const isLoadingPt   = loading === `pt-${s.id}`;
           const isLoadingThis = isLoadingEn || isLoadingFr || isLoadingEs || isLoadingPt;
-          const currentStep  = isLoadingEn ? 0 : isLoadingFr ? 1 : isLoadingEs ? 2 : isLoadingPt ? 3 : -1;
+          const currentStep   = isLoadingEn ? 0 : isLoadingFr ? 1 : isLoadingEs ? 2 : isLoadingPt ? 3 : -1;
 
           return (
             <div key={s.id} id={`script-${s.id}`}
               onClick={() => setFocusedIdx(idx)}
               style={{
-                borderRadius:8, marginBottom:2, cursor:"pointer",
-                borderTop:    isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
-                borderRight:  isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
-                borderBottom: isFocused ? "1px solid var(--t2)" : "1px solid var(--border2)",
-                borderLeft:   fmt ? `3px solid ${fmt.color}` : `3px solid var(--border2)`,
-                background:   isFocused ? "var(--fill2)" : "var(--card)",
+                borderRadius:8,
+                borderTop:    isFocused ? "1px solid var(--t2)" : isSelected ? "1px solid var(--t1)" : "1px solid var(--border2)",
+                borderRight:  isFocused ? "1px solid var(--t2)" : isSelected ? "1px solid var(--t1)" : "1px solid var(--border2)",
+                borderBottom: isFocused ? "1px solid var(--t2)" : isSelected ? "1px solid var(--t1)" : "1px solid var(--border2)",
+                borderLeft:   fmt ? `3px solid ${fmt.color}` : "3px solid var(--border2)",
+                background:   isSelected ? "var(--fill2)" : "var(--card)",
                 transition:   "background 0.1s",
               }}>
 
-              {/* Header row */}
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px" }}
+              {/* ── Main row — Pipeline-identical grid ── */}
+              <div style={{ display:"grid", gridTemplateColumns:"24px 1fr auto auto", alignItems:"center", gap:10, padding:"var(--card-padding-y, 10px) var(--card-padding-x, 12px)", cursor:"pointer" }}
                 onClick={e => { e.stopPropagation(); setFocusedIdx(idx); setExpandedIds(ex => { const n = new Set(ex); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; }); }}>
-                <div style={{ minWidth:0, flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", letterSpacing:"-0.01em", marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
+
+                {/* Checkbox */}
+                <div onClick={e => { e.stopPropagation(); setSelected(sel => { const n = new Set(sel); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; }); }}
+                  style={{ width:18, height:18, borderRadius:4, border:`1.5px solid ${isSelected ? "var(--t1)" : "var(--t4)"}`, background:isSelected ? "var(--t1)" : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, cursor:"pointer" }}>
+                  {isSelected && <Check size={11} color="var(--bg)" />}
+                </div>
+
+                {/* Content */}
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", letterSpacing:"-0.01em", marginBottom:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
                   <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)", flexWrap:"wrap" }}>
-                    <span style={{ color:ac, fontWeight:500 }}>{s.archetype}</span>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
+                      <span style={{ width:6, height:6, borderRadius:"50%", background:ac, display:"inline-block", flexShrink:0 }} />
+                      <span style={{ color:ac, fontWeight:500 }}>{s.archetype}</span>
+                    </span>
                     {s.era && <><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
-                    {s.script && <><span style={{color:"var(--t4)"}}>·</span><span style={{fontFamily:"'DM Mono',monospace",fontSize:11}}>v{s.script_version||1} · {wc(s.script)}w</span></>}
+                    {players && <><span style={{color:"var(--t4)"}}>·</span><span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:180 }}>{players}</span></>}
+                    {s.script && <><span style={{color:"var(--t4)"}}>·</span><FileText size={11} color="var(--t3)" /><span style={{fontFamily:"'DM Mono',monospace",fontSize:10}}>{wc(s.script)}w</span></>}
                     {isLoadingThis
                       ? <ProgressSteps steps={STEPS} current={currentStep} />
                       : availLangs.map(l => (
@@ -459,28 +467,56 @@ No markdown.`;
                     }
                   </div>
                 </div>
-                <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft:12 }}>
-                  {/* Quick generate button */}
-                  {!isLoadingThis && (
-                    <button onClick={e=>{e.stopPropagation();generate(s);}} disabled={!!loading} style={{
-                      padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:500,
-                      background:"var(--fill2)", border:"1px solid var(--border)",
-                      color:"var(--t2)", cursor:loading?"not-allowed":"pointer",
-                      display:"flex", alignItems:"center", gap:4,
-                    }}
-                    onMouseEnter={e=>{e.currentTarget.style.background="var(--t1)";e.currentTarget.style.color="var(--bg)";}}
-                    onMouseLeave={e=>{e.currentTarget.style.background="var(--fill2)";e.currentTarget.style.color="var(--t2)";}}>
-                      <RefreshCw size={11} /> {s.script ? "Rewrite" : "Generate"}
-                    </button>
-                  )}
-                  {isExpanded ? <ChevronDown size={15} color="var(--t4)" /> : <ChevronRight size={15} color="var(--t4)" />}
+
+                {/* Score + reach + date */}
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3, flexShrink:0 }}>
+                  {hasScore && <span style={{ fontSize:11, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{s.score_total}</span>}
+                  {s.reach_score != null && <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>↗{s.reach_score}</span>}
+                  {dateStr && <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>{dateStr}</span>}
                 </div>
+
+                {/* Generate / Rewrite */}
+                {!isLoadingThis && (
+                  <button onClick={e => { e.stopPropagation(); generate(s); }} disabled={!!loading} style={{
+                    padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:500,
+                    background:"var(--fill2)", border:"1px solid var(--border)",
+                    color:"var(--t2)", cursor:loading?"not-allowed":"pointer",
+                    display:"flex", alignItems:"center", gap:4, whiteSpace:"nowrap", flexShrink:0,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background="var(--t1)"; e.currentTarget.style.color="var(--bg)"; e.currentTarget.style.borderColor="var(--t1)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background="var(--fill2)"; e.currentTarget.style.color="var(--t2)"; e.currentTarget.style.borderColor="var(--border)"; }}>
+                    <RefreshCw size={11} /> {s.script ? "Rewrite" : "Generate"}
+                  </button>
+                )}
               </div>
 
-              {/* Expanded content */}
+              {/* ── Expanded panel ── */}
               {isExpanded && (
-                <div className="animate-fade-in" style={{ padding:"0 14px 14px", borderTop:"1px solid var(--border2)" }}>
-                  {s.angle && <div style={{ fontSize:13, color:"var(--t3)", lineHeight:1.6, margin:"10px 0 8px" }}>{s.angle}</div>}
+                <div className="animate-fade-in" style={{ padding:"0 12px 14px 46px", borderTop:"1px solid var(--border2)" }}>
+                  {s.angle && <div style={{ fontSize:13, color:"var(--t2)", lineHeight:1.7, marginTop:10, marginBottom:8 }}>{s.angle}</div>}
+                  {s.hook  && <div style={{ fontSize:13, color:"var(--t3)", fontStyle:"italic", paddingLeft:12, borderLeft:"2px solid var(--border)", lineHeight:1.5, marginBottom:10 }}>"{s.hook}"</div>}
+                  {players && <div style={{ fontSize:12, color:"var(--t3)", marginBottom:10, lineHeight:1.6 }}>{players}</div>}
+
+                  {/* AI Score block */}
+                  {hasScore && (
+                    <div style={{ padding:"10px 12px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginBottom:10 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                        <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>AI Score</span>
+                        <div style={{ display:"flex", gap:12, alignItems:"center" }}>
+                          {s.reach_score != null && <span style={{ fontSize:11, color:"var(--t3)" }}>↗ reach <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--t2)", fontWeight:600 }}>{s.reach_score}</span></span>}
+                          <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{s.score_total}<span style={{ fontSize:10, color:"var(--t3)", fontWeight:400 }}>/100</span></span>
+                        </div>
+                      </div>
+                      {s.score_emotional != null && (
+                        <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                          <ScoreBar score={s.score_emotional} label="Emotional depth" />
+                          <ScoreBar score={s.score_obscurity} label="Obscurity" />
+                          <ScoreBar score={s.score_visual}    label="Visual potential" />
+                          <ScoreBar score={s.score_hook}      label="Hook strength" />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Lang tabs */}
                   {s.script && (
@@ -490,7 +526,7 @@ No markdown.`;
                         const isLoading = loading === `${l.key}-${s.id}`;
                         const vl        = getViewLang(s.id);
                         return (
-                          <button key={l.key} onClick={()=>has&&setViewLang(s.id,l.key)} style={{
+                          <button key={l.key} onClick={() => has && setViewLang(s.id, l.key)} style={{
                             padding:"4px 10px", borderRadius:6, fontSize:11, fontWeight:600,
                             background: vl===l.key&&has ? "var(--t1)" : "var(--fill2)",
                             color: vl===l.key&&has ? "var(--bg)" : has ? "var(--t2)" : "var(--t4)",
@@ -502,7 +538,7 @@ No markdown.`;
                               : has ? <Check size={9} /> : null
                             }
                             {l.label}
-                            <span style={{fontSize:9,color:"var(--t4)"}}>{li+1}</span>
+                            <span style={{ fontSize:9, color:"var(--t4)" }}>{li+1}</span>
                           </button>
                         );
                       })}
@@ -519,9 +555,9 @@ No markdown.`;
                     </div>
                   )}
 
-                  {/* ── Script action buttons ── */}
+                  {/* Action buttons */}
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    <button onClick={()=>generate(s)} disabled={!!loading} style={{
+                    <button onClick={() => generate(s)} disabled={!!loading} style={{
                       flex:1, minWidth:110, padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
                       background: isLoadingEn ? "var(--fill2)" : "var(--t1)",
                       color: isLoadingEn ? "var(--t3)" : "var(--bg)",
@@ -530,11 +566,11 @@ No markdown.`;
                     }}>
                       <RefreshCw size={12} />
                       {isLoadingEn ? "Writing..." : s.script ? "Rewrite EN" : "Generate"}
-                      {autoTranslate && !isLoadingThis && <span style={{fontSize:10,opacity:0.6}}>+ all langs</span>}
+                      {autoTranslate && !isLoadingThis && <span style={{ fontSize:10, opacity:0.6 }}>+ all langs</span>}
                     </button>
 
                     {s.script && availLangs.length < 4 && (
-                      <button onClick={()=>translateAll(s)} disabled={!!loading} style={{
+                      <button onClick={() => translateAll(s)} disabled={!!loading} style={{
                         padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color:"var(--t1)",
                         border:"1px solid var(--border)", cursor:loading?"not-allowed":"pointer",
@@ -546,7 +582,7 @@ No markdown.`;
                     )}
 
                     {getScript(s, getViewLang(s.id)) && !isStreaming && (
-                      <button onClick={()=>{ const vl=getViewLang(s.id); navigator.clipboard.writeText(getScript(s,vl)); setCopied(`${s.id}-${vl}`); setTimeout(()=>setCopied(false),2000); }} style={{
+                      <button onClick={() => { const vl=getViewLang(s.id); navigator.clipboard.writeText(getScript(s,vl)); setCopied(`${s.id}-${vl}`); setTimeout(()=>setCopied(false),2000); }} style={{
                         padding:"8px 12px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color: copied===`${s.id}-${getViewLang(s.id)}` ? "var(--t1)" : "var(--t2)",
                         border:"1px solid var(--border)", cursor:"pointer",
@@ -557,12 +593,12 @@ No markdown.`;
                     )}
 
                     {availLangs.length >= 1 && (
-                      <button onClick={()=>exportVoicePack(s)} style={{
+                      <button onClick={() => exportVoicePack(s)} style={{
                         padding:"8px 12px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color:"var(--t2)",
                         border:"1px solid var(--border)", cursor:"pointer",
                         display:"flex", alignItems:"center", gap:5,
-                      }} title="Download scripts as zip">
+                      }}>
                         <Zap size={12} /> Script pack
                       </button>
                     )}
@@ -570,109 +606,70 @@ No markdown.`;
 
                   {error && <div style={{ marginTop:8, fontSize:11, color:"var(--t3)" }}>{error}</div>}
 
-                  {/* ── Voice production section ── */}
+                  {/* Voice section */}
                   {s.script && (() => {
-                    const vStatus   = getVoiceStatus(settings);
-                    const vProvider = getVoiceProvider(settings);
-                    const vConfig   = VOICE_PROVIDER_CONFIG[vProvider] || {};
+                    const vStatus      = getVoiceStatus(settings);
+                    const vProvider    = getVoiceProvider(settings);
+                    const vConfig      = VOICE_PROVIDER_CONFIG[vProvider] || {};
                     const isConfigured = vStatus === "configured";
                     const needsKey     = vStatus === "needs_key";
-                    const isProduced   = s.status === "produced";
                     const vErr         = voiceError[s.id];
-
                     return (
                       <div style={{ marginTop:12, paddingTop:12, borderTop:"0.5px solid var(--border2)" }}>
-                        {/* Section header */}
-                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                            <Mic size={12} color="var(--t3)" />
-                            <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em" }}>
-                              Voice · {vConfig.label || vProvider}
-                            </span>
-                            {isProduced && (
-                              <span style={{ display:"flex", alignItems:"center", gap:3, fontSize:10, color:"#4A9B7F" }}>
-                                <CheckCircle size={10} /> Produced
-                              </span>
-                            )}
-                          </div>
-                          {/* Manual mark as produced — always available */}
-                          {!isProduced && (
-                            <button onClick={()=>markAsProduced(s)} style={{
-                              fontSize:11, color:"var(--t3)", background:"transparent",
-                              border:"0.5px solid var(--border)", borderRadius:5,
-                              padding:"2px 8px", cursor:"pointer",
-                            }}>
-                              Mark as produced
-                            </button>
-                          )}
+                        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                          <Mic size={12} color="var(--t3)" />
+                          <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em" }}>
+                            Voice · {vConfig.label || vProvider}
+                          </span>
                         </div>
-
-                        {/* Not configured state */}
                         {!isConfigured && !needsKey && (
                           <div style={{ fontSize:11, color:"var(--t4)", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                             No voice provider configured. Set one up in Settings → Providers.
                           </div>
                         )}
-
-                        {/* Needs key state */}
                         {needsKey && (
                           <div style={{ fontSize:11, color:"var(--t4)", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                             {vConfig.label} configured but API key missing. Add it in Settings → Providers.
                           </div>
                         )}
-
-                        {/* Configured — show per-lang voice buttons */}
                         {isConfigured && (
                           <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                             {LANGS.filter(l => !!getScript(s, l.key)).map(l => {
-                              const vKey      = `${s.id}-${l.key}`;
+                              const vKey       = `${s.id}-${l.key}`;
                               const isVLoading = !!voiceLoading[vKey];
                               const isDone     = !!voiceDone[vKey];
                               return (
-                                <button key={l.key}
-                                  onClick={() => generateVoiceForLang(s, l.key, settings?.providers?.voice?.api_key)}
-                                  disabled={isVLoading}
-                                  style={{
-                                    padding:"6px 12px", borderRadius:6, fontSize:11, fontWeight:600,
-                                    background: isDone ? "rgba(74,155,127,0.1)" : "var(--fill2)",
-                                    color: isDone ? "#4A9B7F" : isVLoading ? "var(--t4)" : "var(--t2)",
-                                    border: `0.5px solid ${isDone ? "rgba(74,155,127,0.3)" : "var(--border)"}`,
-                                    cursor: isVLoading ? "not-allowed" : "pointer",
-                                    display:"flex", alignItems:"center", gap:4,
-                                  }}>
-                                  {isVLoading
-                                    ? <div className="anim-spin" style={{ width:8, height:8, borderRadius:"50%", border:"1px solid var(--t4)", borderTopColor:"var(--t1)" }} />
-                                    : isDone ? <Check size={9} /> : <Mic size={9} />
-                                  }
+                                <button key={l.key} onClick={() => generateVoiceForLang(s, l.key, settings?.providers?.voice?.api_key)} disabled={isVLoading} style={{
+                                  padding:"6px 12px", borderRadius:6, fontSize:11, fontWeight:600,
+                                  background: isDone ? "rgba(74,155,127,0.1)" : "var(--fill2)",
+                                  color: isDone ? "#4A9B7F" : isVLoading ? "var(--t4)" : "var(--t2)",
+                                  border:`0.5px solid ${isDone ? "rgba(74,155,127,0.3)" : "var(--border)"}`,
+                                  cursor: isVLoading ? "not-allowed" : "pointer",
+                                  display:"flex", alignItems:"center", gap:4,
+                                }}>
+                                  {isVLoading ? <div className="anim-spin" style={{ width:8, height:8, borderRadius:"50%", border:"1px solid var(--t4)", borderTopColor:"var(--t1)" }} /> : isDone ? <Check size={9} /> : <Mic size={9} />}
                                   {l.label}
                                 </button>
                               );
                             })}
-                            <button
-                              onClick={() => generateAllVoices(s, settings?.providers?.voice?.api_key)}
-                              disabled={Object.keys(voiceLoading).some(k => k.startsWith(s.id))}
-                              style={{
-                                padding:"6px 12px", borderRadius:6, fontSize:11, fontWeight:600,
-                                background:"var(--fill2)", color:"var(--t2)",
-                                border:"0.5px solid var(--border)", cursor:"pointer",
-                                display:"flex", alignItems:"center", gap:4,
-                              }}>
+                            <button onClick={() => generateAllVoices(s, settings?.providers?.voice?.api_key)} disabled={Object.keys(voiceLoading).some(k => k.startsWith(s.id))} style={{
+                              padding:"6px 12px", borderRadius:6, fontSize:11, fontWeight:600,
+                              background:"var(--fill2)", color:"var(--t2)", border:"0.5px solid var(--border)", cursor:"pointer",
+                              display:"flex", alignItems:"center", gap:4,
+                            }}>
                               <Layers size={9} /> All langs
                             </button>
                           </div>
                         )}
-
-                        {vErr && (
-                          <div style={{ marginTop:6, fontSize:11, color:"#C0666A" }}>{vErr}</div>
-                        )}
+                        {vErr && <div style={{ marginTop:6, fontSize:11, color:"#C0666A" }}>{vErr}</div>}
                       </div>
                     );
                   })()}
 
-                  {/* Shortcut hint */}
+                  {/* Shortcuts */}
                   <div style={{ marginTop:10, fontSize:10, color:"var(--t4)", display:"flex", gap:10, flexWrap:"wrap" }}>
-                    {[["⌘G","Generate/rewrite"],["⌘T","Translate all"],["1-4","Switch lang"],["→←","Expand/collapse"]].map(([k,v])=>(
-                      <span key={k}><kbd style={{fontFamily:"'DM Mono',monospace",fontSize:9,padding:"1px 4px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
+                    {[["Enter","Generate"],["⌘G","Rewrite"],["⌘T","Translate all"],["⌘A","Select all"],["Esc","Clear selection"],["1-4","Switch lang"],["→←","Expand/collapse"]].map(([k,v]) => (
+                      <span key={k}><kbd style={{ fontFamily:"'DM Mono',monospace", fontSize:9, padding:"1px 4px", borderRadius:3, background:"var(--bg3)", border:"1px solid var(--border)" }}>{k}</kbd> {v}</span>
                     ))}
                   </div>
                 </div>
@@ -681,6 +678,13 @@ No markdown.`;
           );
         })}
       </div>
+
+      {ready.length === 0 && allEligible.length > 0 && (
+        <div style={{ textAlign:"center", padding:"60px 0", color:"var(--t4)" }}>
+          <div style={{ fontSize:13 }}>No stories match your filters</div>
+          {activeFilterCount > 0 && <button onClick={clearFilters} style={{ marginTop:10, fontSize:12, color:"var(--t2)", background:"transparent", border:"none", cursor:"pointer", textDecoration:"underline" }}>Clear filters</button>}
+        </div>
+      )}
     </div>
   );
 }

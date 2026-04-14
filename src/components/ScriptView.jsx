@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal, Mic, CheckCircle } from "lucide-react";
 import { LANGS, SCRIPT_SYSTEM, ACCENT } from "@/lib/constants";
 import { callClaude, callClaudeStream } from "@/lib/db";
-import { executeProvider } from "@/lib/providers/index/providers-index";
+import { executeProvider } from "@/lib/providers";
 import { downloadVoiceBlob, getVoiceStatus, getVoiceProvider, VOICE_PROVIDER_CONFIG } from "@/lib/providers/voice/providers-voice";
 
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
@@ -106,6 +106,24 @@ export default function ScriptView({ stories, onUpdate, settings }) {
     return LANGS.filter(l => !!getScript(story, l.key));
   };
 
+  // Scroll focused story into view when focusedIdx changes
+  useEffect(() => {
+    if (focusedStory) {
+      setTimeout(() => {
+        document.getElementById(`script-${focusedStory.id}`)?.scrollIntoView({ block:"nearest", behavior:"smooth" });
+      }, 50);
+    }
+  }, [focusedIdx]);
+
+  // Scroll focused story into view when focusedIdx changes
+  useEffect(() => {
+    if (focusedStory) {
+      setTimeout(() => {
+        document.getElementById(`script-${focusedStory.id}`)?.scrollIntoView({ block:"nearest", behavior:"smooth" });
+      }, 50);
+    }
+  }, [focusedIdx]);
+
   // Keyboard navigation
   useEffect(() => {
     const handler = (e) => {
@@ -120,7 +138,7 @@ export default function ScriptView({ stories, onUpdate, settings }) {
           : Math.max(focusedIdx - 1, 0);
         setFocusedIdx(next);
         setTimeout(() => {
-          document.getElementById(`script-${ready[next]?.id}`)?.scrollIntoView({ block:"center", behavior:"smooth" });
+          document.getElementById(`script-${ready[next]?.id}`)?.scrollIntoView({ block:"nearest", behavior:"smooth" });
         }, 50);
       }
       if (e.key === "ArrowRight") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.add(focusedStory.id); return n; }); }

@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.6.0";
+const VERSION = "3.5.6";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -32,7 +32,7 @@ export default function Home() {
   const [authError, setAuthError]     = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(null); // "actions" | "user" | null
   const [stories, setStories]         = useState([]);
-  const [tab, setTab]                 = useState("pipeline");
+  const [tab, setTab]                 = useState(() => { try { return localStorage.getItem("uc_last_tab") || "pipeline"; } catch { return "pipeline"; } });
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
   const [undoStack,       setUndoStack]       = useState([]);
@@ -41,7 +41,6 @@ export default function Home() {
   const [showSettings,    setShowSettings]    = useState(false); // persisted across tab switches
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
-  const [syncError,       setSyncError]       = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -72,7 +71,6 @@ export default function Home() {
           const parsed = JSON.parse(cached);
           setAppSettings(parsed);
           applyTheme(parsed?.appearance?.theme || "system");
-          applyDensity(parsed?.appearance?.density || "comfortable");
           if (parsed?.appearance?.default_tab) setTab(parsed.appearance.default_tab);
         }
       } catch {}
@@ -83,10 +81,9 @@ export default function Home() {
             setAppSettings(data.brief_doc);
             localStorage.setItem("uc_settings", JSON.stringify(data.brief_doc));
             applyTheme(data.brief_doc?.appearance?.theme || "system");
-            applyDensity(data.brief_doc?.appearance?.density || "comfortable");
             if (data.brief_doc?.appearance?.default_tab) setTab(data.brief_doc.appearance.default_tab);
           }
-        }).catch(() => { setSyncError(true); });
+        }).catch(() => {});
     }
     else setLoading(false);
   }, [user]);
@@ -104,11 +101,16 @@ export default function Home() {
   }, []);
 
   const updateStory = useCallback(async (id, c) => {
-    const story = stories.find(s => s.id === id);
-    if (!story) return;
-    const saved = await upsertStory({ ...story, ...c });
+    // Use functional setStories to always read the latest story state
+    // This prevents stale closure bugs when multiple updates fire in sequence (e.g. generate + translate loop)
+    let currentStory = null;
+    setStories(p => { currentStory = p.find(s => s.id === id); return p; });
+    // Wait a tick for the read
+    await new Promise(r => setTimeout(r, 0));
+    if (!currentStory) return;
+    const saved = await upsertStory({ ...currentStory, ...c });
     if (saved) { setStories(p => p.map(s => s.id === id ? saved : s)); syncToAirtable(saved).catch(() => {}); }
-  }, [stories]);
+  }, []);
 
   const stageChange = useCallback(async (id, st) => {
     const story = stories.find(s => s.id === id);
@@ -175,20 +177,12 @@ export default function Home() {
     }
   };
 
-  const applyDensity = (density) => {
-    const root = document.documentElement;
-    root.setAttribute("data-density", density || "comfortable");
-  };
-
-  // Apply theme + density whenever settings change
+  // Apply theme whenever settings change
   useEffect(() => {
     if (appSettings?.appearance?.theme) {
       applyTheme(appSettings.appearance.theme);
     }
-    if (appSettings?.appearance?.density) {
-      applyDensity(appSettings.appearance.density);
-    }
-  }, [appSettings?.appearance?.theme, appSettings?.appearance?.density]);
+  }, [appSettings?.appearance?.theme]);
 
   // Production shortcut — Cmd+J: jump to research with top recommendation
   const handleProductionShortcut = useCallback(() => {
@@ -403,7 +397,7 @@ export default function Home() {
         {/* Tab bar - full width */}
         <div style={{ borderTop:"1px solid var(--border2)", display:"flex" }}>
           {TABS.map((t, i) => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
+            <button key={t.key} onClick={() => { setTab(t.key); try { localStorage.setItem("uc_last_tab", t.key); } catch {} }} style={{
               flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"10px 0",
               fontSize:13, fontWeight: tab===t.key ? 600 : 400,
               color: tab===t.key ? "var(--t1)" : "var(--t3)",
@@ -422,21 +416,13 @@ export default function Home() {
       {/* ── Content ── */}
       <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 80px" }}>
 
-        {/* Supabase sync error — non-blocking warning */}
-        {syncError && (
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 14px", borderRadius:8, background:"rgba(196,154,60,0.08)", border:"0.5px solid rgba(196,154,60,0.25)", marginBottom:10, fontSize:12, color:"var(--t2)" }}>
-            <span>Settings loaded from cache — Supabase sync failed. Changes may not be saved.</span>
-            <button onClick={() => setSyncError(false)} style={{ background:"transparent", border:"none", cursor:"pointer", color:"var(--t3)", fontSize:16, lineHeight:1, padding:"0 2px" }}>×</button>
-          </div>
-        )}
         {/* ProductionAlert — always visible on all tabs */}
         <ProductionAlert
           stories={stories}
-          onNavigate={(t) => setTab(t)}
+          onNavigate={(t) => { setTab(t); try { localStorage.setItem("uc_last_tab", t); } catch {} }}
           onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
           forceExpanded={showCmdK}
           onToggle={() => setShowCmdK(s=>!s)}
-          settings={appSettings}
         />
 
         {/* All tabs mounted always — CSS hides inactive ones to preserve state */}
@@ -452,7 +438,7 @@ export default function Home() {
             onPrefillUsed={() => setResearchPrefill(null)}
           />
         </div>
-        <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView stories={stories} onUpdate={updateStory} settings={appSettings} /></div>
+        <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView   stories={stories} onUpdate={updateStory} /></div>
         <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
         <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
 
@@ -460,7 +446,7 @@ export default function Home() {
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); applyDensity(s?.appearance?.density || "comfortable"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem("uc_settings", JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem("uc_settings", JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} />
       <ToastContainer />
     </div>
   );

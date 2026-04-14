@@ -1,8 +1,10 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal } from "lucide-react";
+import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal, Mic, CheckCircle } from "lucide-react";
 import { LANGS, SCRIPT_SYSTEM, ACCENT } from "@/lib/constants";
 import { callClaude, callClaudeStream } from "@/lib/db";
+import { executeProvider } from "@/lib/providers";
+import { downloadVoiceBlob, getVoiceStatus, getVoiceProvider, VOICE_PROVIDER_CONFIG } from "@/lib/providers/voice/providers-voice";
 
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
 
@@ -26,7 +28,7 @@ function ProgressSteps({ steps, current }) {
   );
 }
 
-export default function ScriptView({ stories, onUpdate }) {
+export default function ScriptView({ stories, onUpdate, settings }) {
   // ── All state first — before any useMemo ──
   const [focusedIdx,   setFocusedIdx]   = useState(0);
   const [expandedIds,  setExpandedIds]  = useState(new Set());
@@ -49,6 +51,9 @@ export default function ScriptView({ stories, onUpdate }) {
   const [filterEra,   setFilterEra]   = useState("");
   const [sortBy,      setSortBy]      = useState("date_desc");
   const [showFilters, setShowFilters] = useState(false);
+  const [voiceLoading, setVoiceLoading] = useState({}); // { [storyId-lang]: true }
+  const [voiceError,   setVoiceError]   = useState({}); // { [storyId]: "error msg" }
+  const [voiceDone,    setVoiceDone]    = useState({}); // { [storyId-lang]: true }
 
   // ── Derived state ──
   const allReady = stories.filter(s => ["approved","scripted"].includes(s.status));
@@ -242,6 +247,46 @@ No markdown.`;
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `UC-${slug}-voice-pack.zip`; a.click();
   };
 
+  // ── Voice generation ──
+  const generateVoiceForLang = async (story, lang, apiKey) => {
+    const key = `${story.id}-${lang}`;
+    setVoiceLoading(v => ({ ...v, [key]: true }));
+    setVoiceError(v => { const n = {...v}; delete n[story.id]; return n; });
+    try {
+      const script = getScript(story, lang);
+      if (!script) throw new Error(`No ${lang.toUpperCase()} script available.`);
+      const slug = story.title.slice(0,30).replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
+      const result = await executeProvider("voice", settings?.providers, {
+        script, lang, storySlug: slug,
+        apiKey,
+      });
+      downloadVoiceBlob(result);
+      setVoiceDone(v => ({ ...v, [key]: true }));
+      // Check if all available langs are done — if so, advance to produced
+      const availKeys = LANGS.filter(l => !!getScript(story, l.key)).map(l => `${story.id}-${l.key}`);
+      const allDone = availKeys.every(k => k === key || voiceDone[k]);
+      if (allDone && story.status === "scripted") {
+        await onUpdate(story.id, { status: "produced" });
+      }
+    } catch (err) {
+      setVoiceError(v => ({ ...v, [story.id]: err.message }));
+    } finally {
+      setVoiceLoading(v => { const n = {...v}; delete n[key]; return n; });
+    }
+  };
+
+  const generateAllVoices = async (story, apiKey) => {
+    const availLangs = LANGS.filter(l => !!getScript(story, l.key)).map(l => l.key);
+    for (const lang of availLangs) {
+      await generateVoiceForLang(story, lang, apiKey);
+      await new Promise(r => setTimeout(r, 500));
+    }
+  };
+
+  const markAsProduced = async (story) => {
+    await onUpdate(story.id, { status: "produced" });
+  };
+
   const unscripted = ready.filter(s => !s.script);
   const STEPS = autoTranslate ? ["EN","FR","ES","PT"] : ["EN"];
 
@@ -388,7 +433,7 @@ No markdown.`;
               }}>
 
               {/* Header row */}
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"var(--card-padding-y, 12px) var(--card-padding-x, 14px)" }}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px" }}
                 onClick={e => { e.stopPropagation(); setFocusedIdx(idx); setExpandedIds(ex => { const n = new Set(ex); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; }); }}>
                 <div style={{ minWidth:0, flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", letterSpacing:"-0.01em", marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
@@ -464,7 +509,7 @@ No markdown.`;
                     </div>
                   )}
 
-                  {/* Action buttons */}
+                  {/* ── Script action buttons ── */}
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                     <button onClick={()=>generate(s)} disabled={!!loading} style={{
                       flex:1, minWidth:110, padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
@@ -507,13 +552,112 @@ No markdown.`;
                         background:"var(--fill2)", color:"var(--t2)",
                         border:"1px solid var(--border)", cursor:"pointer",
                         display:"flex", alignItems:"center", gap:5,
-                      }} title="Download zip for ElevenLabs">
-                        <Zap size={12} /> Voice pack
+                      }} title="Download scripts as zip">
+                        <Zap size={12} /> Script pack
                       </button>
                     )}
                   </div>
 
                   {error && <div style={{ marginTop:8, fontSize:11, color:"var(--t3)" }}>{error}</div>}
+
+                  {/* ── Voice production section ── */}
+                  {s.script && (() => {
+                    const vStatus   = getVoiceStatus(settings);
+                    const vProvider = getVoiceProvider(settings);
+                    const vConfig   = VOICE_PROVIDER_CONFIG[vProvider] || {};
+                    const isConfigured = vStatus === "configured";
+                    const needsKey     = vStatus === "needs_key";
+                    const isProduced   = s.status === "produced";
+                    const vErr         = voiceError[s.id];
+
+                    return (
+                      <div style={{ marginTop:12, paddingTop:12, borderTop:"0.5px solid var(--border2)" }}>
+                        {/* Section header */}
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <Mic size={12} color="var(--t3)" />
+                            <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em" }}>
+                              Voice · {vConfig.label || vProvider}
+                            </span>
+                            {isProduced && (
+                              <span style={{ display:"flex", alignItems:"center", gap:3, fontSize:10, color:"#4A9B7F" }}>
+                                <CheckCircle size={10} /> Produced
+                              </span>
+                            )}
+                          </div>
+                          {/* Manual mark as produced — always available */}
+                          {!isProduced && (
+                            <button onClick={()=>markAsProduced(s)} style={{
+                              fontSize:11, color:"var(--t3)", background:"transparent",
+                              border:"0.5px solid var(--border)", borderRadius:5,
+                              padding:"2px 8px", cursor:"pointer",
+                            }}>
+                              Mark as produced
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Not configured state */}
+                        {!isConfigured && !needsKey && (
+                          <div style={{ fontSize:11, color:"var(--t4)", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+                            No voice provider configured. Set one up in Settings → Providers.
+                          </div>
+                        )}
+
+                        {/* Needs key state */}
+                        {needsKey && (
+                          <div style={{ fontSize:11, color:"var(--t4)", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+                            {vConfig.label} configured but API key missing. Add it in Settings → Providers.
+                          </div>
+                        )}
+
+                        {/* Configured — show per-lang voice buttons */}
+                        {isConfigured && (
+                          <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                            {LANGS.filter(l => !!getScript(s, l.key)).map(l => {
+                              const vKey      = `${s.id}-${l.key}`;
+                              const isVLoading = !!voiceLoading[vKey];
+                              const isDone     = !!voiceDone[vKey];
+                              return (
+                                <button key={l.key}
+                                  onClick={() => generateVoiceForLang(s, l.key, settings?.providers?.voice?.api_key)}
+                                  disabled={isVLoading}
+                                  style={{
+                                    padding:"6px 12px", borderRadius:6, fontSize:11, fontWeight:600,
+                                    background: isDone ? "rgba(74,155,127,0.1)" : "var(--fill2)",
+                                    color: isDone ? "#4A9B7F" : isVLoading ? "var(--t4)" : "var(--t2)",
+                                    border: `0.5px solid ${isDone ? "rgba(74,155,127,0.3)" : "var(--border)"}`,
+                                    cursor: isVLoading ? "not-allowed" : "pointer",
+                                    display:"flex", alignItems:"center", gap:4,
+                                  }}>
+                                  {isVLoading
+                                    ? <div className="anim-spin" style={{ width:8, height:8, borderRadius:"50%", border:"1px solid var(--t4)", borderTopColor:"var(--t1)" }} />
+                                    : isDone ? <Check size={9} /> : <Mic size={9} />
+                                  }
+                                  {l.label}
+                                </button>
+                              );
+                            })}
+                            <button
+                              onClick={() => generateAllVoices(s, settings?.providers?.voice?.api_key)}
+                              disabled={Object.keys(voiceLoading).some(k => k.startsWith(s.id))}
+                              style={{
+                                padding:"6px 12px", borderRadius:6, fontSize:11, fontWeight:600,
+                                background:"var(--fill2)", color:"var(--t2)",
+                                border:"0.5px solid var(--border)", cursor:"pointer",
+                                display:"flex", alignItems:"center", gap:4,
+                              }}>
+                              <Layers size={9} /> All langs
+                            </button>
+                          </div>
+                        )}
+
+                        {vErr && (
+                          <div style={{ marginTop:6, fontSize:11, color:"#C0666A" }}>{vErr}</div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Shortcut hint */}
                   <div style={{ marginTop:10, fontSize:10, color:"var(--t4)", display:"flex", gap:10, flexWrap:"wrap" }}>

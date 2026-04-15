@@ -57,7 +57,6 @@ export default function ScriptView({ stories, onUpdate, settings }) {
   const [batchStep,     setBatchStep]     = useState("");
   const [autoTranslate, setAutoTranslate] = useState(true);
   const [search,        setSearch]        = useState("");
-  const [showScripted,  setShowScripted]  = useState(false);
   const [filterLang,    setFilterLang]    = useState("");
   const [filterArch,    setFilterArch]    = useState("");
   const [filterEra,     setFilterEra]     = useState("");
@@ -66,16 +65,17 @@ export default function ScriptView({ stories, onUpdate, settings }) {
   const [voiceLoading,  setVoiceLoading]  = useState({});
   const [voiceError,    setVoiceError]    = useState({});
   const [voiceDone,     setVoiceDone]     = useState({});
+  const [editingId,     setEditingId]     = useState(null); // story id being edited inline
+  const [editText,      setEditText]      = useState("");   // draft text
 
   const getViewLang = (id) => viewLangMap[id] || "en";
   const setViewLang = (id, lang) => setViewLangMap(m => ({ ...m, [id]: lang }));
 
   // ── Derived ──
-  const allEligible = stories.filter(s => ["approved","scripted"].includes(s.status));
+  const allEligible = stories.filter(s => ["approved","scripted"].includes(s.status) && s.status !== "produced");
 
   const ready = useMemo(() => {
     let list = allEligible.filter(s => {
-      if (!showScripted && s.status === "scripted" && s.script) return false;
       if (filterArch && s.archetype !== filterArch) return false;
       if (filterEra  && s.era       !== filterEra)  return false;
       if (filterLang) {
@@ -100,8 +100,14 @@ export default function ScriptView({ stories, onUpdate, settings }) {
       if (sortBy === "title_asc")  return (a.title||"").localeCompare(b.title||"");
       return 0;
     });
+    // Always put scripted stories at the end
+    list.sort((a, b) => {
+      const aScripted = a.status === "scripted" && !!a.script ? 1 : 0;
+      const bScripted = b.status === "scripted" && !!b.script ? 1 : 0;
+      return aScripted - bScripted;
+    });
     return list;
-  }, [allEligible, showScripted, filterLang, filterArch, filterEra, search, sortBy, localLangs]);
+  }, [allEligible, filterLang, filterArch, filterEra, search, sortBy, localLangs]);
 
   const activeFilterCount = [filterLang, filterArch, filterEra].filter(Boolean).length;
   const clearFilters = () => { setFilterLang(""); setFilterArch(""); setFilterEra(""); setSearch(""); setSortBy("date_desc"); };
@@ -109,7 +115,6 @@ export default function ScriptView({ stories, onUpdate, settings }) {
   const focusedStory  = ready[focusedIdx] || null;
   const unscripted    = ready.filter(s => !s.script);
   const STEPS         = autoTranslate ? ["EN","FR","ES","PT"] : ["EN"];
-  const scriptedCount = allEligible.filter(s => s.status === "scripted" && s.script).length;
 
   const getScript = (story, lang) => {
     if (!story) return null;
@@ -147,11 +152,14 @@ export default function ScriptView({ stories, onUpdate, settings }) {
       }
       if (e.key === "ArrowRight") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.add(focusedStory.id); return n; }); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.delete(focusedStory.id); return n; }); }
-      if (e.key === " ")          { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.has(focusedStory.id) ? n.delete(focusedStory.id) : n.add(focusedStory.id); return n; }); }
+      // Space = select/deselect (not expand)
+      if (e.key === " ")          { e.preventDefault(); setSelected(sel => { const n = new Set(sel); n.has(focusedStory.id) ? n.delete(focusedStory.id) : n.add(focusedStory.id); return n; }); }
       if (e.key === "Enter" && !e.metaKey) { e.preventDefault(); if (!loading && !focusedStory.script) generate(focusedStory); }
       if (e.metaKey && e.key === "g") { e.preventDefault(); if (!loading) generate(focusedStory); }
       if (e.metaKey && e.key === "t") { e.preventDefault(); if (!loading && focusedStory.script) translateAll(focusedStory); }
       if (e.metaKey && e.key === "a") { e.preventDefault(); setSelected(new Set(ready.map(s => s.id))); }
+      // Cmd+E = edit script inline
+      if (e.metaKey && e.key === "e") { e.preventDefault(); if (focusedStory?.script) { setEditingId(focusedStory.id); setEditText(getScript(focusedStory, getViewLang(focusedStory.id)) || ""); setExpandedIds(ex => { const n = new Set(ex); n.add(focusedStory.id); return n; }); } }
       if (e.key === "Escape") { setSelected(new Set()); }
       if (e.metaKey && e.key === "c" && expandedIds.has(focusedStory.id)) {
         const vl = getViewLang(focusedStory.id);
@@ -247,6 +255,15 @@ export default function ScriptView({ stories, onUpdate, settings }) {
     } catch (err) { setError(err.message); } finally { setLoading(null); }
   };
 
+  const saveEdit = async (story) => {
+    const lang = getViewLang(story.id);
+    const field = lang === "en" ? "script" : `script_${lang}`;
+    setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id]||{}), [lang]: editText } }));
+    await onUpdate(story.id, { [field]: editText });
+    setEditingId(null);
+    setEditText("");
+  };
+
   const exportVoicePack = async (story) => {
     const slug = story.title.slice(0,30).replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
     const { default: JSZip } = await import("jszip");
@@ -300,11 +317,6 @@ export default function ScriptView({ stories, onUpdate, settings }) {
           <button onClick={() => setAutoTranslate(a => !a)} style={{ width:36, height:20, borderRadius:10, border:"none", cursor:"pointer", background: autoTranslate ? "var(--t1)" : "var(--t4)", position:"relative", transition:"background 0.2s" }}>
             <div style={{ position:"absolute", top:2, left: autoTranslate ? 18 : 2, width:16, height:16, borderRadius:"50%", background:"var(--bg)", transition:"left 0.2s" }} />
           </button>
-          {scriptedCount > 0 && (
-            <button onClick={() => setShowScripted(v => !v)} style={{ fontSize:11, color: showScripted ? "var(--t1)" : "var(--t3)", background:"transparent", border:"0.5px solid var(--border)", borderRadius:5, padding:"2px 8px", cursor:"pointer" }}>
-              {showScripted ? "Hide" : "Show"} scripted ({scriptedCount})
-            </button>
-          )}
           {batchMode && batchStep && (
             <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:8 }}>
               <ProgressSteps steps={STEPS} current={loading?.startsWith("fr") ? 1 : loading?.startsWith("es") ? 2 : loading?.startsWith("pt") ? 3 : 0} />
@@ -408,6 +420,9 @@ export default function ScriptView({ stories, onUpdate, settings }) {
       {/* ── Story list ── */}
       <div style={{ display:"flex", flexDirection:"column", gap:"var(--card-gap, 2px)" }}>
         {ready.map((s, idx) => {
+          // Show section divider when transitioning from approved → scripted
+          const prevStatus = idx > 0 ? ready[idx-1].status : null;
+          const showDivider = s.status === "scripted" && s.script && (idx === 0 || prevStatus === "approved");
           const isFocused     = idx === focusedIdx;
           const isExpanded    = expandedIds.has(s.id);
           const isSelected    = selected.has(s.id);
@@ -426,7 +441,15 @@ export default function ScriptView({ stories, onUpdate, settings }) {
           const currentStep   = isLoadingEn ? 0 : isLoadingFr ? 1 : isLoadingEs ? 2 : isLoadingPt ? 3 : -1;
 
           return (
-            <div key={s.id} id={`script-${s.id}`}
+            <div key={s.id}>
+            {showDivider && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, margin:"12px 0 8px", opacity:0.5 }}>
+                <div style={{ flex:1, height:"0.5px", background:"var(--border)" }} />
+                <span style={{ fontSize:10, color:"var(--t3)", fontWeight:500, textTransform:"uppercase", letterSpacing:"0.06em" }}>Scripted — ready for production</span>
+                <div style={{ flex:1, height:"0.5px", background:"var(--border)" }} />
+              </div>
+            )}
+            <div id={`script-${s.id}`}
               onClick={() => setFocusedIdx(idx)}
               style={{
                 borderRadius:8,
@@ -545,14 +568,51 @@ export default function ScriptView({ stories, onUpdate, settings }) {
                     </div>
                   )}
 
-                  {/* Script text */}
+                  {/* Script text — editable when Cmd+E triggered */}
                   {getScript(s, getViewLang(s.id)) && (
-                    <div style={{ padding:"14px 16px", borderRadius:8, background:"var(--bg2)", marginBottom:10, maxHeight:260, overflowY:"auto", position:"relative" }}>
-                      {isStreaming && <div style={{ position:"absolute", top:10, right:12, width:6, height:6, borderRadius:"50%", background:"var(--t1)", animation:"pulse 1s ease-in-out infinite" }} />}
-                      <div style={{ fontSize:14, color:"var(--t2)", lineHeight:1.85, fontFamily:"Georgia, serif", whiteSpace:"pre-wrap" }}>
-                        {getScript(s, getViewLang(s.id))}
+                    editingId === s.id ? (
+                      <div style={{ marginBottom:10 }}>
+                        <textarea
+                          autoFocus
+                          value={editText}
+                          onChange={e => setEditText(e.target.value)}
+                          style={{
+                            width:"100%", minHeight:200, padding:"14px 16px", borderRadius:8,
+                            background:"var(--bg2)", border:"1px solid var(--t2)",
+                            fontSize:14, color:"var(--t1)", lineHeight:1.85,
+                            fontFamily:"Georgia, serif", resize:"vertical", outline:"none",
+                            boxSizing:"border-box",
+                          }}
+                        />
+                        <div style={{ display:"flex", gap:6, marginTop:6 }}>
+                          <button onClick={() => saveEdit(s)} style={{
+                            padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600,
+                            background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer",
+                            display:"flex", alignItems:"center", gap:5,
+                          }}>
+                            <Check size={12} /> Save
+                          </button>
+                          <button onClick={() => { setEditingId(null); setEditText(""); }} style={{
+                            padding:"6px 12px", borderRadius:7, fontSize:12,
+                            background:"var(--fill2)", color:"var(--t3)", border:"1px solid var(--border)", cursor:"pointer",
+                          }}>
+                            Cancel
+                          </button>
+                          <span style={{ fontSize:10, color:"var(--t4)", alignSelf:"center", marginLeft:4 }}>
+                            {editText.trim().split(/\s+/).filter(Boolean).length} words
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div style={{ padding:"14px 16px", borderRadius:8, background:"var(--bg2)", marginBottom:10, maxHeight:260, overflowY:"auto", position:"relative", cursor:"text" }}
+                        onDoubleClick={() => { setEditingId(s.id); setEditText(getScript(s, getViewLang(s.id)) || ""); }}>
+                        {isStreaming && <div style={{ position:"absolute", top:10, right:12, width:6, height:6, borderRadius:"50%", background:"var(--t1)", animation:"pulse 1s ease-in-out infinite" }} />}
+                        <div style={{ fontSize:14, color:"var(--t2)", lineHeight:1.85, fontFamily:"Georgia, serif", whiteSpace:"pre-wrap" }}>
+                          {getScript(s, getViewLang(s.id))}
+                        </div>
+                        <div style={{ position:"absolute", bottom:8, right:10, fontSize:9, color:"var(--t4)" }}>double-click or ⌘E to edit</div>
+                      </div>
+                    )
                   )}
 
                   {/* Action buttons */}
@@ -668,12 +728,13 @@ export default function ScriptView({ stories, onUpdate, settings }) {
 
                   {/* Shortcuts */}
                   <div style={{ marginTop:10, fontSize:10, color:"var(--t4)", display:"flex", gap:10, flexWrap:"wrap" }}>
-                    {[["Enter","Generate"],["⌘G","Rewrite"],["⌘T","Translate all"],["⌘A","Select all"],["Esc","Clear selection"],["1-4","Switch lang"],["→←","Expand/collapse"]].map(([k,v]) => (
+                    {[["Enter","Generate"],["⌘G","Rewrite"],["⌘E","Edit script"],["⌘T","Translate"],["Space","Select"],["⌘A","Select all"],["→←","Expand/collapse"]].map(([k,v]) => (
                       <span key={k}><kbd style={{ fontFamily:"'DM Mono',monospace", fontSize:9, padding:"1px 4px", borderRadius:3, background:"var(--bg3)", border:"1px solid var(--border)" }}>{k}</kbd> {v}</span>
                     ))}
                   </div>
                 </div>
               )}
+            </div>
             </div>
           );
         })}

@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
 import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
-import { supabase, callClaude } from "@/lib/db";
+import { supabase } from "@/lib/db";
+import { runPrompt } from "@/lib/ai/runner";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
 
 const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
@@ -269,7 +270,7 @@ const ROLES = [
 
 const PRESET_COLORS = ["#C49A3C","#4A9B7F","#C0666A","#8B7EC8","#5B8FB9","#B87333","#7B9E6B","#9B7B6E"];
 
-function ProgDiscuss({ programme, callClaude, brandName }) {
+function ProgDiscuss({ programme, brandName }) {
   const [msgs, setMsgs] = useState([{ role:"assistant", text:`This programme is designed for ${programme.role} content. ${programme.rationale} What would you like to adjust or explore?` }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -282,15 +283,11 @@ function ProgDiscuss({ programme, callClaude, brandName }) {
     setInput("");
     setLoading(true);
     try {
-      const prompt = `You are helping refine a content programme called "${programme.name}" for "${brandName}".
-Programme details: role=${programme.role}, weight=${programme.weight}%, angles=${(programme.angle_suggestions||[]).join(", ")}.
-Rationale: ${programme.rationale}
-
-Conversation:
-${history.map(m=>`${m.role==="user"?"User":"Assistant"}: ${m.text}`).join("\n")}
-
-Respond helpfully and concisely. Suggest specific adjustments if asked.`;
-      const response = await callClaude(prompt, 400, "haiku");
+      const { text: response } = await runPrompt({
+        type:   "programme-discuss",
+        params: { programme, brand_name: brandName, history },
+        parse:  false,
+      });
       setMsgs(h => [...h, { role:"assistant", text:response }]);
     } catch { setMsgs(h => [...h, { role:"assistant", text:"Something went wrong." }]); }
     setLoading(false);
@@ -417,24 +414,20 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     }
     const perfSummary = Object.entries(byProg).map(([k,vals])=>`${k}: avg ${(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1)}% (${vals.length} videos)`).join(", ");
 
-    const prompt = `You are auditing the content strategy for "${settings.brand.name}".
-
-Brand goal: ${settings.brand.goal_primary} (secondary: ${settings.brand.goal_secondary})
-Weekly cadence: ${settings.strategy?.weekly_cadence} episodes/week
-Current programme mix: ${programmes.map(p=>`${p.name} ${p.weight}%`).join(", ")}
-Performance by programme: ${perfSummary||"No data yet"}
-${stratContext ? `User context: "${stratContext}"` : ""}
-
-Audit the strategy. Cover:
-1. Mix alignment with goals
-2. Cadence sustainability
-3. Programme balance gaps
-4. Specific recommendations with numbers
-
-Be direct. Use • bullets. Max 6 points.`;
-
     try {
-      const text = await callClaude(prompt, 600, "haiku");
+      const { text } = await runPrompt({
+        type:   "strategy-audit",
+        params: {
+          brand_name:      settings.brand.name,
+          goal_primary:    settings.brand.goal_primary,
+          goal_secondary:  settings.brand.goal_secondary,
+          weekly_cadence:  settings.strategy?.weekly_cadence,
+          programmes,
+          perf_summary:    perfSummary,
+          user_context:    stratContext,
+        },
+        parse:  false,
+      });
       setStratAudit(text);
     } catch(e) { setStratAudit("Audit failed."); }
     setStratRunning(false);
@@ -442,23 +435,18 @@ Be direct. Use • bullets. Max 6 points.`;
 
   const suggestProgrammes = async () => {
     setProgRunning(true);
-    const prompt = `You are suggesting content programmes for "${settings.brand.name}", a ${settings.brand.content_type} brand.
-
-Goal: ${settings.brand.goal_primary}
-Current programmes: ${programmes.map(p=>p.name).join(", ")||"None"}
-Voice: ${settings.brand.voice}
-Avoid: ${settings.brand.avoid}
-
-Suggest 2-3 additional programmes that would complement the existing ones.
-Return JSON array: [{ name, role ("reach"|"community"|"balanced"|"special"), weight (0-100 integer), color (hex), angle_suggestions: [array of 3-4 content angle strings], rationale }]
-JSON only.`;
-
     try {
-      const text = await callClaude(prompt, 600, "haiku");
-      const clean = text.replace(/\`\`\`json\s*/g,"").replace(/\`\`\`\s*/g,"").trim();
-      let parsed = null;
-      try { parsed = JSON.parse(clean); } catch {}
-      if (!parsed) { const m=clean.match(/\[\s*\{[\s\S]*\}\s*\]/); if(m) try{parsed=JSON.parse(m[0]);}catch{} }
+      const { parsed } = await runPrompt({
+        type:   "alerts-suggest",
+        params: {
+          brand_name:   settings.brand.name,
+          content_type: settings.brand.content_type,
+          goal_primary: settings.brand.goal_primary,
+          programmes,
+          voice: settings.brand.voice,
+          avoid: settings.brand.avoid,
+        },
+      });
       if (parsed) setProgAudit(parsed);
     } catch(e) { console.error(e); }
     setProgRunning(false);
@@ -504,25 +492,25 @@ JSON only.`;
   const suggestRules = async () => {
     setSuggestRunning(true);
     const published = stories.filter(s=>s.status==="published"&&s.metrics_completion);
-    const prompt = `You are an AI content strategy advisor for "${settings.brand.name}", a ${settings.brand.content_type} brand.
-
-Goal: ${settings.brand.goal_primary} (secondary: ${settings.brand.goal_secondary})
-Weekly cadence: ${settings.strategy?.weekly_cadence} episodes
-Format mix: ${JSON.stringify(settings.strategy?.format_mix)}
-Published stories with data: ${published.length}
-${published.length>0?`Top performers: ${published.sort((a,b)=>b.metrics_completion-a.metrics_completion).slice(0,3).map(s=>`${s.title} (${s.format}, ${s.archetype}, ${s.metrics_completion}% completion)`).join("; ")}`:"No performance data yet"}
-
-Suggest 3-5 smart scheduling rules for this brand. Be specific and actionable.
-Return JSON array: [{ type: "format_day"|"format_freq"|"score_priority"|"format_seq"|"archetype_seq"|"day_restrict", label: "short label", reasoning: "why this rule helps", config: { ...rule fields } }]
-JSON only. No markdown.`;
+    const top_performers = published.length > 0
+      ? published.sort((a,b)=>b.metrics_completion-a.metrics_completion).slice(0,3).map(s=>`${s.title} (${s.format}, ${s.archetype}, ${s.metrics_completion}% completion)`).join("; ")
+      : "";
 
     try {
-      const text = await callClaude(prompt, 800, "haiku");
-      const clean = text.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
-      let parsed = null;
-      try { parsed = JSON.parse(clean); } catch {}
-      if (!parsed) { const m=clean.match(/\[\s*\{[\s\S]*\}\s*\]/); if(m) try{parsed=JSON.parse(m[0]);}catch{} }
-      setSuggestions(parsed||[]);
+      const { parsed } = await runPrompt({
+        type:   "rules-suggest",
+        params: {
+          brand_name:      settings.brand.name,
+          content_type:    settings.brand.content_type,
+          goal_primary:    settings.brand.goal_primary,
+          goal_secondary:  settings.brand.goal_secondary,
+          weekly_cadence:  settings.strategy?.weekly_cadence,
+          format_mix:      settings.strategy?.format_mix,
+          published_count: published.length,
+          top_performers,
+        },
+      });
+      setSuggestions(parsed || []);
     } catch(e) { console.error(e); }
     setSuggestRunning(false);
   };
@@ -530,22 +518,24 @@ JSON only. No markdown.`;
   // AI strategy audit
   const runAudit = async () => {
     setAuditRunning(true);
-    const prompt = `You are auditing the content strategy for "${settings.brand.name}".
-
-Current rules:
-${rules.length ? rules.map((r,i)=>`${i+1}. ${ruleDescription(r)} (${r.active!==false?"active":"inactive"})`).join("\n") : "No rules configured"}
-
-Detected conflicts: ${conflicts.length ? conflicts.map(c=>c.reason).join("; ") : "None"}
-
-Goal: ${settings.brand.goal_primary}
-Format mix: ${JSON.stringify(settings.strategy?.format_mix)}
-${aiAuditText ? `Additional context from user: "${aiAuditText}"` : ""}
-
-Provide a brief audit (3-5 bullet points). Identify: gaps, conflicts, improvements, alignment with goal.
-Be direct and specific. Plain text, use • for bullets.`;
+    const rules_description = rules.length
+      ? rules.map((r,i)=>`${i+1}. ${ruleDescription(r)} (${r.active!==false?"active":"inactive"})`).join("\n")
+      : "No rules configured";
+    const conflicts_description = conflicts.length ? conflicts.map(c=>c.reason).join("; ") : "None";
 
     try {
-      const text = await callClaude(prompt, 600, "haiku");
+      const { text } = await runPrompt({
+        type:   "rules-audit",
+        params: {
+          brand_name:   settings.brand.name,
+          goal_primary: settings.brand.goal_primary,
+          format_mix:   settings.strategy?.format_mix,
+          rules_description,
+          conflicts_description,
+          user_context: aiAuditText,
+        },
+        parse:  false,
+      });
       setAuditResult(text);
     } catch(e) { setAuditResult("Audit failed — try again."); }
     setAuditRunning(false);
@@ -554,30 +544,19 @@ Be direct and specific. Plain text, use • for bullets.`;
   // AI conflict resolution
   const resolveConflicts = async () => {
     setResolving(true);
-    const prompt = `You are resolving conflicts in a content scheduling ruleset for "${settings.brand.name}".
-
-Current rules (in priority order):
-${rules.map((r,i)=>`${i+1}. ${ruleDescription(r)}`).join("\n")}
-
-Conflicts detected:
-${conflicts.map(c=>`- ${c.reason}`).join("\n")}
-
-${resolveText ? `User preference: "${resolveText}"` : ""}
-
-Reorder and/or adjust these rules to resolve conflicts while respecting the user's preference.
-Return JSON: { 
-  "new_order": [array of original 0-based indices in new order],
-  "changes": ["brief description of each change made"],
-  "explanation": "1-2 sentence summary"
-}
-JSON only.`;
+    const rules_ordered  = rules.map((r,i)=>`${i+1}. ${ruleDescription(r)}`).join("\n");
+    const conflicts_list = conflicts.map(c=>`- ${c.reason}`).join("\n");
 
     try {
-      const text = await callClaude(prompt, 600, "haiku");
-      const clean = text.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
-      let parsed = null;
-      try { parsed = JSON.parse(clean); } catch {}
-      if (!parsed) { const m=clean.match(/\{[\s\S]*\}/); if(m) try{parsed=JSON.parse(m[0]);}catch{} }
+      const { parsed } = await runPrompt({
+        type:   "rules-conflict-resolve",
+        params: {
+          brand_name:      settings.brand.name,
+          rules_ordered,
+          conflicts_list,
+          user_preference: resolveText,
+        },
+      });
       if (parsed?.new_order) {
         const reordered = parsed.new_order.map(i=>rules[i]).filter(Boolean);
         upd("strategy.rules", reordered);
@@ -610,48 +589,17 @@ ${fileText.slice(0,3000)}` : text };
     const history = newMessages.map(m => `${m.role==="user"?"User":"Assistant"}: ${m.text}`).join("\n\n");
     const currentBrand = JSON.stringify(settings.brand, null, 2);
 
-    const prompt = `You are an onboarding assistant helping set up a brand profile for an AI content production tool.
-
-Current brand settings:
-${currentBrand}
-
-Conversation so far:
-${history}
-
-Your job:
-1. Ask short, focused questions to fill in missing brand info (voice, avoid, goals, audience, locked elements like a closing line)
-2. If a document was shared, extract what you can and only ask about genuine gaps
-3. When you have enough info, output a JSON block with extracted fields
-4. Be conversational and fast — don't ask more than 2 questions at once
-
-If you have enough info to extract brand fields, end your response with:
-<brand_extract>
-{
-  "name": "...",
-  "voice": "...",
-  "avoid": "...",
-  "goal_primary": "community|reach|conversion|awareness",
-  "goal_secondary": "community|reach|conversion|awareness",
-  "content_type": "narrative|advertising|educational|product|custom",
-  "locked_elements": ["..."]
-}
-</brand_extract>
-
-Otherwise just respond conversationally. Keep it short.`;
-
     try {
-      const response = await callClaude(prompt, 800, "haiku");
+      const { text: response, parsed } = await runPrompt({
+        type:   "onboarding-chat",
+        params: { current_brand_json: currentBrand, history },
+      });
 
-      // Check for extracted brand fields
-      const extractMatch = response.match(/<brand_extract>([\s\S]*?)<\/brand_extract>/);
-      let cleanResponse = response.replace(/<brand_extract>[\s\S]*?<\/brand_extract>/, "").trim();
-
-      if (extractMatch) {
-        try {
-          const extracted = JSON.parse(extractMatch[1].trim());
-          setObDraft(extracted);
-          cleanResponse = cleanResponse || "Here's what I've extracted from our conversation. Review and confirm to apply to your brand profile.";
-        } catch {}
+      // parsed = { clean_response, extracted } from onboarding-chat prompt
+      let cleanResponse = parsed?.clean_response ?? response;
+      if (parsed?.extracted) {
+        setObDraft(parsed.extracted);
+        cleanResponse = cleanResponse || "Here's what I've extracted from our conversation. Review and confirm to apply to your brand profile.";
       }
 
       setObMessages(prev => [...prev, { role:"assistant", text: cleanResponse }]);
@@ -689,14 +637,12 @@ Otherwise just respond conversationally. Keep it short.`;
 
       // If text extracted, get AI summary
       if (fileText) {
-        const summaryPrompt = `Summarize this brand document in 2-3 sentences, focusing on what's useful for content generation (voice, restrictions, audience, key messages).
-
-Document excerpt:
-${fileText.slice(0, 2000)}
-
-Summary only. No preamble.`;
         try {
-          const summary = await callClaude(summaryPrompt, 200, "haiku");
+          const { text: summary } = await runPrompt({
+            type:   "summarize-content",
+            params: { excerpt: fileText.slice(0, 2000) },
+            parse:  false,
+          });
           await updateAssetSummary(doc.id, summary);
           doc.content_summary = summary;
 
@@ -1032,7 +978,7 @@ Summary only. No preamble.`;
                         </div>
                       </div>
                       {i===progExpandIdx && (
-                        <ProgDiscuss programme={p} callClaude={callClaude} brandName={settings.brand.name}/>
+                        <ProgDiscuss programme={p} brandName={settings.brand.name}/>
                       )}
                     </div>
                   ))}

@@ -52,10 +52,25 @@ async function getToken() {
   return session?.access_token;
 }
 
-// ─── CLAUDE API (via server route — key stays secret) ───
+// ═══════════════════════════════════════════════════════════
+// CLAUDE API
+//
+// v3.7.0 — return shape changed. Two functions:
+//
+//   callClaude(prompt, maxTokens, model)
+//     → string (legacy — kept for any stragglers)
+//     → backwards-compatible: returns just text
+//
+//   callClaudeRaw(prompt, maxTokens, model)
+//     → { text, usage: { input_tokens, output_tokens }, model }
+//     → used by the AI runner for cost logging
+//
+// In new code ALWAYS go through runPrompt() in src/lib/ai/runner.js
+// — never call these directly. These exist only for legacy shim
+// and for the runner itself to dispatch.
+// ═══════════════════════════════════════════════════════════
 
-// Standard call (non-streaming) — used for research, translations, scoring
-export async function callClaude(prompt, maxTokens = 1000, model = "sonnet") {
+export async function callClaudeRaw(prompt, maxTokens = 1000, model = "sonnet") {
   const token = await getToken();
   const res = await fetch("/api/claude", {
     method: "POST",
@@ -70,13 +85,26 @@ export async function callClaude(prompt, maxTokens = 1000, model = "sonnet") {
     throw new Error(err.error || `API ${res.status}`);
   }
   const data = await res.json();
-  return data.text;
+  return {
+    text:  data.text  || "",
+    usage: data.usage || { input_tokens: null, output_tokens: null },
+    model: data.model || model,
+  };
 }
 
-// Streaming call — used for script generation
-// onChunk(text) called with each new text chunk
-// returns full text when done
-export async function callClaudeStream(prompt, maxTokens = 1000, onChunk) {
+// Legacy shape — returns text only. Kept so nothing breaks during migration.
+// Prefer runPrompt() for all new code.
+export async function callClaude(prompt, maxTokens = 1000, model = "sonnet") {
+  const { text } = await callClaudeRaw(prompt, maxTokens, model);
+  return text;
+}
+
+// Streaming — returns full text + usage at the end
+// Signature kept compatible: callClaudeStream(prompt, maxTokens, onChunk)
+// Now returns { text, usage, model } instead of just text (backwards-compat
+// for any caller using `const t = await callClaudeStream(...)` because a
+// string is still produced — if old callers expect a string, use callClaudeStreamText)
+export async function callClaudeStreamRaw(prompt, maxTokens = 1000, onChunk, model = "sonnet") {
   const token = await getToken();
   const res = await fetch("/api/claude", {
     method: "POST",
@@ -84,7 +112,7 @@ export async function callClaudeStream(prompt, maxTokens = 1000, onChunk) {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`,
     },
-    body: JSON.stringify({ prompt, maxTokens, stream: true, model: "sonnet" }),
+    body: JSON.stringify({ prompt, maxTokens, stream: true, model }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -95,31 +123,49 @@ export async function callClaudeStream(prompt, maxTokens = 1000, onChunk) {
   const decoder = new TextDecoder();
   let fullText = "";
   let buffer = "";
+  let usage = { input_tokens: null, output_tokens: null };
+  let modelId = model;
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
-    buffer = lines.pop(); // keep incomplete line
+    buffer = lines.pop();
     for (const line of lines) {
       if (!line.startsWith("data: ")) continue;
-      const data = line.slice(6).trim();
-      if (data === "[DONE]") continue;
+      const dataStr = line.slice(6).trim();
+      if (dataStr === "[DONE]") continue;
       try {
-        const parsed = JSON.parse(data);
+        const parsed = JSON.parse(dataStr);
+
+        // Text deltas
         const chunk = parsed?.delta?.text || "";
         if (chunk) {
           fullText += chunk;
-          onChunk(fullText);
+          if (onChunk) onChunk(fullText);
+        }
+
+        // Custom usage event from our proxy
+        if (parsed.type === "usage" && parsed.usage) {
+          usage = parsed.usage;
+          if (parsed.model) modelId = parsed.model;
         }
       } catch {}
     }
   }
-  return fullText;
+
+  return { text: fullText, usage, model: modelId };
 }
 
-// ─── AUDIT LOG ───
+// Legacy streaming — returns text only
+export async function callClaudeStream(prompt, maxTokens = 1000, onChunk) {
+  const { text } = await callClaudeStreamRaw(prompt, maxTokens, onChunk);
+  return text;
+}
+
+// ─── AUDIT LOG (user actions — unchanged) ───
+// For AI cost logging, see src/lib/ai/audit.js
 
 export async function logAudit(action, storyId = null, storyTitle = null, details = null) {
   try {

@@ -39,7 +39,9 @@ export async function POST(request) {
 
   const modelId = model === "haiku"
     ? "claude-haiku-4-5-20251001"
-    : "claude-sonnet-4-20250514";
+    : model === "opus"
+    ? "claude-opus-4-7"
+    : "claude-sonnet-4-6";
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -62,24 +64,80 @@ export async function POST(request) {
       return Response.json({ error: err.error?.message || `Claude API ${res.status}` }, { status: res.status });
     }
 
-    // ── Streaming: pipe the SSE stream directly to the client ──
+    // ═══════════════════════════════════════════════════════════
+    // Streaming — pipe SSE through, capture usage from message_start
+    // + message_delta, emit a custom `usage` event so the client can
+    // log cost in src/lib/ai/audit.js.
+    // v3.7.0 addition — the rest of the flow is unchanged.
+    // ═══════════════════════════════════════════════════════════
     if (stream) {
-      return new Response(res.body, {
+      const { readable, writable } = new TransformStream();
+      const writer  = writable.getWriter();
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      const encoder = new TextEncoder();
+
+      let capturedUsage = { input_tokens: null, output_tokens: null };
+      let buffer = "";
+
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const parsed = JSON.parse(line.slice(6));
+                  if (parsed.type === "message_start" && parsed.message?.usage) {
+                    capturedUsage.input_tokens = parsed.message.usage.input_tokens;
+                  }
+                  if (parsed.type === "message_delta" && parsed.usage) {
+                    capturedUsage.output_tokens = parsed.usage.output_tokens;
+                  }
+                } catch {}
+              }
+              await writer.write(encoder.encode(line + "\n"));
+            }
+          }
+          // Emit custom usage event before [DONE] so runner can log cost
+          const usagePayload = JSON.stringify({ type: "usage", usage: capturedUsage, model: modelId });
+          await writer.write(encoder.encode(`data: ${usagePayload}\n\n`));
+          await writer.write(encoder.encode("data: [DONE]\n\n"));
+        } catch {
+          // best-effort — client tolerates missing usage
+        } finally {
+          await writer.close();
+        }
+      })();
+
+      return new Response(readable, {
         headers: {
-          "Content-Type": "text/event-stream",
+          "Content-Type":  "text/event-stream",
           "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
+          "Connection":    "keep-alive",
         },
       });
     }
 
-    // ── Non-streaming: return full text ──
+    // ═══════════════════════════════════════════════════════════
+    // Non-streaming — original response plus usage + model.
+    // v3.7.0 addition: added `usage` and `model` fields to the JSON
+    // response so the client runner can log cost per call.
+    // ═══════════════════════════════════════════════════════════
     const data = await res.json();
     let text = "";
     for (const block of data.content || []) {
       if (block.type === "text" && block.text) text += block.text + "\n";
     }
-    return Response.json({ text: text.trim() });
+    return Response.json({
+      text:  text.trim(),
+      usage: data.usage || { input_tokens: null, output_tokens: null },
+      model: modelId,
+    });
 
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });

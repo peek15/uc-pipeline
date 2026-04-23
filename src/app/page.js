@@ -16,7 +16,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.6.4";
+const VERSION = "3.5.6";
 
 const TABS = [
   { key: "pipeline", label: "Pipeline", Icon: Layers },
@@ -32,7 +32,7 @@ export default function Home() {
   const [authError, setAuthError]     = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(null); // "actions" | "user" | null
   const [stories, setStories]         = useState([]);
-  const [tab, setTab]                 = useState(() => { try { return localStorage.getItem("uc_last_tab") || "pipeline"; } catch { return "pipeline"; } });
+  const [tab, setTab]                 = useState("pipeline");
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
   const [undoStack,       setUndoStack]       = useState([]);
@@ -71,8 +71,7 @@ export default function Home() {
           const parsed = JSON.parse(cached);
           setAppSettings(parsed);
           applyTheme(parsed?.appearance?.theme || "system");
-          // Only apply default_tab if no last tab saved
-          if (parsed?.appearance?.default_tab && !localStorage.getItem("uc_last_tab")) setTab(parsed.appearance.default_tab);
+          if (parsed?.appearance?.default_tab) setTab(parsed.appearance.default_tab);
         }
       } catch {}
       // Then sync from Supabase (source of truth)
@@ -82,8 +81,7 @@ export default function Home() {
             setAppSettings(data.brief_doc);
             localStorage.setItem("uc_settings", JSON.stringify(data.brief_doc));
             applyTheme(data.brief_doc?.appearance?.theme || "system");
-            // Only apply default_tab if no last tab saved
-            if (data.brief_doc?.appearance?.default_tab && !localStorage.getItem("uc_last_tab")) setTab(data.brief_doc.appearance.default_tab);
+            if (data.brief_doc?.appearance?.default_tab) setTab(data.brief_doc.appearance.default_tab);
           }
         }).catch(() => {});
     }
@@ -103,16 +101,11 @@ export default function Home() {
   }, []);
 
   const updateStory = useCallback(async (id, c) => {
-    // Use functional setStories to always read the latest story state
-    // This prevents stale closure bugs when multiple updates fire in sequence (e.g. generate + translate loop)
-    let currentStory = null;
-    setStories(p => { currentStory = p.find(s => s.id === id); return p; });
-    // Wait a tick for the read
-    await new Promise(r => setTimeout(r, 0));
-    if (!currentStory) return;
-    const saved = await upsertStory({ ...currentStory, ...c });
+    const story = stories.find(s => s.id === id);
+    if (!story) return;
+    const saved = await upsertStory({ ...story, ...c });
     if (saved) { setStories(p => p.map(s => s.id === id ? saved : s)); syncToAirtable(saved).catch(() => {}); }
-  }, []);
+  }, [stories]);
 
   const stageChange = useCallback(async (id, st) => {
     const story = stories.find(s => s.id === id);
@@ -240,15 +233,25 @@ export default function Home() {
   const handleProduce = useCallback(async (storyId) => {
     const story = stories.find(s => s.id === storyId);
     if (!story || story.script) return;
-    const { callClaude, callClaudeStream } = await import("@/lib/db");
-    const { SCRIPT_SYSTEM } = await import("@/lib/constants");
-    const prompt = `${SCRIPT_SYSTEM}\n\n---\n\nWrite an Uncle Carter episode script about:\nStory: ${story.angle||story.title}\nPlayer(s): ${story.players||"Unknown"}\nEra: ${story.era||"Unknown"}\nEmotional angle: ${story.archetype||"Pressure"}\n\n110-150 words. Pure script only.`;
-    const enText = await callClaude(prompt, 600);
+    const { runPrompt } = await import("@/lib/ai/runner");
+
+    // English script
+    const { text: enText } = await runPrompt({
+      type:    "generate-script",
+      params:  { story },
+      context: { story_id: storyId },
+      parse:   false,
+    });
     await updateStory(storyId, { script: enText, script_version: 1, status: "scripted" });
-    // Auto-translate
+
+    // Auto-translate to FR / ES / PT
     for (const lang of ["fr","es","pt"]) {
-      const tPrompt = `Translate this Uncle Carter NBA story script to ${lang==="fr"?"French":lang==="es"?"Spanish":"Portuguese"}. Keep the warm, storytelling tone. Same length. End with the exact translated equivalent of "Because the score is never the whole story."\n\n${enText}`;
-      const translated = await callClaude(tPrompt, 600);
+      const { text: translated } = await runPrompt({
+        type:    "translate-script",
+        params:  { script: enText, lang_key: lang },
+        context: { story_id: storyId },
+        parse:   false,
+      });
       await updateStory(storyId, { [`script_${lang}`]: translated });
     }
   }, [stories, updateStory]);
@@ -399,7 +402,7 @@ export default function Home() {
         {/* Tab bar - full width */}
         <div style={{ borderTop:"1px solid var(--border2)", display:"flex" }}>
           {TABS.map((t, i) => (
-            <button key={t.key} onClick={() => { setTab(t.key); try { localStorage.setItem("uc_last_tab", t.key); } catch {} }} style={{
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
               flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"10px 0",
               fontSize:13, fontWeight: tab===t.key ? 600 : 400,
               color: tab===t.key ? "var(--t1)" : "var(--t3)",
@@ -421,7 +424,7 @@ export default function Home() {
         {/* ProductionAlert — always visible on all tabs */}
         <ProductionAlert
           stories={stories}
-          onNavigate={(t) => { setTab(t); try { localStorage.setItem("uc_last_tab", t); } catch {} }}
+          onNavigate={(t) => setTab(t)}
           onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
           forceExpanded={showCmdK}
           onToggle={() => setShowCmdK(s=>!s)}

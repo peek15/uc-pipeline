@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Check, X, Star, Plus, Play, Pause, Trash2 } from "lucide-react";
 import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, suggestFormat } from "@/lib/constants";
-import { callClaude } from "@/lib/db";
+import { runPrompt } from "@/lib/ai/runner";
 
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null) return null;
@@ -17,39 +17,12 @@ function ScoreBar({ score, label, max = 25 }) {
   );
 }
 
-async function scoreStories(stories, callFn) {
-  const prompt = `You are an AI content scorer for "Uncle Carter," an NBA storytelling brand for short-form video.
-
-Score each story on 4 dimensions (each out of 25, total out of 100):
-- emotional_depth: Is there real human tension, not just a sports highlight?
-- obscurity: How fresh/unknown is this story? (5=very well known, 25=almost nobody knows it)
-- visual_potential: Can you find compelling images/footage for this?
-- hook_strength: Would someone stop scrolling in the first 3 seconds?
-
-Stories to score:
-${stories.map((s,i) => `${i+1}. "${s.title}" — ${s.angle}`).join("\n")}
-
-Return a JSON array with objects: { index, emotional_depth, obscurity, visual_potential, hook_strength, total }
-JSON array ONLY. No markdown.`;
-
-  const text = await callFn(prompt, 1500, "haiku");
-  const clean = text.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
-  let parsed = null;
-  try { parsed = JSON.parse(clean); } catch {}
-  if (!parsed) { const m = clean.match(/\[\s*\{[\s\S]*\}\s*\]/); if (m) try { parsed = JSON.parse(m[0]); } catch {} }
+async function scoreStories(stories) {
+  const { parsed } = await runPrompt({
+    type:   "score-story",
+    params: { stories },
+  });
   return parsed || [];
-}
-
-// Build search prompt
-function buildPrompt(params, existingTitles, batch) {
-  const { topic, count, era, team, archetype, format } = params;
-  const fmtLabel = FORMAT_MAP[format]?.label || "";
-  const fmtDesc  = format==="classics" ? "pre-2000s NBA"
-                 : format==="performance_special" ? "historic records/dominant seasons"
-                 : "recent NBA 2000s-present";
-  const angle = RESEARCH_ANGLES[Math.floor(Math.random() * RESEARCH_ANGLES.length)];
-
-  return `You are a story research engine for "Uncle Carter," an NBA storytelling brand. Find ${count} compelling, lesser-known human stories.\n\nReturn JSON objects with: title, archetype (${ARCHETYPES.join("/")}), obscurity (1-5, prefer 3-5), players, era, angle (2-3 sentences human tension), hook (1 sentence opener).\n\nRULES: Human story > highlights. Specific facts. Obscure > well-known. Each DISTINCT.${era?`\nEra: ${era}.`:""}${team?`\nTeam: ${team}.`:""}${archetype?`\nArchetype: ${archetype}.`:""}${fmtLabel?`\nContent format: ${fmtLabel} (${fmtDesc}).`:""}${topic?`\nFocus: "${topic}"`:""}${existingTitles?`\nALREADY COVERED: ${existingTitles}`:""}.\n\nAngle: "${angle}". Batch #${batch}. JSON array ONLY. No markdown.`;
 }
 
 export default function ResearchView({ stories, onAddStories, prefill, onPrefillUsed }) {
@@ -94,15 +67,22 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
 
   const runSearch = useCallback(async (params) => {
     const n = Math.max(1, Math.min(30, parseInt(params.count)||8));
-    const prompt = buildPrompt({...params, count:n}, getExisting(), batch+1);
-    const text  = await callClaude(prompt, Math.min(700+n*350,8000), "haiku");
-    const clean = text.replace(/```json\s*/g,"").replace(/```\s*/g,"").trim();
-    let parsed  = null;
-    try { parsed = JSON.parse(clean); } catch {}
-    if (!parsed) { const m = clean.match(/\[\s*\{[\s\S]*\}\s*\]/); if (m) try { parsed = JSON.parse(m[0]); } catch {} }
-    if (!parsed) { const fi=clean.indexOf("["); const li=clean.lastIndexOf("]"); if(fi!==-1&&li>fi) try{parsed=JSON.parse(clean.substring(fi,li+1));}catch{} }
-    if (!parsed||!Array.isArray(parsed)) throw new Error("Parse failed");
-    return parsed.filter(s=>s&&s.title);
+    const { parsed } = await runPrompt({
+      type: "research-stories",
+      params: {
+        topic:          params.topic,
+        count:          n,
+        era:            params.era,
+        team:           params.team,
+        archetype:      params.archetype,
+        format:         params.format,
+        existingTitles: getExisting(),
+        batch:          batch + 1,
+      },
+      maxTokens: Math.min(700 + n * 350, 8000),
+    });
+    if (!parsed || !Array.isArray(parsed)) throw new Error("Parse failed");
+    return parsed.filter(s => s && s.title);
   }, [batch, getExisting]);
 
   // Single search
@@ -125,7 +105,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       if (newStories.length > 0) {
         setScoring(true);
         try {
-          const scoreData = await scoreStories(newStories, callClaude);
+          const scoreData = await scoreStories(newStories);
           setScores(prev => {
             const base = Object.keys(prev).length;
             const next = {...prev};
@@ -171,7 +151,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         if (newStories.length > 0) {
           setScoring(true);
           try {
-            const scoreData = await scoreStories(newStories, callClaude);
+            const scoreData = await scoreStories(newStories);
             setScores(prev => {
               const base = Object.keys(prev).length;
               const next = {...prev};
@@ -384,7 +364,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
               const scoreData = scores[i];
               const fmt = FORMAT_MAP[s.format || format || suggestFormat(s.era)];
               return (
-                <div key={i} className="animate-fade-in" style={{ padding:"var(--card-padding-y, 16px) var(--card-padding-x, 18px)", borderRadius:10, background:"var(--card)", border:"1px solid var(--border)", borderLeft:`3px solid ${fmt?.color||"var(--border)"}` }}>
+                <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"1px solid var(--border)", borderLeft:`3px solid ${fmt?.color||"var(--border)"}` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>

@@ -5,7 +5,7 @@ import {
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_POSITIONS,
   isInProductionQueue,
-} from "@/lib/constants-additions";
+} from "@/lib/constants";
 import { runAgent, recordAgentFeedback } from "@/lib/ai/agent-runner";
 import { updateProductionStatus, listAssetLibrary } from "@/lib/db";
 

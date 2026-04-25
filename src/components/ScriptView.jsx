@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { usePersistentState } from "@/lib/usePersistentState";
 import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal } from "lucide-react";
 import { LANGS, ACCENT } from "@/lib/constants";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
@@ -29,7 +30,7 @@ function ProgressSteps({ steps, current }) {
 export default function ScriptView({ stories, onUpdate }) {
   // ── All state first — before any useMemo ──
   const [focusedIdx,   setFocusedIdx]   = useState(0);
-  const [expandedIds,  setExpandedIds]  = useState(new Set());
+  const [expandedIds,  setExpandedIds]  = usePersistentState("script_expanded", new Set());
   const [viewLangMap,  setViewLangMap]  = useState({});
   const getViewLang = (id) => viewLangMap[id] || "en";
   const setViewLang = (id, lang) => setViewLangMap(m => ({ ...m, [id]: lang }));
@@ -41,14 +42,14 @@ export default function ScriptView({ stories, onUpdate }) {
   const [batchMode,    setBatchMode]    = useState(false);
   const [batchDone,    setBatchDone]    = useState(0);
   const [batchStep,    setBatchStep]    = useState("");
-  const [autoTranslate,setAutoTranslate] = useState(true);
-  const [search,      setSearch]      = useState("");
-  const [filterStatus,setFilterStatus]= useState("all");
-  const [filterLang,  setFilterLang]  = useState("");
-  const [filterArch,  setFilterArch]  = useState("");
-  const [filterEra,   setFilterEra]   = useState("");
-  const [sortBy,      setSortBy]      = useState("date_desc");
-  const [showFilters, setShowFilters] = useState(false);
+  const [autoTranslate,setAutoTranslate] = usePersistentState("script_autotrans",  true);
+  const [search,      setSearch]      = usePersistentState("script_search",     "");
+  const [filterStatus,setFilterStatus]= usePersistentState("script_status",     "all");
+  const [filterLang,  setFilterLang]  = usePersistentState("script_lang",       "");
+  const [filterArch,  setFilterArch]  = usePersistentState("script_archetype",  "");
+  const [filterEra,   setFilterEra]   = usePersistentState("script_era",        "");
+  const [sortBy,      setSortBy]      = usePersistentState("script_sort",       "date_desc");
+  const [showFilters, setShowFilters] = usePersistentState("script_showfilt",   false);
 
   // ── Derived state ──
   const allReady = stories.filter(s => ["approved","scripted"].includes(s.status));

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { usePersistentState } from "@/lib/usePersistentState";
 import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench } from "lucide-react";
 import { STAGES } from "@/lib/constants";
 import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable } from "@/lib/db";
@@ -17,7 +18,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.8.1";
+const VERSION = "3.9.0";
 
 const TABS = [
   { key: "pipeline",   label: "Pipeline",   Icon: Layers },
@@ -34,7 +35,7 @@ export default function Home() {
   const [authError, setAuthError]     = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(null); // "actions" | "user" | null
   const [stories, setStories]         = useState([]);
-  const [tab, setTab]                 = useState("pipeline");
+  const [tab, setTab]                 = usePersistentState("tab", "pipeline");
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
   const [undoStack,       setUndoStack]       = useState([]);
@@ -67,13 +68,14 @@ export default function Home() {
       getStories().then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
       // Load saved settings from brand profile
 // Load appearance from localStorage immediately (fast, no network)
+      // NOTE: default_tab from settings is no longer applied here — last-used
+      // tab is persisted via usePersistentState("tab") and wins on reload.
       try {
         const cached = localStorage.getItem("uc_settings");
         if (cached) {
           const parsed = JSON.parse(cached);
           setAppSettings(parsed);
           applyTheme(parsed?.appearance?.theme || "system");
-          if (parsed?.appearance?.default_tab) setTab(parsed.appearance.default_tab);
         }
       } catch {}
       // Then sync from Supabase (source of truth)
@@ -83,7 +85,6 @@ export default function Home() {
             setAppSettings(data.brief_doc);
             localStorage.setItem("uc_settings", JSON.stringify(data.brief_doc));
             applyTheme(data.brief_doc?.appearance?.theme || "system");
-            if (data.brief_doc?.appearance?.default_tab) setTab(data.brief_doc.appearance.default_tab);
           }
         }).catch(() => {});
     }
@@ -447,7 +448,7 @@ export default function Home() {
         </div>
         <div style={{ display: tab==="script"     ? "block" : "none" }}><ScriptView     stories={stories} onUpdate={updateStory} /></div>
         <div style={{ display: tab==="production" ? "block" : "none" }}><ProductionView stories={stories} onUpdate={updateStory} /></div>
-        <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
+        <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
         <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
 
       </main>

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect, useRef } from "react";
+import { usePersistentState } from "@/lib/usePersistentState";
 import { Search, ArrowRight, FileText, Eye, ChevronRight, ChevronDown, SlidersHorizontal, X, Check, Trash2 } from "lucide-react";
 import { STAGES, ERAS, ARCHETYPES, ACCENT, FORMATS, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES } from "@/lib/constants";
 
@@ -43,24 +44,24 @@ function ScoreBar({ score, label, max=25 }) {
 
 export default function PipelineView({ stories, onSelect, onStageChange, onBulkAction, onBulkReject, onBulkDelete, setActiveTab }) {
   // Filter state
-  const [stageFilter, setStageFilter] = useState("all");
-  const [search,      setSearch]      = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-  const [era,         setEra]         = useState("");
-  const [archetype,   setArchetype]   = useState("");
-  const [format,      setFormat]      = useState("");
-  const [hookType,    setHookType]    = useState("");
-  const [emotAngle,   setEmotAngle]   = useState("");
-  const [ptStatus,    setPtStatus]    = useState(""); // "" | "cleared" | "pending"
-  const [minScore,    setMinScore]    = useState(0);
-  const [minReach,    setMinReach]    = useState(0);
-  const [dateFrom,    setDateFrom]    = useState("");
-  const [dateTo,      setDateTo]      = useState("");
-  const [sort,        setSort]        = useState("date_desc");
+  const [stageFilter, setStageFilter] = usePersistentState("pipeline_stage",     "all");
+  const [search,      setSearch]      = usePersistentState("pipeline_search",    "");
+  const [showFilters, setShowFilters] = usePersistentState("pipeline_showfilt",  false);
+  const [era,         setEra]         = usePersistentState("pipeline_era",       "");
+  const [archetype,   setArchetype]   = usePersistentState("pipeline_archetype", "");
+  const [format,      setFormat]      = usePersistentState("pipeline_format",    "");
+  const [hookType,    setHookType]    = usePersistentState("pipeline_hooktype",  "");
+  const [emotAngle,   setEmotAngle]   = usePersistentState("pipeline_emotion",   "");
+  const [ptStatus,    setPtStatus]    = usePersistentState("pipeline_pt",        "");
+  const [minScore,    setMinScore]    = usePersistentState("pipeline_minscore",  0);
+  const [minReach,    setMinReach]    = usePersistentState("pipeline_minreach",  0);
+  const [dateFrom,    setDateFrom]    = usePersistentState("pipeline_datefrom",  "");
+  const [dateTo,      setDateTo]      = usePersistentState("pipeline_dateto",    "");
+  const [sort,        setSort]        = usePersistentState("pipeline_sort",      "date_desc");
 
   // Selection / navigation state
   const [selected,    setSelected]    = useState(new Set());
-  const [expanded,    setExpanded]    = useState(new Set());
+  const [expanded,    setExpanded]    = usePersistentState("pipeline_expanded", new Set());
   const [focused,     setFocused]     = useState(null);
   const containerRef = useRef(null);
 

@@ -8,24 +8,19 @@ import {
 } from "@/lib/constants";
 import { runAgent, recordAgentFeedback } from "@/lib/ai/agent-runner";
 import { updateProductionStatus } from "@/lib/db";
+import { usePersistentState } from "@/lib/usePersistentState";
 
 const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
-
-// ═══════════════════════════════════════════════════════════
-// v3.8.3 DIAGNOSTIC BUILD — verbose console logging
-// Remove logs after fix is identified.
-// ═══════════════════════════════════════════════════════════
-
-console.log("[ProductionView] module loaded. runAgent type:", typeof runAgent);
 
 // ─── Format border colors ───
 function formatBorder(format) {
   if (format === "classics")            return "#4A9B7F";
   if (format === "performance_special") return "#C0666A";
   if (format === "special_edition")     return "#8B7EC8";
-  return "#C49A3C";
+  return "#C49A3C"; // standard
 }
 
+// ─── Reusable button styles ───
 const btnPrimary = {
   padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600,
   background: "var(--t1)", color: "var(--bg)", border: "none",
@@ -91,6 +86,26 @@ function Section({ title, status, statusColor, description, action, children }) 
   );
 }
 
+const inputStyle = {
+  flex: 1, padding: "8px 12px", borderRadius: 7, fontSize: 13,
+  background: "var(--fill2)", border: "1px solid var(--border-in)",
+  color: "var(--t1)", outline: "none", fontFamily: "inherit",
+};
+const textareaStyle = { ...inputStyle, width: "100%", minHeight: 64, resize: "vertical", lineHeight: 1.5 };
+
+function Field({ label, value, onChange, multiline = false }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
+      {multiline ? (
+        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={3} style={textareaStyle} />
+      ) : (
+        <input value={value || ""} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
+      )}
+    </div>
+  );
+}
+
 function BriefSection({ story, brand_profile_id, onSaved }) {
   const [draft, setDraft]       = useState(story.visual_brief || null);
   const [original, setOriginal] = useState(story.visual_brief || null);
@@ -108,29 +123,17 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
   }, [story.id]);
 
   const generate = async () => {
-    console.log("[BriefSection] generate() called");
-    console.log("[BriefSection] story:", story);
-    console.log("[BriefSection] brand_profile_id:", brand_profile_id);
-    console.log("[BriefSection] runAgent typeof:", typeof runAgent);
-
     setRunning(true); setError(null);
-
     try {
-      console.log("[BriefSection] about to call runAgent...");
       const result = await runAgent({
         agent_name: "brief-author",
         params: { story, brand_profile_id },
       });
-      console.log("[BriefSection] runAgent returned:", result);
-
       setDraft(result.brief);
       setConfidence(result.confidence);
       setReasoning(result.reasoning);
       setAiCallId(result.ai_call_id);
     } catch (e) {
-      console.error("[BriefSection] runAgent threw:", e);
-      console.error("[BriefSection] error message:", e?.message);
-      console.error("[BriefSection] error stack:", e?.stack);
       setError(e?.message || String(e));
     } finally {
       setRunning(false);
@@ -183,7 +186,7 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
     <Section title="Visual brief" status={status} statusColor={statusColor}
       description="AI writes a structured brief from the story, brand, and your past corrections. Edit any field and approve to save.">
       {!draft && (
-        <button onClick={() => { console.log("[BriefSection] BUTTON CLICKED"); generate(); }} disabled={running} style={btnPrimary}>
+        <button onClick={generate} disabled={running} style={btnPrimary}>
           <Sparkles size={12} />
           {running ? "Writing brief…" : "Generate brief"}
         </button>
@@ -198,7 +201,7 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
             </div>
           )}
           <Field label="Scene" value={draft.scene} onChange={(v) => updateField("scene", v)} multiline />
-          <Field label="Mood"  value={draft.mood}  onChange={(v) => updateField("mood",  v)} />
+          <Field label="Mood"  value={draft.mood}  onChange={(v) => updateField("mood",  v)} multiline />
           <div>
             <div style={{ fontSize: 10, fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>References</div>
             {(draft.references || []).map((r, i) => (
@@ -231,26 +234,6 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
   );
 }
 
-const inputStyle = {
-  flex: 1, padding: "8px 12px", borderRadius: 7, fontSize: 13,
-  background: "var(--fill2)", border: "1px solid var(--border-in)",
-  color: "var(--t1)", outline: "none", fontFamily: "inherit",
-};
-const textareaStyle = { ...inputStyle, width: "100%", minHeight: 64, resize: "vertical", lineHeight: 1.5 };
-
-function Field({ label, value, onChange, multiline = false }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{label}</div>
-      {multiline ? (
-        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={3} style={textareaStyle} />
-      ) : (
-        <input value={value || ""} onChange={(e) => onChange(e.target.value)} style={inputStyle} />
-      )}
-    </div>
-  );
-}
-
 function AssetMatchesSection({ story, brand_profile_id }) {
   const [matches, setMatches] = useState(null);
   const [gaps, setGaps]       = useState(null);
@@ -266,13 +249,18 @@ function AssetMatchesSection({ story, brand_profile_id }) {
     if (!story.visual_brief) return;
     setRunning(true); setError(null);
     try {
-      const result = await runAgent({ agent_name: "asset-curator", params: { story, brief: story.visual_brief, brand_profile_id } });
+      const result = await runAgent({
+        agent_name: "asset-curator",
+        params: { story, brief: story.visual_brief, brand_profile_id },
+      });
       setMatches(result.matches); setGaps(result.gaps); setConf(result.confidence);
     } catch (e) { setError(e?.message || String(e)); }
     finally { setRunning(false); }
   };
 
-  const status = matches == null ? "not run yet" : matches.length === 0 ? `${gaps?.length || 0} gaps` : `${matches.length} matches · ${gaps?.length || 0} gaps`;
+  const status = matches == null ? "not run yet"
+               : matches.length === 0 ? `${gaps?.length || 0} gaps`
+               : `${matches.length} matches · ${gaps?.length || 0} gaps`;
 
   return (
     <Section title="Asset library matches" status={status} statusColor={matches?.length ? "success" : "default"}
@@ -337,12 +325,14 @@ function StubSection({ Icon, title, description, deliveryLabel }) {
 
 export default function ProductionView({ stories, onUpdate }) {
   const queue = useMemo(() => (stories || []).filter(isInProductionQueue), [stories]);
-  const [selectedId, setSelectedId] = useState(queue[0]?.id || null);
+
+  // Persisted across reloads
+  const [selectedId, setSelectedId] = usePersistentState("production_selected", queue[0]?.id || null);
 
   useEffect(() => {
     if (!selectedId && queue.length) setSelectedId(queue[0].id);
     if (selectedId && !queue.find(s => s.id === selectedId) && queue.length) setSelectedId(queue[0].id);
-  }, [queue, selectedId]);
+  }, [queue, selectedId, setSelectedId]);
 
   const selected = queue.find(s => s.id === selectedId);
 

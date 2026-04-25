@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { usePersistentState } from "@/lib/usePersistentState";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
 import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
 import { supabase } from "@/lib/db";
@@ -313,7 +314,7 @@ function ProgDiscuss({ programme, brandName }) {
 
 export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="" }) {
   const VERSION_NUM = version;
-  const [section,  setSection]  = useState("brand");
+  const [section,  setSection]  = usePersistentState("settings_section", "brand");
   const [settings, setSettings] = useState(initialSettings||DEFAULT_SETTINGS);
   const [saved,    setSaved]    = useState(false);
   const [saving,   setSaving]   = useState(false);

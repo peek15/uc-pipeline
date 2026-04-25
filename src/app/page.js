@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown } from "lucide-react";
+import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench } from "lucide-react";
 import { STAGES } from "@/lib/constants";
 import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable } from "@/lib/db";
 import { signInWithGoogle, signOut, isEmailAllowed } from "@/lib/auth";
@@ -8,6 +8,7 @@ import PipelineView from "@/components/PipelineView";
 import ResearchView from "@/components/ResearchView";
 import ScriptView from "@/components/ScriptView";
 import CalendarView from "@/components/CalendarView";
+import ProductionView from "@/components/ProductionView";
 import AnalyzeView from "@/components/AnalyzeView";
 import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
@@ -16,14 +17,15 @@ import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 
-const VERSION = "3.7.0";
+const VERSION = "3.8.0";
 
 const TABS = [
-  { key: "pipeline", label: "Pipeline", Icon: Layers },
-  { key: "research", label: "Research", Icon: Search },
-  { key: "script",   label: "Script",   Icon: FileText },
-  { key: "calendar", label: "Calendar", Icon: Clock },
-  { key: "analyze",  label: "Analyze",  Icon: BarChart3 },
+  { key: "pipeline",   label: "Pipeline",   Icon: Layers },
+  { key: "research",   label: "Research",   Icon: Search },
+  { key: "script",     label: "Script",     Icon: FileText },
+  { key: "production", label: "Production", Icon: Wrench },
+  { key: "calendar",   label: "Calendar",   Icon: Clock },
+  { key: "analyze",    label: "Analyze",    Icon: BarChart3 },
 ];
 
 export default function Home() {
@@ -443,8 +445,9 @@ export default function Home() {
             onPrefillUsed={() => setResearchPrefill(null)}
           />
         </div>
-        <div style={{ display: tab==="script"   ? "block" : "none" }}><ScriptView   stories={stories} onUpdate={updateStory} /></div>
-        <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
+        <div style={{ display: tab==="script"     ? "block" : "none" }}><ScriptView     stories={stories} onUpdate={updateStory} /></div>
+        <div style={{ display: tab==="production" ? "block" : "none" }}><ProductionView stories={stories} onUpdate={updateStory} /></div>
+        <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
         <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
 
       </main>

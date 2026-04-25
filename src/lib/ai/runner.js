@@ -1,20 +1,17 @@
 // ═══════════════════════════════════════════════════════════
-// runner.js — Single entry point for every AI call in the app.
-// No view should call callClaude() directly. All AI logic flows:
-//   view → runPrompt() → prompt template → callClaudeRaw() → logAiCall()
+// runner.js — Single entry point for every AI call.
+// v3.8.0 — adds "agent-call" passthrough type for agents.
 //
-// v3.7.0 architecture.
-// Option B agents will plug into the same pattern via agent-runner.js
+// Two flavors of call:
+//   - Templated:    type matches a prompts/<type>.js file → build() runs
+//   - Passthrough:  type === "agent-call" → params.prompt used directly
+//                   (agents construct their own prompts using base.js helpers)
 // ═══════════════════════════════════════════════════════════
 
 import { callClaudeRaw, callClaudeStreamRaw } from "@/lib/db";
 import { logAiCall, logAiCallError } from "./audit";
 
-// ── Prompt registry ──
-// Each prompt module exports:
-//   build(params) → string
-//   parse?(text)  → any (optional — for JSON responses)
-//   defaults?: { maxTokens, model, streaming }
+// ── Templated prompt registry ──
 import * as scoreStory           from "./prompts/score-story";
 import * as generateScript       from "./prompts/generate-script";
 import * as translateScript      from "./prompts/translate-script";
@@ -45,17 +42,20 @@ const REGISTRY = {
   "onboarding-chat":        onboardingChat,
 };
 
+// Passthrough used by agents — they build their own prompt
+const PASSTHROUGH_TYPES = new Set(["agent-call"]);
+
 /**
- * Run a non-streaming AI prompt.
+ * Run a prompt by type.
  *
  * @param {object} opts
- * @param {string} opts.type       — registry key (e.g. "score-story")
- * @param {object} opts.params     — passed to the prompt's build()
- * @param {object} [opts.context]  — { story_id, brand_profile_id, workspace_id }
- * @param {number} [opts.maxTokens]— overrides prompt default
- * @param {string} [opts.model]    — "haiku"|"sonnet"|"opus" (overrides default)
- * @param {boolean}[opts.parse]    — if true and prompt has parse(), return parsed; else raw text
- * @returns {Promise<{ text, parsed, usage, model, cost_estimate, ai_call_id }>}
+ * @param {string} opts.type
+ * @param {object} opts.params
+ * @param {object} [opts.context]   — { story_id, brand_profile_id, workspace_id }
+ * @param {number} [opts.maxTokens]
+ * @param {string} [opts.model]
+ * @param {boolean}[opts.parse]
+ * @returns {Promise<{ text, parsed, usage, model, ai_call_id }>}
  */
 export async function runPrompt({
   type,
@@ -65,22 +65,28 @@ export async function runPrompt({
   model,
   parse = true,
 }) {
-  const mod = REGISTRY[type];
-  if (!mod) throw new Error(`runPrompt: unknown type "${type}"`);
-  if (typeof mod.build !== "function") throw new Error(`runPrompt: "${type}" has no build()`);
+  let prompt, mod = null;
 
-  const defaults = mod.defaults || {};
+  if (PASSTHROUGH_TYPES.has(type)) {
+    prompt = params.prompt;
+    if (!prompt) throw new Error(`runPrompt: "${type}" requires params.prompt`);
+  } else {
+    mod = REGISTRY[type];
+    if (!mod) throw new Error(`runPrompt: unknown type "${type}"`);
+    if (typeof mod.build !== "function") throw new Error(`runPrompt: "${type}" has no build()`);
+    prompt = mod.build(params);
+  }
+
+  const defaults      = mod?.defaults || {};
   const resolvedMax   = maxTokens ?? defaults.maxTokens ?? 1000;
   const resolvedModel = model     ?? defaults.model     ?? "sonnet";
 
-  const prompt = mod.build(params);
   const t0 = Date.now();
 
   try {
     const { text, usage, model: modelId } = await callClaudeRaw(prompt, resolvedMax, resolvedModel);
     const duration_ms = Date.now() - t0;
 
-    // Log success — best effort
     const ai_call_id = await logAiCall({
       type,
       provider_name: "anthropic",
@@ -93,12 +99,10 @@ export async function runPrompt({
       duration_ms,
     });
 
-    // Optional parsing via prompt's parse()
     let parsed = null;
-    if (parse && typeof mod.parse === "function") {
+    if (parse && mod && typeof mod.parse === "function") {
       try { parsed = mod.parse(text); }
       catch (e) {
-        // Parse failure: log but don't throw — caller can inspect text
         await logAiCallError({
           type,
           model_version: modelId,
@@ -131,13 +135,6 @@ export async function runPrompt({
   }
 }
 
-/**
- * Streaming variant for script generation. Same signature, plus onChunk.
- *
- * @param {object} opts
- * @param {(text:string)=>void} opts.onChunk
- * @returns {Promise<{ text, usage, model, ai_call_id }>}
- */
 export async function runPromptStream({
   type,
   params = {},
@@ -146,14 +143,21 @@ export async function runPromptStream({
   model,
   onChunk,
 }) {
-  const mod = REGISTRY[type];
-  if (!mod) throw new Error(`runPromptStream: unknown type "${type}"`);
+  let prompt, mod = null;
 
-  const defaults = mod.defaults || {};
+  if (PASSTHROUGH_TYPES.has(type)) {
+    prompt = params.prompt;
+    if (!prompt) throw new Error(`runPromptStream: "${type}" requires params.prompt`);
+  } else {
+    mod = REGISTRY[type];
+    if (!mod) throw new Error(`runPromptStream: unknown type "${type}"`);
+    prompt = mod.build(params);
+  }
+
+  const defaults      = mod?.defaults || {};
   const resolvedMax   = maxTokens ?? defaults.maxTokens ?? 1000;
   const resolvedModel = model     ?? defaults.model     ?? "sonnet";
 
-  const prompt = mod.build(params);
   const t0 = Date.now();
 
   try {
@@ -191,6 +195,5 @@ export async function runPromptStream({
   }
 }
 
-// Re-export for convenience
 export { logAiCall, logAiCallError, getAiCalls, getStoryCost } from "./audit";
 export { estimateCost, formatCost } from "./costs";

@@ -11,7 +11,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   },
 });
 
-// ─── STORIES (Supabase direct — protected by RLS) ───
+// ─── STORIES ───
 
 export async function getStories() {
   const { data, error } = await supabase
@@ -46,28 +46,128 @@ export async function bulkUpsertStories(stories) {
   return data;
 }
 
-// ─── Helper to get auth token ───
+/**
+ * v3.8.0 — update production_status + related fields atomically.
+ */
+export async function updateProductionStatus(storyId, patch) {
+  const { error } = await supabase
+    .from("stories")
+    .update(patch)
+    .eq("id", storyId);
+  if (error) throw error;
+}
+
+// ─── BRAND PROFILES (v3.8.0) ───
+
+export async function getBrandProfile(id) {
+  const { data, error } = await supabase
+    .from("brand_profiles")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error) return null;
+  return data;
+}
+
+export async function listBrandProfiles() {
+  const { data, error } = await supabase
+    .from("brand_profiles")
+    .select("id, name, brief_doc")
+    .order("name", { ascending: true });
+  if (error) return [];
+  return data || [];
+}
+
+// ─── ASSET LIBRARY (v3.8.0) ───
+
+export async function listAssetLibrary({ brand_profile_id, type = null, language = null, active = true } = {}) {
+  let q = supabase
+    .from("asset_library")
+    .select("*")
+    .eq("brand_profile_id", brand_profile_id);
+  if (active !== null) q = q.eq("active", active);
+  if (type)     q = q.eq("type", type);
+  if (language) q = q.eq("language", language);
+  const { data, error } = await q.order("last_used_at", { ascending: false, nullsFirst: false });
+  if (error) return [];
+  return data || [];
+}
+
+export async function upsertAssetLibrary(asset) {
+  const { data, error } = await supabase
+    .from("asset_library")
+    .upsert(asset, { onConflict: "id" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function bumpAssetUsage(asset_id) {
+  // Best-effort increment of reuse_count + last_used_at
+  try {
+    const { data } = await supabase.from("asset_library").select("reuse_count").eq("id", asset_id).single();
+    const next = (data?.reuse_count || 0) + 1;
+    await supabase.from("asset_library").update({
+      reuse_count: next,
+      last_used_at: new Date().toISOString(),
+    }).eq("id", asset_id);
+  } catch {}
+}
+
+// ─── VISUAL ASSETS (per-story, generated/selected) (v3.8.0) ───
+
+export async function listVisualAssets(story_id) {
+  const { data, error } = await supabase
+    .from("visual_assets")
+    .select("*")
+    .eq("story_id", story_id)
+    .order("created_at", { ascending: false });
+  if (error) return [];
+  return data || [];
+}
+
+export async function insertVisualAsset(asset) {
+  const { data, error } = await supabase
+    .from("visual_assets")
+    .insert(asset)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateVisualAssetSelection(asset_id, was_selected, selection_order = null) {
+  const { error } = await supabase
+    .from("visual_assets")
+    .update({ was_selected, selection_order })
+    .eq("id", asset_id);
+  if (error) throw error;
+}
+
+// ─── AGENT FEEDBACK (v3.8.0) ───
+
+export async function getAgentFeedback({ agent_name, brand_profile_id, limit = 5 }) {
+  const { data } = await supabase
+    .from("agent_feedback")
+    .select("*")
+    .eq("agent_name", agent_name)
+    .eq("brand_profile_id", brand_profile_id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return data || [];
+}
+
+// ─── Helper: get auth token ───
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token;
 }
 
 // ═══════════════════════════════════════════════════════════
-// CLAUDE API
-//
-// v3.7.0 — return shape changed. Two functions:
-//
-//   callClaude(prompt, maxTokens, model)
-//     → string (legacy — kept for any stragglers)
-//     → backwards-compatible: returns just text
-//
-//   callClaudeRaw(prompt, maxTokens, model)
-//     → { text, usage: { input_tokens, output_tokens }, model }
-//     → used by the AI runner for cost logging
-//
-// In new code ALWAYS go through runPrompt() in src/lib/ai/runner.js
-// — never call these directly. These exist only for legacy shim
-// and for the runner itself to dispatch.
+// CLAUDE API — unchanged from v3.7.0
+// All view code goes through runPrompt() in src/lib/ai/runner.js.
+// These exist as transport for the runner.
 // ═══════════════════════════════════════════════════════════
 
 export async function callClaudeRaw(prompt, maxTokens = 1000, model = "sonnet") {
@@ -92,18 +192,11 @@ export async function callClaudeRaw(prompt, maxTokens = 1000, model = "sonnet") 
   };
 }
 
-// Legacy shape — returns text only. Kept so nothing breaks during migration.
-// Prefer runPrompt() for all new code.
 export async function callClaude(prompt, maxTokens = 1000, model = "sonnet") {
   const { text } = await callClaudeRaw(prompt, maxTokens, model);
   return text;
 }
 
-// Streaming — returns full text + usage at the end
-// Signature kept compatible: callClaudeStream(prompt, maxTokens, onChunk)
-// Now returns { text, usage, model } instead of just text (backwards-compat
-// for any caller using `const t = await callClaudeStream(...)` because a
-// string is still produced — if old callers expect a string, use callClaudeStreamText)
 export async function callClaudeStreamRaw(prompt, maxTokens = 1000, onChunk, model = "sonnet") {
   const token = await getToken();
   const res = await fetch("/api/claude", {
@@ -138,15 +231,11 @@ export async function callClaudeStreamRaw(prompt, maxTokens = 1000, onChunk, mod
       if (dataStr === "[DONE]") continue;
       try {
         const parsed = JSON.parse(dataStr);
-
-        // Text deltas
         const chunk = parsed?.delta?.text || "";
         if (chunk) {
           fullText += chunk;
           if (onChunk) onChunk(fullText);
         }
-
-        // Custom usage event from our proxy
         if (parsed.type === "usage" && parsed.usage) {
           usage = parsed.usage;
           if (parsed.model) modelId = parsed.model;
@@ -158,14 +247,12 @@ export async function callClaudeStreamRaw(prompt, maxTokens = 1000, onChunk, mod
   return { text: fullText, usage, model: modelId };
 }
 
-// Legacy streaming — returns text only
 export async function callClaudeStream(prompt, maxTokens = 1000, onChunk) {
   const { text } = await callClaudeStreamRaw(prompt, maxTokens, onChunk);
   return text;
 }
 
 // ─── AUDIT LOG (user actions — unchanged) ───
-// For AI cost logging, see src/lib/ai/audit.js
 
 export async function logAudit(action, storyId = null, storyTitle = null, details = null) {
   try {
@@ -179,7 +266,7 @@ export async function logAudit(action, storyId = null, storyTitle = null, detail
       story_title: storyTitle,
       details,
     });
-  } catch {} // Silent — audit is best-effort
+  } catch {}
 }
 
 export async function getAuditLog(limit = 50) {
@@ -192,7 +279,7 @@ export async function getAuditLog(limit = 50) {
   return data || [];
 }
 
-// ─── AIRTABLE SYNC (via server route — key stays secret) ───
+// ─── AIRTABLE SYNC ───
 
 export async function syncToAirtable(story) {
   try {
@@ -206,7 +293,5 @@ export async function syncToAirtable(story) {
       },
       body: JSON.stringify(story),
     });
-  } catch {
-    // Silent fail — Airtable sync is best-effort
-  }
+  } catch {}
 }

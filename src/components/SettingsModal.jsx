@@ -5,6 +5,7 @@ import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, R
 import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
 import { supabase } from "@/lib/db";
 import { runPrompt } from "@/lib/ai/runner";
+import ProvidersSection from "@/components/ProvidersSection";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
 
 const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
@@ -479,7 +480,9 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
         language_primary: settings.brand.language_primary,
         languages_secondary: settings.brand.languages_secondary,
         brief_doc: settings,
-        provider_config: settings.providers,
+        // provider_config removed in v3.10.1 — provider credentials now
+        // saved via /api/provider-config to the secure provider_secrets
+        // table, not exposed in brand_profiles JSON.
       });
       if (onSettingsChange) onSettingsChange(settings);
       try { localStorage.setItem("uc_settings", JSON.stringify(settings)); } catch {}
@@ -1264,54 +1267,7 @@ ${fileText.slice(0,3000)}` : text };
 
           {/* ── Providers ── */}
           {section==="providers" && (
-            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-              <div style={{ fontSize:12, color:"var(--t3)", padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)" }}>
-                API keys are set as environment variables in Vercel — never stored in the database.
-              </div>
-              {[
-                { slot:"script",   label:"Script provider",   providers:[{v:"anthropic",l:"Anthropic (Claude)"},{v:"openai",l:"OpenAI (GPT)"},{v:"stub",l:"Stub (test)"}],
-                  models:{ anthropic:[{v:"claude-haiku-4-5-20251001",l:"Claude Haiku"},{v:"claude-sonnet-4-6",l:"Claude Sonnet"},{v:"claude-opus-4-6",l:"Claude Opus"}], openai:[{v:"gpt-4o-mini",l:"GPT-4o Mini"},{v:"gpt-4o",l:"GPT-4o"}], stub:[{v:"stub",l:"Stub"}] }
-                },
-                { slot:"voice",    label:"Voice provider",    providers:[{v:"elevenlabs",l:"ElevenLabs"},{v:"playht",l:"PlayHT"},{v:"stub",l:"Stub (test)"}] },
-                { slot:"visual",   label:"Visual provider",   providers:[{v:"replicate",l:"Replicate (SDXL/Flux)"},{v:"dalle",l:"DALL-E 3"},{v:"stub",l:"Stub (test)"}] },
-                { slot:"assembly", label:"Assembly provider", providers:[{v:"capcut_export",l:"CapCut (manual)"},{v:"creatomate",l:"Creatomate (API)"},{v:"remotion",l:"Remotion (Phase 2)"},{v:"stub",l:"Stub (test)"}] },
-              ].map(({ slot, label, providers, models })=>{
-                const cfg = settings.providers?.[slot]||{};
-                const statusColor = cfg.status==="configured"?"#4A9B7F":cfg.status==="needs_key"?"#C49A3C":"var(--t4)";
-                return (
-                  <div key={slot} style={{ padding:"14px", borderRadius:9, border:"1px solid var(--border)", background:"var(--fill2)" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                      <span style={{ fontSize:13, fontWeight:500, color:"var(--t1)" }}>{label}</span>
-                      <span style={{ fontSize:10, padding:"2px 7px", borderRadius:99, background:`${statusColor}15`, color:statusColor, border:`1px solid ${statusColor}25`, fontWeight:600 }}>
-                        {cfg.status==="configured"?"Configured":cfg.status==="needs_key"?"Needs API key":"Not configured"}
-                      </span>
-                    </div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                      <div>
-                        <div style={{ fontSize:10, color:"var(--t3)", marginBottom:4 }}>Provider</div>
-                        <select value={cfg.provider||""} onChange={e=>upd(`providers.${slot}.provider`,e.target.value)} style={selStyle}>
-                          {providers.map(p=><option key={p.v} value={p.v}>{p.l}</option>)}
-                        </select>
-                      </div>
-                      {models && models[cfg.provider] && (
-                        <div>
-                          <div style={{ fontSize:10, color:"var(--t3)", marginBottom:4 }}>Model</div>
-                          <select value={cfg.model||""} onChange={e=>upd(`providers.${slot}.model`,e.target.value)} style={selStyle}>
-                            {(models[cfg.provider]||[]).map(m=><option key={m.v} value={m.v}>{m.l}</option>)}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                    {slot==="voice" && (
-                      <div style={{ marginTop:8 }}>
-                        <div style={{ fontSize:10, color:"var(--t3)", marginBottom:4 }}>Voice ID</div>
-                        <input value={cfg.voice_id||""} onChange={e=>upd(`providers.${slot}.voice_id`,e.target.value)} placeholder="From ElevenLabs dashboard" style={inputStyle}/>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <ProvidersSection />
           )}
 
           {/* ── Intelligence ── */}

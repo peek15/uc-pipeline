@@ -6,14 +6,8 @@ import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
 import { supabase } from "@/lib/db";
 import { runPrompt } from "@/lib/ai/runner";
 import ProvidersSection from "@/components/ProvidersSection";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
-
-// TEMP DEBUG — remove after fix
-if (typeof window !== "undefined") {
-  window.addEventListener('error', (e) => {
-    console.error('CRASH SOURCE:', e.error?.stack);
-  }, true);
-}
 
 const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -762,6 +756,7 @@ ${fileText.slice(0,3000)}` : text };
           </div>
 
           {/* ── Brand ── */}
+          <ErrorBoundary>
           {section==="brand" && (
             <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
 
@@ -1429,6 +1424,7 @@ ${fileText.slice(0,3000)}` : text };
               </div>
             </div>
           )}
+          </ErrorBoundary>
         </div>
       </div>
     </div>

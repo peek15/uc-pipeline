@@ -8,6 +8,13 @@ import { runPrompt } from "@/lib/ai/runner";
 import ProvidersSection from "@/components/ProvidersSection";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
 
+// TEMP DEBUG — remove after fix
+if (typeof window !== "undefined") {
+  window.addEventListener('error', (e) => {
+    console.error('CRASH SOURCE:', e.error?.stack);
+  }, true);
+}
+
 const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
 
 const DEFAULT_SETTINGS = {

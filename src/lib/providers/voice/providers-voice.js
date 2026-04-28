@@ -1,151 +1,88 @@
+// ═══════════════════════════════════════════════════════════
+// providers/voice/providers-voice.js
+// v3.11.0 — real implementation, calls go through /api/provider-call.
+//
+// Public API:
+//   getVoiceProvider(brand_id) → { generate({ text, voice_id, language }) }
+//
+// Returns { audio_blob, mime, cost_estimate, provider_name, latency_ms }.
+// ═══════════════════════════════════════════════════════════
+
+import { supabase } from "@/lib/db";
+import { loadProviderConfig } from "../config-loader";
+
+async function authToken() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token;
+}
+
+async function callProviderRoute(action, brand_profile_id, params) {
+  const token = await authToken();
+  if (!token) throw new Error("Not authenticated");
+
+  const res = await fetch("/api/provider-call", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization:  `Bearer ${token}`,
+    },
+    body: JSON.stringify({ action, brand_profile_id, params }),
+  });
+
+  let payload = null;
+  try { payload = await res.json(); } catch {}
+  if (!res.ok) throw new Error(payload?.error || `provider-call ${res.status}`);
+  return payload;
+}
+
+function base64ToBlob(b64, mime) {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  return new Blob([bytes], { type: mime });
+}
+
 /**
- * src/lib/providers/voice/providers-voice.js
- *
- * Voice provider implementations.
- * Each provider exports an execute(params) function returning:
- *   { blob, filename, provider_name, cost_estimate }
- *
- * To add a new provider: add a key to voiceProviders with an execute() function.
- * Never import this file directly — route through src/lib/providers/index.js executeProvider().
- *
- * Output: audio blob + filename for local download now.
- * Future: caller uploads blob to S3/GCS via assets layer.
+ * Get voice provider for a brand. Returns object with .generate().
  */
+export async function getVoiceProvider(brand_profile_id) {
+  const cfg = await loadProviderConfig(brand_profile_id, "voice");
+  const provider_name = cfg?.provider_name || "stub";
 
-// ── ElevenLabs ──
-const elevenlabs = {
-  async execute({ script, lang, storySlug = "story", config, apiKey }) {
-    if (!apiKey) throw new Error("ElevenLabs API key not configured. Add it in Settings → Providers.");
-    if (!config?.voice_id) throw new Error("ElevenLabs voice ID not set. Add it in Settings → Providers.");
+  return {
+    name: provider_name,
+    config: cfg?.config || {},
 
-    const model = config.model_id || "eleven_multilingual_v2";
-    const url = `https://api.elevenlabs.io/v1/text-to-speech/${config.voice_id}`;
+    /**
+     * Generate audio for one (text, voice_id, language) tuple.
+     * @returns {Promise<{ audio_blob, mime, cost_estimate, provider_name, latency_ms }>}
+     */
+    async generate({ text, voice_id, language = "en", model_id }) {
+      if (!text)     throw new Error("voice.generate: missing text");
+      if (!voice_id) throw new Error("voice.generate: missing voice_id");
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "xi-api-key": apiKey,
-        "Content-Type": "application/json",
-        "Accept": "audio/mpeg",
-      },
-      body: JSON.stringify({
-        text: script,
-        model_id: model,
-        voice_settings: {
-          stability:        config.stability        ?? 0.5,
-          similarity_boost: config.similarity_boost ?? 0.75,
-        },
-      }),
-    });
+      const { audio_base64, mime, cost_estimate, latency_ms } = await callProviderRoute(
+        "voice.generate",
+        brand_profile_id,
+        { text, voice_id, language, model_id }
+      );
 
-    if (!res.ok) {
-      const err = await res.text().catch(() => res.statusText);
-      throw new Error(`ElevenLabs error ${res.status}: ${err}`);
-    }
-
-    const blob = await res.blob();
-    return {
-      blob,
-      filename: `UC-${storySlug}-${lang.toUpperCase()}-elevenlabs.mp3`,
-      cost_estimate: null, // ElevenLabs charges per character — log separately
-    };
-  },
-};
-
-// ── PlayHT ──
-const playht = {
-  async execute({ script, lang, storySlug = "story", config, apiKey }) {
-    if (!apiKey) throw new Error("PlayHT API key not configured. Add it in Settings → Providers.");
-
-    const res = await fetch("https://api.play.ht/api/v2/tts/stream", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "X-User-Id": config.user_id || "",
-        "Content-Type": "application/json",
-        "Accept": "audio/mpeg",
-      },
-      body: JSON.stringify({
-        text: script,
-        voice: config.voice_id || "",
-        output_format: "mp3",
-        voice_engine: config.model_id || "play3.0-mini",
-        language: lang,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => res.statusText);
-      throw new Error(`PlayHT error ${res.status}: ${err}`);
-    }
-
-    const blob = await res.blob();
-    return {
-      blob,
-      filename: `UC-${storySlug}-${lang.toUpperCase()}-playht.mp3`,
-      cost_estimate: null,
-    };
-  },
-};
-
-// ── Stub — silent WAV for pipeline testing without a real API key ──
-const stub = {
-  async execute({ lang, storySlug = "story" }) {
-    const sampleRate = 44100;
-    const numSamples = sampleRate; // 1 second silence
-    const buffer = new ArrayBuffer(44 + numSamples * 2);
-    const view = new DataView(buffer);
-    const writeStr = (offset, str) => {
-      for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-    };
-    writeStr(0, "RIFF");
-    view.setUint32(4,  36 + numSamples * 2, true);
-    writeStr(8, "WAVE");
-    writeStr(12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1,  true);
-    view.setUint16(22, 1,  true);
-    view.setUint32(24, sampleRate,     true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2,  true);
-    view.setUint16(34, 16, true);
-    writeStr(36, "data");
-    view.setUint32(40, numSamples * 2, true);
-
-    const blob = new Blob([buffer], { type: "audio/wav" });
-    return {
-      blob,
-      filename: `UC-${storySlug}-${lang.toUpperCase()}-stub.wav`,
-      cost_estimate: 0,
-    };
-  },
-};
-
-// ── Provider map — add new providers here ──
-export const voiceProviders = { elevenlabs, playht, stub };
-
-// ── Provider metadata — used by UI to show status/labels ──
-export const VOICE_PROVIDER_CONFIG = {
-  elevenlabs: { label: "ElevenLabs", requiresKey: true,  supportsLangs: ["en","fr","es","pt"] },
-  playht:     { label: "PlayHT",     requiresKey: true,  supportsLangs: ["en","fr","es","pt"] },
-  stub:       { label: "Stub",       requiresKey: false, supportsLangs: ["en","fr","es","pt"] },
-};
-
-// ── Helper: download blob locally (until cloud storage is wired) ──
-export function downloadVoiceBlob({ blob, filename }) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+      return {
+        audio_blob:     base64ToBlob(audio_base64, mime || "audio/mp3"),
+        mime:           mime || "audio/mp3",
+        cost_estimate:  cost_estimate || 0,
+        provider_name,
+        latency_ms,
+      };
+    },
+  };
 }
 
-// ── Helper: get voice status from settings ──
-export function getVoiceStatus(settings) {
-  return settings?.providers?.voice?.status || "not_configured";
-}
-
-export function getVoiceProvider(settings) {
-  return settings?.providers?.voice?.provider || "stub";
+/**
+ * Resolve a voice_id for a (brand, language) pair.
+ * Reads the array of {lang, voice_id} from brand's voice config.
+ */
+export async function resolveVoiceId(brand_profile_id, language) {
+  const cfg = await loadProviderConfig(brand_profile_id, "voice");
+  if (!cfg?.config?.voices) return null;
+  const match = (cfg.config.voices || []).find(v => v.lang === language);
+  return match?.voice_id || null;
 }

@@ -1,21 +1,12 @@
 // ═══════════════════════════════════════════════════════════
 // providers/index.js — Top-level provider registry.
-// v3.10.0
-//
-// Re-exports every provider category for clean imports:
-//   import { getStorageProvider, getVoiceProvider } from "@/lib/providers";
-//
-// Existing voice provider abstraction stays as-is; this module adds storage
-// and the config layer.
+// v3.11.0 — adds visual atmospheric + licensed exports.
 // ═══════════════════════════════════════════════════════════
 
 export { getStorageProvider, STORAGE_PROVIDERS } from "./storage/storage";
+export { getVoiceProvider, resolveVoiceId }      from "./voice/providers-voice";
+export { getAtmosphericProvider, getLicensedProvider, selectVisualProvider } from "./visual/visual";
 
-// Voice provider — already existed in v3.6.x. Kept here for cleanliness.
-// Path may differ in your repo; adjust import if the file is at a different location.
-export { getVoiceProvider } from "./voice/providers-voice";
-
-// Config layer
 export {
   loadProviderConfig,
   listProviderConfigs,
@@ -24,57 +15,51 @@ export {
   clearProviderCache,
 } from "./config-loader";
 
-// Provider type constants (used by Settings UI in 2B)
+// Provider type constants — used by Settings UI
 export const PROVIDER_TYPES = [
-  { key: "voice",              label: "Voice",              providers: ["elevenlabs", "playht", "stub"] },
-  { key: "storage",            label: "Storage",            providers: ["supabase_storage", "s3", "gcs", "stub"] },
-  { key: "visual_atmospheric", label: "Visual (atmospheric)", providers: ["midjourney", "stub"] },
-  { key: "visual_licensed",    label: "Visual (licensed)",  providers: ["shutterstock", "getty", "stub"] },
+  { key: "voice",              label: "Voice",                providers: ["elevenlabs", "playht", "stub"] },
+  { key: "storage",            label: "Storage",              providers: ["supabase_storage", "s3", "gcs", "stub"] },
+  { key: "visual_atmospheric", label: "Visual (atmospheric)", providers: ["flux", "midjourney", "dalle", "stub"] },
+  { key: "visual_licensed",    label: "Visual (licensed)",    providers: ["pexels", "shutterstock", "stub"] },
 ];
 
-// Default config templates per provider — used by Settings UI to render the right fields
+// Default config templates per provider — Settings UI uses these to
+// know what fields to render
 export const PROVIDER_DEFAULTS = {
   // Voice
   elevenlabs: {
     secrets: { api_key: "" },
     config: {
-      voice_id_en: "", voice_id_fr: "", voice_id_es: "", voice_id_pt: "",
-      stability: 0.5, similarity_boost: 0.75, style: 0,
+      voices: [
+        { lang: "en", voice_id: "" },
+        { lang: "fr", voice_id: "" },
+        { lang: "es", voice_id: "" },
+        { lang: "pt", voice_id: "" },
+      ],
+      model_id:         "eleven_multilingual_v2",
+      stability:        0.5,
+      similarity_boost: 0.75,
+      style:            0,
     },
   },
   playht: {
     secrets: { api_key: "", user_id: "" },
-    config: { voice_id_en: "", voice_id_fr: "", voice_id_es: "", voice_id_pt: "" },
+    config: { voices: [] },
   },
 
   // Storage
-  supabase_storage: {
-    secrets: {},
-    config: { bucket: "", public_read: false },
-  },
-  s3: {
-    secrets: { access_key_id: "", secret_access_key: "" },
-    config:  { region: "us-east-1", bucket: "" },
-  },
-  gcs: {
-    secrets: { service_account_json: "" },
-    config:  { bucket: "" },
-  },
+  supabase_storage: { secrets: {}, config: { bucket: "", public_read: false } },
+  s3:               { secrets: { access_key_id: "", secret_access_key: "" }, config: { region: "us-east-1", bucket: "" } },
+  gcs:              { secrets: { service_account_json: "" }, config: { bucket: "" } },
 
-  // Visual (placeholders — wired in 2B/D2)
-  midjourney: {
-    secrets: { api_key: "" },
-    config:  { mode: "fast", aspect: "9:16" },
-  },
-  shutterstock: {
-    secrets: { api_key: "", api_secret: "" },
-    config:  { license_tier: "standard", editorial_allowed: false },
-  },
-  getty: {
-    secrets: { api_key: "" },
-    config:  { license_tier: "premium" },
-  },
+  // Visual atmospheric
+  flux:        { secrets: { api_token: "" }, config: { model_id: "black-forest-labs/flux-1.1-pro", quality: 90 } },
+  midjourney:  { secrets: { api_key: "" }, config: { mode: "fast", aspect: "9:16" } },
+  dalle:       { secrets: { api_key: "" }, config: { model: "dall-e-3", size: "1024x1792" } },
 
-  // Stub — all providers can fall back to it for testing
+  // Visual licensed
+  pexels:       { secrets: { api_key: "" }, config: {} },
+  shutterstock: { secrets: { api_key: "", api_secret: "" }, config: { license_tier: "standard", editorial_allowed: false } },
+
   stub: { secrets: {}, config: {} },
 };

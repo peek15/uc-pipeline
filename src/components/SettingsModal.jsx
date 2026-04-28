@@ -62,6 +62,30 @@ const DEFAULT_SETTINGS = {
   },
 };
 
+// Defensive merge: ensures all top-level keys from DEFAULT_SETTINGS exist
+// even when initialSettings (loaded from Supabase) is partial or has a
+// stale shape. Prevents undefined-access crashes like settings.brand.name.
+function mergeSettings(incoming) {
+  if (!incoming || typeof incoming !== "object") return DEFAULT_SETTINGS;
+  const merged = { ...DEFAULT_SETTINGS };
+  for (const k of Object.keys(DEFAULT_SETTINGS)) {
+    const def = DEFAULT_SETTINGS[k];
+    const inc = incoming[k];
+    if (inc && typeof inc === "object" && !Array.isArray(inc) && def && typeof def === "object" && !Array.isArray(def)) {
+      merged[k] = { ...def, ...inc };
+    } else if (inc !== undefined) {
+      merged[k] = inc;
+    } else {
+      merged[k] = def;
+    }
+  }
+  // Carry any extra keys from incoming we didn't know about (forward compat)
+  for (const k of Object.keys(incoming)) {
+    if (!(k in merged)) merged[k] = incoming[k];
+  }
+  return merged;
+}
+
 // ── Rule definitions ──
 const RULE_TYPES = [
   { key:"format_day",     label:"Format on day",        desc:"Schedule a format on specific days only" },
@@ -317,7 +341,7 @@ function ProgDiscuss({ programme, brandName }) {
 export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="" }) {
   const VERSION_NUM = version;
   const [section,  setSection]  = usePersistentState("settings_section", "brand");
-  const [settings, setSettings] = useState(initialSettings||DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState(mergeSettings(initialSettings));
   const [saved,    setSaved]    = useState(false);
   const [saving,   setSaving]   = useState(false);
 
@@ -337,7 +361,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [progAudit,     setProgAudit]     = useState(null);
   const [progRunning,   setProgRunning]   = useState(false);
 
-  useEffect(() => { if (initialSettings) setSettings(initialSettings); }, [initialSettings]);
+  useEffect(() => { if (initialSettings) setSettings(mergeSettings(initialSettings)); }, [initialSettings]);
 
   // Keyboard close
   useEffect(() => {

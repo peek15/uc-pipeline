@@ -1,8 +1,6 @@
 // ═══════════════════════════════════════════════════════════
 // /api/provider-config — Server-only access to provider_secrets table.
-// v3.10.1 — fixed: save() now merges incoming secrets with existing
-// row's secrets before deactivating, so empty fields preserve saved
-// values instead of wiping them.
+// v3.11.3 — adds visual_atmospheric + visual_licensed test handlers.
 //
 // This is the ONLY place provider secrets ever leave or enter the DB.
 // Uses SUPABASE_SERVICE_ROLE_KEY to bypass RLS.
@@ -45,10 +43,6 @@ async function authenticate(request) {
 function ok(payload)          { return Response.json(payload); }
 function err(msg, status=400) { return Response.json({ error: msg }, { status }); }
 
-/**
- * Build a "has_<field>" map indicating which secret fields exist
- * (without exposing the values). Used by the UI to render "key set ✓".
- */
 function buildHasFlags(secrets) {
   const flags = {};
   if (!secrets || typeof secrets !== "object") return flags;
@@ -56,6 +50,14 @@ function buildHasFlags(secrets) {
     if (secrets[k] != null && secrets[k] !== "") flags[`has_${k}`] = true;
   }
   return flags;
+}
+
+function filterEmpty(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v != null && v !== "") out[k] = v;
+  }
+  return out;
 }
 
 export async function POST(request) {
@@ -71,7 +73,6 @@ export async function POST(request) {
 
   const svc = serviceClient();
 
-  // ─── load: returns config only + has_<field> booleans ────
   if (action === "load") {
     if (!provider_type) return err("Missing provider_type");
     const { data, error } = await svc
@@ -83,13 +84,10 @@ export async function POST(request) {
       .maybeSingle();
     if (error) return err(error.message, 500);
     if (!data)  return ok({ data: null });
-
-    // Strip secrets, return has_<field> flags + config
     const { secrets: rowSecrets, ...rest } = data;
     return ok({ data: { ...rest, ...buildHasFlags(rowSecrets) } });
   }
 
-  // ─── list: returns all provider configs (config only) ────
   if (action === "list") {
     const { data, error } = await svc
       .from("provider_secrets")
@@ -97,7 +95,6 @@ export async function POST(request) {
       .eq("brand_profile_id", brand_profile_id)
       .eq("active", true);
     if (error) return err(error.message, 500);
-
     const stripped = (data || []).map(row => {
       const { secrets: rowSecrets, ...rest } = row;
       return { ...rest, ...buildHasFlags(rowSecrets) };
@@ -105,12 +102,10 @@ export async function POST(request) {
     return ok({ data: stripped });
   }
 
-  // ─── save: merges new secrets with existing, then upserts ────
   if (action === "save") {
     if (!provider_type) return err("Missing provider_type");
     if (!provider_name) return err("Missing provider_name");
 
-    // Load existing active row to merge from
     const { data: existing, error: loadErr } = await svc
       .from("provider_secrets")
       .select("id, provider_name, secrets, config")
@@ -120,14 +115,6 @@ export async function POST(request) {
       .maybeSingle();
     if (loadErr) return err(loadErr.message, 500);
 
-    // Merge logic:
-    //   - If provider_name CHANGES: don't carry old secrets (different shape)
-    //     and don't carry old config (different fields).
-    //     User must re-enter everything. This is correct behavior.
-    //   - If provider_name STAYS THE SAME: merge incoming secrets into
-    //     existing secrets (empty fields preserve saved values).
-    //     Config replaces fully (UI sends complete config).
-
     const sameProvider = existing && existing.provider_name === provider_name;
 
     const mergedSecrets = sameProvider
@@ -136,7 +123,6 @@ export async function POST(request) {
 
     const mergedConfig = config || {};
 
-    // Deactivate old, insert new
     if (existing) {
       await svc.from("provider_secrets")
         .update({ active: false })
@@ -146,23 +132,17 @@ export async function POST(request) {
     const { data, error } = await svc
       .from("provider_secrets")
       .insert({
-        brand_profile_id,
-        provider_type,
-        provider_name,
-        secrets: mergedSecrets,
-        config:  mergedConfig,
-        active:  true,
+        brand_profile_id, provider_type, provider_name,
+        secrets: mergedSecrets, config: mergedConfig, active: true,
       })
       .select("provider_name, secrets, config, active")
       .single();
     if (error) return err(error.message, 500);
 
-    // Strip secrets from response, return has_<field> flags
     const { secrets: returnedSecrets, ...rest } = data;
     return ok({ data: { ...rest, ...buildHasFlags(returnedSecrets) } });
   }
 
-  // ─── test: load secrets server-side, run test, persist result ────
   if (action === "test") {
     if (!provider_type) return err("Missing provider_type");
 
@@ -199,22 +179,16 @@ export async function POST(request) {
   return err(`Unknown action: ${action}`);
 }
 
-// Strip empty/null/undefined values from an object — used by merge logic
-// so empty fields in the form don't overwrite saved secrets.
-function filterEmpty(obj) {
-  const out = {};
-  for (const [k, v] of Object.entries(obj || {})) {
-    if (v != null && v !== "") out[k] = v;
-  }
-  return out;
-}
-
-// ─── Provider test runners ─────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// Provider test runners
+// ═══════════════════════════════════════════════════════════
 
 async function runProviderTest(provider_type, provider_name, secrets, config) {
   const t0 = Date.now();
-  if (provider_type === "storage") return testStorage(provider_name, secrets, config, t0);
-  if (provider_type === "voice")   return testVoice  (provider_name, secrets, config, t0);
+  if (provider_type === "storage")            return testStorage           (provider_name, secrets, config, t0);
+  if (provider_type === "voice")              return testVoice             (provider_name, secrets, config, t0);
+  if (provider_type === "visual_atmospheric") return testVisualAtmospheric (provider_name, secrets, config, t0);
+  if (provider_type === "visual_licensed")    return testVisualLicensed    (provider_name, secrets, config, t0);
   return { ok: false, error: `No test handler for provider_type=${provider_type}` };
 }
 
@@ -251,9 +225,7 @@ async function testVoice(name, secrets, config, t0) {
     const key = secrets?.api_key;
     if (!key) return { ok: false, error: "Missing api_key" };
     try {
-      const res = await fetch("https://api.elevenlabs.io/v1/user", {
-        headers: { "xi-api-key": key },
-      });
+      const res = await fetch("https://api.elevenlabs.io/v1/user", { headers: { "xi-api-key": key } });
       if (!res.ok) {
         const t = await res.text().catch(() => "");
         return { ok: false, error: `ElevenLabs ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
@@ -268,9 +240,7 @@ async function testVoice(name, secrets, config, t0) {
     const userId = secrets?.user_id;
     if (!key || !userId) return { ok: false, error: "Missing api_key or user_id" };
     try {
-      const res = await fetch("https://api.play.ht/api/v2/voices", {
-        headers: { "AUTHORIZATION": key, "X-USER-ID": userId },
-      });
+      const res = await fetch("https://api.play.ht/api/v2/voices", { headers: { "AUTHORIZATION": key, "X-USER-ID": userId } });
       if (!res.ok) {
         const t = await res.text().catch(() => "");
         return { ok: false, error: `PlayHT ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
@@ -281,4 +251,79 @@ async function testVoice(name, secrets, config, t0) {
     }
   }
   return { ok: false, error: `Unknown voice provider: ${name}` };
+}
+
+// ─── NEW v3.11.3: Visual atmospheric test handlers ────────
+
+async function testVisualAtmospheric(name, secrets, config, t0) {
+  if (name === "stub") return { ok: true, latency_ms: 0 };
+
+  if (name === "flux") {
+    const token = secrets?.api_token;
+    if (!token) return { ok: false, error: "Missing Replicate api_token" };
+    try {
+      // GET /account verifies the token without spending a credit
+      const res = await fetch("https://api.replicate.com/v1/account", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        return { ok: false, error: `Replicate ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+      }
+      return { ok: true, latency_ms: Date.now() - t0 };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e), latency_ms: Date.now() - t0 };
+    }
+  }
+
+  if (name === "midjourney") {
+    return { ok: false, error: "MidJourney not implemented in v3.11.x — use Flux", latency_ms: 0 };
+  }
+
+  if (name === "dalle") {
+    const key = secrets?.api_key;
+    if (!key) return { ok: false, error: "Missing OpenAI api_key" };
+    try {
+      const res = await fetch("https://api.openai.com/v1/models", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        return { ok: false, error: `OpenAI ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+      }
+      return { ok: true, latency_ms: Date.now() - t0 };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e), latency_ms: Date.now() - t0 };
+    }
+  }
+
+  return { ok: false, error: `Unknown atmospheric provider: ${name}` };
+}
+
+async function testVisualLicensed(name, secrets, config, t0) {
+  if (name === "stub") return { ok: true, latency_ms: 0 };
+
+  if (name === "pexels") {
+    const key = secrets?.api_key;
+    if (!key) return { ok: false, error: "Missing Pexels api_key" };
+    try {
+      // GET /search?query=test verifies the key (Pexels has no /me endpoint)
+      const res = await fetch("https://api.pexels.com/v1/search?query=basketball&per_page=1", {
+        headers: { Authorization: key },
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        return { ok: false, error: `Pexels ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+      }
+      return { ok: true, latency_ms: Date.now() - t0 };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e), latency_ms: Date.now() - t0 };
+    }
+  }
+
+  if (name === "shutterstock") {
+    return { ok: false, error: "Shutterstock not implemented in v3.11.x — use Pexels", latency_ms: 0 };
+  }
+
+  return { ok: false, error: `Unknown licensed provider: ${name}` };
 }

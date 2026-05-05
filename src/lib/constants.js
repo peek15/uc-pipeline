@@ -107,103 +107,45 @@ STRUCTURE:
 
 Pure script text only. No labels.`;
 
-// ═══════════════════════════════════════════════════════════
-// v3.8.0 — Production tab additions
-// ═══════════════════════════════════════════════════════════
+// ─── Production pipeline ─────────────────────────────────
+// v3.11.3 — added to fix Production tab integration
 
-// ─── Production status state machine ───
-// Per intelligence-layer-reference.md
 export const PRODUCTION_STATUSES = [
-  "idea",
-  "scripted",
-  "translated",
-  "reviewed",
-  "voice_generating",
-  "voice_failed",
-  "audio_ready",
-  "visuals_generating",
-  "visuals_failed",
-  "visuals_ready",
-  "visuals_selected",
-  "assembly_ready",
-  "assembled",
-  "exported",
-  "scheduled",
-  "published",
+  "queued",       // ready for production, no work started
+  "in_brief",     // brief generation started
+  "in_assets",    // visual / library work in progress
+  "in_voice",     // voice generation in progress
+  "in_assembly",  // assembly export in progress
+  "produced",     // finalized
 ];
 
-// Statuses that make a story eligible for the Production tab queue
-export const PRODUCTION_QUEUE_STATUSES = [
-  "scripted",
-  "translated",
-  "reviewed",
-  "voice_generating",
-  "voice_failed",
-  "audio_ready",
-  "visuals_generating",
-  "visuals_failed",
-  "visuals_ready",
-  "visuals_selected",
-  "assembly_ready",
-];
-
-// Display labels for production status
 export const PRODUCTION_STATUS_LABELS = {
-  idea:               "Idea",
-  scripted:           "Scripted",
-  translated:         "Translated",
-  reviewed:           "Reviewed",
-  voice_generating:   "Voice generating",
-  voice_failed:       "Voice failed",
-  audio_ready:        "Audio ready",
-  visuals_generating: "Visuals generating",
-  visuals_failed:     "Visuals failed",
-  visuals_ready:      "Visuals ready",
-  visuals_selected:   "Visuals selected",
-  assembly_ready:     "Assembly ready",
-  assembled:          "Assembled",
-  exported:           "Exported",
-  scheduled:          "Scheduled",
-  published:          "Published",
+  queued:       "queued",
+  in_brief:     "brief",
+  in_assets:    "assets",
+  in_voice:     "voice",
+  in_assembly:  "assembly",
+  produced:     "produced",
 };
 
-// ─── Asset library types ───
-export const ASSET_TYPES = [
-  { key: "intro",        label: "Intro" },
-  { key: "outro",        label: "Outro" },
-  { key: "transition",   label: "Transition" },
-  { key: "broll",        label: "B-roll" },
-  { key: "overlay",      label: "Overlay" },
-  { key: "sfx",          label: "SFX" },
-  { key: "voice_locked", label: "Voice (locked)" },
-  { key: "music",        label: "Music" },
-];
-
-// ─── Production positions (used by asset-curator agent) ───
-export const PRODUCTION_POSITIONS = [
-  { key: "intro",        type: "intro",        position_intent: "opening", count: 1 },
-  { key: "outro",        type: "outro",        position_intent: "closing", count: 1 },
-  { key: "transition",   type: "transition",   position_intent: "any",     count: 2 },
-  { key: "atmospheric",  type: "broll",        position_intent: "any",     count: 6 },
-  { key: "licensed",     type: "broll",        position_intent: "any",     count: 6 },
-  { key: "voice_locked", type: "voice_locked", position_intent: "closing", count: 1 },
-];
-
-// ─── Confidence thresholds (defaults — overridable in Settings later) ───
-export const CONFIDENCE_DEFAULTS = {
-  brief_author:    { auto_approve: 999, review_below: 0 }, // Stage 1 = always review
-  asset_curator:   { auto_approve: 999, review_below: 0 },
-  visual_ranker:   { auto_approve: 999, review_below: 0 },
-  voice_producer:  { auto_approve: 999, review_below: 0 },
-  assembly_author: { auto_approve: 999, review_below: 0 },
-};
-
-// Production tab eligibility — used by ProductionView
-export const isInProductionQueue = (story) => {
+/**
+ * A story enters the production queue when:
+ *   - production_status is set to any non-null value (manual transition), OR
+ *   - status === "scripted" AND has scripts in all 4 launch languages
+ *
+ * Returns true if the story should appear in the Production tab.
+ */
+export function isInProductionQueue(story) {
   if (!story) return false;
-  if (PRODUCTION_QUEUE_STATUSES.includes(story.production_status)) return true;
-  // Also accept legacy "scripted" status (some stories may not yet have production_status)
-  if (!story.production_status && story.status === "scripted") return true;
-  if (!story.production_status && story.status === "produced")  return true;
+  if (story.production_status && story.production_status !== "produced") return true;
+  if (story.status === "scripted" && hasAllLaunchLanguages(story)) return true;
   return false;
-};
+}
+
+/**
+ * Has the story been scripted in all 4 launch languages (en/fr/es/pt)?
+ */
+export function hasAllLaunchLanguages(story) {
+  if (!story) return false;
+  return !!(story.script && story.script_fr && story.script_es && story.script_pt);
+}

@@ -17,8 +17,10 @@ import { ToastContainer, toast } from "@/components/Toast";
 import SettingsModal from "@/components/SettingsModal";
 import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
+import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
+import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 
-const VERSION = "3.11.3";
+const VERSION = "3.11.4";
 
 const TABS = [
   { key: "pipeline",   label: "Pipeline",   Icon: Layers },
@@ -42,6 +44,7 @@ export default function Home() {
   const [researchState,   setResearchState]   = useState(null);
   const [appSettings,     setAppSettings]     = useState(null);
   const [showSettings,    setShowSettings]    = useState(false); // persisted across tab switches
+  const [showShortcuts,   setShowShortcuts]   = useState(false); // v3.11.4
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
 
@@ -259,27 +262,43 @@ export default function Home() {
     }
   }, [stories, updateStory]);
 
-  // Global keyboard shortcuts
+ // v3.11.4 — Global keyboard shortcuts driven by SHORTCUTS registry.
+  // Cross-platform (metaKey || ctrlKey).
   useEffect(() => {
-    const TAB_KEYS = ["pipeline","research","script","calendar","analyze"];
+    const TAB_KEYS = ["pipeline","research","script","production","calendar","analyze"];
     const handler = (e) => {
-      const tag = document.activeElement?.tagName;
-      if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
-      if (e.metaKey && e.key === "z" && !e.shiftKey) { e.preventDefault(); handleUndo(); }
-      if (e.metaKey && e.key === "j") { e.preventDefault(); handleProductionShortcut(); }
-      if (e.metaKey && e.key === ",") { e.preventDefault(); setShowSettings(s=>!s); }
-      if (e.altKey && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+      if (shouldIgnoreFromInput()) return;
+
+      // Cheat sheet
+      if (matches(e, SHORTCUTS.showShortcuts.combo))      { e.preventDefault(); setShowShortcuts(s => !s); return; }
+
+      // Global commands
+      if (matches(e, SHORTCUTS.toggleSettings.combo))     { e.preventDefault(); setShowSettings(s=>!s);             return; }
+      if (matches(e, SHORTCUTS.undo.combo))               { e.preventDefault(); handleUndo();                       return; }
+      if (matches(e, SHORTCUTS.productionShortcut.combo)) { e.preventDefault(); handleProductionShortcut();         return; }
+
+      // Tab jumps Cmd+1..6
+      if (matches(e, SHORTCUTS.tabPipeline.combo))   { e.preventDefault(); setTab("pipeline");   return; }
+      if (matches(e, SHORTCUTS.tabResearch.combo))   { e.preventDefault(); setTab("research");   return; }
+      if (matches(e, SHORTCUTS.tabScript.combo))     { e.preventDefault(); setTab("script");     return; }
+      if (matches(e, SHORTCUTS.tabProduction.combo)) { e.preventDefault(); setTab("production"); return; }
+      if (matches(e, SHORTCUTS.tabCalendar.combo))   { e.preventDefault(); setTab("calendar");   return; }
+      if (matches(e, SHORTCUTS.tabAnalyze.combo))    { e.preventDefault(); setTab("analyze");    return; }
+
+      // Tab cycling
+      if (matches(e, SHORTCUTS.tabPrev.combo) || matches(e, SHORTCUTS.tabNext.combo)) {
         e.preventDefault();
         setTab(prev => {
           const idx = TAB_KEYS.indexOf(prev);
-          if (e.key === "ArrowRight") return TAB_KEYS[Math.min(idx+1, TAB_KEYS.length-1)];
-          return TAB_KEYS[Math.max(idx-1, 0)];
+          const safe = idx === -1 ? 0 : idx;
+          if (e.key === "ArrowRight") return TAB_KEYS[Math.min(safe + 1, TAB_KEYS.length - 1)];
+          return TAB_KEYS[Math.max(safe - 1, 0)];
         });
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleUndo]);
+  }, [handleUndo, handleProductionShortcut]);
 
   const exportCSV = () => {
     const hdr = ["Title","Status","Archetype","Era","Players","Angle","Hook","Script","Script FR","Script ES","Script PT","Score","Views","Completion%","Saves"];
@@ -456,6 +475,7 @@ export default function Home() {
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
       <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem("uc_settings", JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} />
+      <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
       <ToastContainer />
     </div>
   );

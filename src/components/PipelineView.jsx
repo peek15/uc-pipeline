@@ -120,8 +120,9 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       const tag = document.activeElement?.tagName;
       if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
 
-      // Tab switching
-      if (e.altKey && (e.key==="ArrowRight"||e.key==="ArrowLeft")) {
+      // v3.11.4 — Pipeline sub-tab switching now requires Shift+Option
+      // (plain Alt+Arrow is global tab cycling, defined in page.js)
+      if (e.altKey && e.shiftKey && (e.key==="ArrowRight"||e.key==="ArrowLeft")) {
         e.preventDefault();
         const TABS = ["pipeline","research","script","calendar","analyze"];
         setActiveTab(prev => { const i=TABS.indexOf(prev); return e.key==="ArrowRight"?TABS[Math.min(i+1,4)]:TABS[Math.max(i-1,0)]; });

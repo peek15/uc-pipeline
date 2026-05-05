@@ -6,6 +6,7 @@ import { PRODUCTION_STATUS_LABELS, isInProductionQueue } from "@/lib/constants";
 import { runAgent, recordAgentFeedback, voiceAgent, visualAgent } from "@/lib/ai/agent-runner";
 import { updateProductionStatus, supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 
 const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
 const LANG_LABELS = { en: "English", fr: "French", es: "Spanish", pt: "Portuguese", de: "German", it: "Italian", ja: "Japanese", zh: "Chinese" };
@@ -103,6 +104,13 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
     setDraft(story.visual_brief || null); setOriginal(story.visual_brief || null);
     setConfidence(null); setReasoning(null); setAiCallId(null); setError(null);
   }, [story.id]);
+
+  // v3.11.4 — listen for ⌘B from global handler
+  useEffect(() => {
+    const h = () => { if (!running) generate(); };
+    window.addEventListener("production:generate-brief", h);
+    return () => window.removeEventListener("production:generate-brief", h);
+  }, [running]);
 
   const generate = async () => {
     setRunning(true); setError(null);
@@ -202,6 +210,13 @@ function VoiceSection({ story, brand_profile_id, onSaved }) {
     audioEl.onended = () => setPlaying(null);
     return () => { audioEl.pause(); audioEl.src = ""; };
   }, [audioEl]);
+
+  // v3.11.4 — listen for ⌘⇧V from global handler
+  useEffect(() => {
+    const h = () => { if (!running) generateEN(); };
+    window.addEventListener("production:generate-voice", h);
+    return () => window.removeEventListener("production:generate-voice", h);
+  }, [running]);
 
   const playAudio = (lang) => {
     const ref = audioRefs[lang];
@@ -327,6 +342,13 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
     setSelectedIds(new Set(sel.map(s => s.id)));
     if (story.id) loadExistingAssets();
   }, [story.id]);
+
+  // v3.11.4 — listen for ⌘⇧I from global handler
+  useEffect(() => {
+    const h = () => { if (!running && canRun) generate(); };
+    window.addEventListener("production:generate-visual", h);
+    return () => window.removeEventListener("production:generate-visual", h);
+  }, [running, canRun]);
 
   const loadExistingAssets = async () => {
     const { data } = await supabase
@@ -509,24 +531,30 @@ export default function ProductionView({ stories, onUpdate }) {
     if (selectedId && !queue.find(s => s.id === selectedId) && queue.length) setSelectedId(queue[0].id);
   }, [queue, selectedId, setSelectedId]);
 
-  // v3.11.3 — Option+Arrow navigation (Alt+Arrow on Windows/Linux)
+  // v3.11.4 — Keyboard shortcuts driven by registry. Cross-platform (⌘ vs Ctrl).
   useEffect(() => {
     const handler = (e) => {
-      if (!e.altKey) return;
-      const tag = document.activeElement?.tagName;
-      if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
-      if (document.activeElement?.isContentEditable) return;
+      if (shouldIgnoreFromInput()) return;
       if (queue.length === 0) return;
 
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      // Queue navigation
+      if (matches(e, SHORTCUTS.productionDown.combo) || matches(e, SHORTCUTS.productionUp.combo)) {
         e.preventDefault();
         const idx = queue.findIndex(s => s.id === selectedId);
-        const safeIdx = idx === -1 ? 0 : idx;
+        const safe = idx === -1 ? 0 : idx;
         const next = e.key === "ArrowDown"
-          ? Math.min(safeIdx + 1, queue.length - 1)
-          : Math.max(safeIdx - 1, 0);
+          ? Math.min(safe + 1, queue.length - 1)
+          : Math.max(safe - 1, 0);
         setSelectedId(queue[next].id);
+        return;
       }
+
+      // Section action shortcuts — emit window events so individual sections
+      // can react without prop-drilling. Each section owns its own action.
+      if (matches(e, SHORTCUTS.productionBrief.combo))   { e.preventDefault(); window.dispatchEvent(new CustomEvent("production:generate-brief"));  return; }
+      if (matches(e, SHORTCUTS.productionVoice.combo))   { e.preventDefault(); window.dispatchEvent(new CustomEvent("production:generate-voice"));  return; }
+      if (matches(e, SHORTCUTS.productionVisual.combo))  { e.preventDefault(); window.dispatchEvent(new CustomEvent("production:generate-visual")); return; }
+      if (matches(e, SHORTCUTS.productionApprove.combo)) { e.preventDefault(); window.dispatchEvent(new CustomEvent("production:approve"));         return; }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

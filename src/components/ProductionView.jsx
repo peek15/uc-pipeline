@@ -509,6 +509,29 @@ export default function ProductionView({ stories, onUpdate }) {
     if (selectedId && !queue.find(s => s.id === selectedId) && queue.length) setSelectedId(queue[0].id);
   }, [queue, selectedId, setSelectedId]);
 
+  // v3.11.3 — Option+Arrow navigation (Alt+Arrow on Windows/Linux)
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.altKey) return;
+      const tag = document.activeElement?.tagName;
+      if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
+      if (document.activeElement?.isContentEditable) return;
+      if (queue.length === 0) return;
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const idx = queue.findIndex(s => s.id === selectedId);
+        const safeIdx = idx === -1 ? 0 : idx;
+        const next = e.key === "ArrowDown"
+          ? Math.min(safeIdx + 1, queue.length - 1)
+          : Math.max(safeIdx - 1, 0);
+        setSelectedId(queue[next].id);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [queue, selectedId, setSelectedId]);
+
   const selected = queue.find(s => s.id === selectedId);
 
   if (queue.length === 0) {
@@ -579,28 +602,3 @@ export default function ProductionView({ stories, onUpdate }) {
     </div>
   );
 }
-
-// v3.11.3 — Option+Arrow navigation (Alt+Arrow on Windows/Linux)
-  useEffect(() => {
-    const handler = (e) => {
-      // Only trigger if Option/Alt is held — avoid clashing with browser shortcuts
-      if (!e.altKey) return;
-      // Skip when typing in inputs/textareas
-      const tag = document.activeElement?.tagName;
-      if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
-      if (document.activeElement?.isContentEditable) return;
-      if (queue.length === 0) return;
-
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        const idx = queue.findIndex(s => s.id === selectedId);
-        const safeIdx = idx === -1 ? 0 : idx;
-        const next = e.key === "ArrowDown"
-          ? Math.min(safeIdx + 1, queue.length - 1)
-          : Math.max(safeIdx - 1, 0);
-        setSelectedId(queue[next].id);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [queue, selectedId, setSelectedId]);

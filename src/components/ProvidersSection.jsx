@@ -478,7 +478,7 @@ function healthColor(state) {
   return "var(--warning)";
 }
 
-function ProviderOverview({ configs, calls, onOpenTab }) {
+function ProviderOverview({ configs, calls }) {
   const rows = providerRows(configs);
   const configured = rows.filter(r => r.config).length;
   const passing = rows.filter(r => r.config?.last_test_ok === true).length;
@@ -525,11 +525,62 @@ function ProviderOverview({ configs, calls, onOpenTab }) {
           );
         })}
       </div>
+    </div>
+  );
+}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => onOpenTab("configure")} style={btnSecondary}>Configure providers</button>
-        <button onClick={() => onOpenTab("health")} style={btnSecondary}>Open health checks</button>
-        <button onClick={() => onOpenTab("usage")} style={btnSecondary}>Open AI usage</button>
+function MiniBarChart({ rows, valueKey = "cost", formatValue = v => v, empty = "No data yet." }) {
+  const max = Math.max(...rows.map(row => Number(row[valueKey]) || 0), 0);
+  if (!rows.length || max <= 0) return <div style={{ fontSize: 12, color: "var(--t4)" }}>{empty}</div>;
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {rows.map(row => {
+        const value = Number(row[valueKey]) || 0;
+        return (
+          <div key={row.label} style={{ display: "grid", gridTemplateColumns: "120px 1fr 64px", gap: 10, alignItems: "center", fontSize: 12 }}>
+            <span style={{ color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</span>
+            <div style={{ height: 7, borderRadius: 99, background: "var(--fill2)", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.max(4, (value / max) * 100)}%`, borderRadius: 99, background: row.color || "var(--t1)" }} />
+            </div>
+            <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{formatValue(value)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DailyCostChart({ calls }) {
+  const now = new Date();
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(now.getDate() - (13 - i));
+    const key = d.toISOString().slice(0, 10);
+    return { key, label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), cost: 0, calls: 0 };
+  });
+  const byDay = new Map(days.map(day => [day.key, day]));
+  for (const call of calls) {
+    if (!call.created_at) continue;
+    const key = new Date(call.created_at).toISOString().slice(0, 10);
+    const day = byDay.get(key);
+    if (!day) continue;
+    day.cost += Number(call.cost_estimate) || 0;
+    day.calls += 1;
+  }
+  const max = Math.max(...days.map(day => day.cost), 0);
+
+  return (
+    <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+      <div style={{ ...labelStyle, marginBottom: 12 }}>Spend trend · 14 days</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(14, 1fr)", gap: 6, alignItems: "end", height: 118 }}>
+        {days.map(day => (
+          <div key={day.key} title={`${day.label}: ${formatCost(day.cost)} · ${day.calls} calls`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, minWidth: 0 }}>
+            <div style={{ width: "100%", height: 86, display: "flex", alignItems: "end" }}>
+              <div style={{ width: "100%", minHeight: day.cost > 0 ? 5 : 1, height: max > 0 ? `${Math.max(3, (day.cost / max) * 86)}px` : 1, borderRadius: "4px 4px 1px 1px", background: day.cost > 0 ? "var(--t1)" : "var(--fill2)" }} />
+            </div>
+            <span style={{ fontSize: 9, color: "var(--t4)", fontFamily: "'DM Mono',monospace", whiteSpace: "nowrap" }}>{day.label.split(" ")[1]}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -658,6 +709,16 @@ function AIUsage() {
       return t >= cutoff ? sum + (Number(call.cost_estimate) || 0) : sum;
     }, 0);
   };
+  const workflowChart = byType.slice(0, 7).map((row, i) => ({
+    label: row.type,
+    cost: row.cost,
+    color: i === 0 ? "var(--t1)" : "var(--t2)",
+  }));
+  const providerChart = byProvider.slice(0, 7).map((row, i) => ({
+    label: row.provider,
+    cost: row.cost,
+    color: i === 0 ? "var(--success)" : "var(--t2)",
+  }));
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -680,6 +741,17 @@ function AIUsage() {
             <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--t1)" }}>{value}</div>
           </div>
         ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+        <DailyCostChart calls={calls} />
+        <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+          <div style={{ ...labelStyle, marginBottom: 12 }}>Provider spend</div>
+          <MiniBarChart rows={providerChart} valueKey="cost" formatValue={formatCost} empty="No provider spend logged yet." />
+        </div>
+        <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+          <div style={{ ...labelStyle, marginBottom: 12 }}>Workflow spend</div>
+          <MiniBarChart rows={workflowChart} valueKey="cost" formatValue={formatCost} empty="No workflow spend logged yet." />
+        </div>
       </div>
       <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
         <div style={{ ...labelStyle, marginBottom: 12 }}>Cost by workflow</div>
@@ -795,7 +867,7 @@ export default function ProvidersSection() {
         </div>
       )}
 
-      {!loading && tab === "overview" && <ProviderOverview configs={configs} calls={calls} onOpenTab={setTab} />}
+      {!loading && tab === "overview" && <ProviderOverview configs={configs} calls={calls} />}
       {!loading && tab === "health" && <ProviderHealth configs={configs} onReload={reload} />}
       {!loading && tab === "usage" && <AIUsage />}
 

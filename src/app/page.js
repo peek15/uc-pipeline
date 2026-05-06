@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings } from "lucide-react";
+import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot } from "lucide-react";
 import { STAGES } from "@/lib/constants";
 import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable } from "@/lib/db";
 import { signInWithGoogle, signOut, isEmailAllowed } from "@/lib/auth";
@@ -17,10 +17,11 @@ import { ToastContainer, toast } from "@/components/Toast";
 import SettingsModal from "@/components/SettingsModal";
 import ProductionAlert from "@/components/ProductionAlert";
 import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
+import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.14.0";
+const VERSION = "3.15.0";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -50,6 +51,7 @@ export default function Home() {
   const [showShortcuts,   setShowShortcuts]   = useState(false); // v3.11.4
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
+  const [agentOpen,       setAgentOpen]       = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -278,6 +280,7 @@ export default function Home() {
       // Global commands
       if (matches(e, SHORTCUTS.toggleSettings.combo))     { e.preventDefault(); setShowSettings(s=>!s);             return; }
       if (matches(e, SHORTCUTS.sidebarToggle.combo))      { e.preventDefault(); setSidebarOpen(s=>!s);              return; }
+      if (matches(e, SHORTCUTS.agentToggle.combo))        { e.preventDefault(); setAgentOpen(s=>!s);               return; }
       if (matches(e, SHORTCUTS.undo.combo))               { e.preventDefault(); handleUndo();                       return; }
       if (matches(e, SHORTCUTS.productionShortcut.combo)) { e.preventDefault(); handleProductionShortcut();         return; }
 
@@ -541,6 +544,11 @@ export default function Home() {
           <span style={{ fontSize:12, fontWeight:500, color:"var(--t3)", flexShrink:0 }}>
             {TABS.find(t=>t.key===tab)?.label}
           </span>
+
+          {/* Agent toggle */}
+          <button onClick={() => setAgentOpen(s=>!s)} title="Agent (⌘⌥A)" style={{ width:30, height:30, borderRadius:7, border:`0.5px solid ${agentOpen ? "var(--gold)" : "var(--border)"}`, background: agentOpen ? "rgba(196,154,60,0.10)" : "transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color: agentOpen ? "var(--gold)" : "var(--t3)", flexShrink:0, transition:"border-color 0.12s, background 0.12s, color 0.12s" }}>
+            <Bot size={14} />
+          </button>
         </header>
 
         {/* ── Content ── */}
@@ -571,6 +579,15 @@ export default function Home() {
           </div>
         </main>
       </div>
+
+      <AgentPanel
+        isOpen={agentOpen}
+        onClose={() => setAgentOpen(false)}
+        stories={stories}
+        tab={tab}
+        onNavigate={setTab}
+        onOpenStory={setSelected}
+      />
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}

@@ -114,6 +114,7 @@ export const SHORTCUTS = {
   undo:               { combo: { mod: true, key: "z" },           description: "Undo last action",               group: "Global" },
   productionShortcut: { combo: { alt: true, key: "j" },           description: "Smart jump to Research",         group: "Global" },
   sidebarToggle:      { combo: { mod: true, key: "\\" },          description: "Collapse / expand sidebar",      group: "Global" },
+  agentToggle:        { combo: { mod: true, alt: true, key: "a" }, description: "Toggle agent panel",            group: "Global" },
 
   // Navigation — Ctrl+1–6 in Chrome (Cmd is intercepted for browser tabs)
   tabPipeline:   { combo: { mod: true, key: "1" }, description: "Go to Stories",  hint: "Ctrl+1 in Chrome", group: "Navigation" },

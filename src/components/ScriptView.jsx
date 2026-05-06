@@ -382,7 +382,7 @@ export default function ScriptView({ stories, onUpdate }) {
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px" }}
                 onClick={e => { e.stopPropagation(); setFocusedIdx(idx); setExpandedIds(ex => { const n = new Set(ex); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; }); }}>
                 <div style={{ minWidth:0, flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", letterSpacing:"-0.01em", marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
+                  <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", letterSpacing:0, marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
                   <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)", flexWrap:"wrap" }}>
                     <span style={{ color:ac, fontWeight:500 }}>{s.archetype}</span>
                     {s.era && <><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
@@ -449,7 +449,7 @@ export default function ScriptView({ stories, onUpdate }) {
                   {getScript(s, getViewLang(s.id)) && (
                     <div style={{ padding:"14px 16px", borderRadius:8, background:"var(--bg2)", marginBottom:10, maxHeight:260, overflowY:"auto", position:"relative" }}>
                       {isStreaming && <div style={{ position:"absolute", top:10, right:12, width:6, height:6, borderRadius:"50%", background:"var(--t1)", animation:"pulse 1s ease-in-out infinite" }} />}
-                      <div style={{ fontSize:14, color:"var(--t2)", lineHeight:1.85, fontFamily:"Georgia, serif", whiteSpace:"pre-wrap" }}>
+                      <div className="type-script" style={{ fontSize:14, color:"var(--t2)", lineHeight:1.85, whiteSpace:"pre-wrap" }}>
                         {getScript(s, getViewLang(s.id))}
                       </div>
                     </div>

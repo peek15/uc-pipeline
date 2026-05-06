@@ -108,7 +108,44 @@ export async function logAiCallError({
       error_type,
       error_message: error_message ? String(error_message).slice(0, 2000) : null,
     });
-  } catch {} // silent
+} catch {} // silent
+}
+
+/**
+ * Log non-token provider spend, such as voice or visual generation.
+ */
+export async function logProviderCost({
+  type,
+  provider_name,
+  model_version = null,
+  cost_estimate = 0,
+  story_id = null,
+  brand_profile_id = null,
+  workspace_id = null,
+  success = true,
+  duration_ms = null,
+  error_type = null,
+  error_message = null,
+}) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from("ai_calls").insert({
+      type,
+      provider_name,
+      model_version,
+      tokens_input: null,
+      tokens_output: null,
+      cost_estimate,
+      story_id,
+      brand_profile_id,
+      workspace_id,
+      user_email: user?.email || null,
+      success,
+      duration_ms,
+      error_type,
+      error_message: error_message ? String(error_message).slice(0, 2000) : null,
+    });
+  } catch {}
 }
 
 /**

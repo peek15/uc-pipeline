@@ -292,7 +292,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
             <ChevronLeft size={14} color="var(--t2)"/>
           </button>
           <div style={{ textAlign:"center", minWidth:140 }}>
-            <div style={{ fontSize:14, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.02em" }}>{weekLabel()}</div>
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--t1)", letterSpacing:0 }}>{weekLabel()}</div>
             {weekOffset!==0 && <button onClick={()=>setWeekOffset(0)} style={{ fontSize:10, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer", padding:0 }}>Today</button>}
           </div>
           <button onClick={()=>setWeekOffset(w=>w+1)} style={{ width:30, height:30, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>

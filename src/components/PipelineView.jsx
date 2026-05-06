@@ -322,6 +322,9 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 const fmt        = FORMAT_MAP[s.format];
                 const readiness  = getReadiness(s);
                 const rColor     = readiness===8?"var(--success)":readiness>=5?"var(--warning)":"var(--t4)";
+                const gateStatus = s.quality_gate_status || (s.quality_gate_warnings > 0 ? "warnings" : null);
+                const gateWarnings = Number(s.quality_gate_warnings) || 0;
+                const gateBlockers = Number(s.quality_gate_blockers) || 0;
 
                 return (
                   <div key={s.id} id={`story-${s.id}`}
@@ -346,7 +349,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
                       {/* Content */}
                       <div onClick={()=>setExpanded(ex=>{const n=new Set(ex);n.has(s.id)?n.delete(s.id):n.add(s.id);return n;})} style={{minWidth:0}}>
-                        <div style={{fontSize:14,fontWeight:500,color:"var(--t1)",letterSpacing:"-0.01em",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                        <div style={{fontSize:14,fontWeight:500,color:"var(--t1)",letterSpacing:0,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                         <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--t3)",flexWrap:"wrap"}}>
                           <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
                             <span style={{width:6,height:6,borderRadius:"50%",background:ac,display:"inline-block",flexShrink:0}}/>
@@ -356,6 +359,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                           {players&&<><span style={{color:"var(--t4)"}}>·</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{players}</span></>}
                           {s.script&&<><span style={{color:"var(--t4)"}}>·</span><FileText size={11} color="var(--t3)"/></>}
                           {s.metrics_views&&<><span style={{color:"var(--t4)"}}>·</span><Eye size={11}/><span>{parseInt(s.metrics_views)>1000?`${(parseInt(s.metrics_views)/1000).toFixed(1)}k`:s.metrics_views}</span></>}
+                          {gateStatus&&<><span style={{color:"var(--t4)"}}>·</span><span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:3,background:gateBlockers?"var(--error-bg)":"var(--warning-bg)",color:gateBlockers?"var(--error)":"var(--warning)",border:`0.5px solid ${gateBlockers?"var(--error-border)":"rgba(196,154,60,0.30)"}`}}>Gate {gateBlockers ? `${gateBlockers} blocker` : `${gateWarnings} warning${gateWarnings===1?"":"s"}`}</span></>}
                         </div>
                         {/* Angle preview */}
                         {s.angle&&!isExpanded&&(
@@ -415,6 +419,16 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                                 <ScoreBar score={s.score_hook}      label="Hook strength"/>
                               </div>
                             )}
+                          </div>
+                        )}
+                        {s.quality_gate?.issues?.length>0&&(
+                          <div style={{padding:"10px 12px",borderRadius:7,background:"var(--bg2)",border:"1px solid var(--border2)",marginBottom:10}}>
+                            <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Quality Gate</div>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                              {s.quality_gate.issues.slice(0,5).map(issue=>(
+                                <span key={issue.code} style={{fontSize:10,color:issue.severity==="blocker"?"var(--error)":"var(--t3)",padding:"2px 7px",borderRadius:99,background:"var(--fill2)",border:"0.5px solid var(--border)"}}>{issue.message}</span>
+                              ))}
+                            </div>
                           </div>
                         )}
 

@@ -5,6 +5,13 @@
 @tailwind utilities;
 
 :root {
+  /* ── Typography ── */
+  --font-body: 'DM Sans', -apple-system, system-ui, sans-serif;
+  --font-display: 'DM Sans', -apple-system, system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, monospace;
+  --font-editorial: 'Instrument Serif', Georgia, serif;
+  --font-script: Georgia, 'Times New Roman', serif;
+
   /* ── Backgrounds ── */
   --bg:    #F7F6F3;  /* warm off-white page */
   --bg2:   #EDECE9;  /* surfaces, panels */
@@ -113,7 +120,7 @@
 body {
   background: var(--bg);
   color: var(--t1);
-  font-family: 'DM Sans', -apple-system, system-ui, sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.5;
   min-height: 100vh;
@@ -121,9 +128,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.font-display { font-family: 'DM Sans', sans-serif; }
-.font-mono    { font-family: 'DM Mono', monospace; }
-.font-serif   { font-family: 'Instrument Serif', Georgia, serif; }
+.font-display { font-family: var(--font-display); }
+.font-mono    { font-family: var(--font-mono); }
+.font-serif   { font-family: var(--font-editorial); }
+
+.type-ui       { font-family: var(--font-body); letter-spacing: 0; }
+.type-meta     { font-family: var(--font-mono); letter-spacing: 0; }
+.type-story    { font-family: var(--font-body); letter-spacing: 0; }
+.type-editorial{ font-family: var(--font-editorial); letter-spacing: 0; }
+.type-script   { font-family: var(--font-script); letter-spacing: 0; }
 
 @keyframes spin    { to { transform: rotate(360deg); } }
 @keyframes fadeIn  { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }

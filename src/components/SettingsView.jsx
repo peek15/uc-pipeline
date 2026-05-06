@@ -260,7 +260,7 @@ export default function SettingsView({ stories, onSettingsChange, initialSetting
       {/* Header */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
         <div>
-          <div style={{ fontSize:18, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.02em" }}>Settings</div>
+          <div style={{ fontSize:18, fontWeight:600, color:"var(--t1)", letterSpacing:0 }}>Settings</div>
           <div style={{ fontSize:12, color:"var(--t3)", marginTop:2 }}>Brand profile, content strategy, and provider configuration</div>
         </div>
         <button onClick={save} disabled={saving||!fmtValid} style={{

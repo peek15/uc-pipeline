@@ -8,7 +8,7 @@ export default function LoginScreen({ onSignIn, loading, error }) {
         {/* Brand */}
         <div style={{ marginBottom:40 }}>
           <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>Peek Media</div>
-          <h1 className="font-display" style={{ fontSize:32, fontWeight:700, letterSpacing:"-0.04em", color:"var(--t1)", lineHeight:1.1, marginBottom:8 }}>
+          <h1 className="font-display" style={{ fontSize:32, fontWeight:700, letterSpacing:0, color:"var(--t1)", lineHeight:1.1, marginBottom:8 }}>
             Uncle Carter<br />Pipeline
           </h1>
           <p style={{ fontSize:14, color:"var(--t3)", lineHeight:1.5 }}>

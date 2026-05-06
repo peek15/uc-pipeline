@@ -75,6 +75,10 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const players = Array.isArray(current.players)?current.players.join(", "):(current.players||"");
   const readiness = getReadiness(current);
   const rColor  = readiness===8?"#4A9B7F":readiness>=5?"#C49A3C":"var(--t3)";
+  const gate = current.quality_gate && typeof current.quality_gate === "object" ? current.quality_gate : null;
+  const gateIssues = Array.isArray(gate?.issues) ? gate.issues : [];
+  const gateWarnings = Number(current.quality_gate_warnings ?? gate?.warningCount) || 0;
+  const gateBlockers = Number(current.quality_gate_blockers ?? gate?.blockerCount) || 0;
 
   const sel = { width:"100%", padding:"7px 10px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none", fontFamily:"inherit" };
 
@@ -128,7 +132,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
               {current.era&&<span style={{fontSize:12,color:"var(--t3)"}}>{current.era}</span>}
             </div>
 
-            <h2 style={{fontSize:19,fontWeight:600,letterSpacing:"-0.02em",lineHeight:1.25,color:"var(--t1)",marginBottom:8}}>{current.title}</h2>
+            <h2 style={{fontSize:19,fontWeight:600,letterSpacing:0,lineHeight:1.25,color:"var(--t1)",marginBottom:8}}>{current.title}</h2>
 
             {/* Players — full, no truncation */}
             {players&&<div style={{fontSize:13,color:"var(--t3)",marginBottom:14,lineHeight:1.5}}>{players}</div>}
@@ -145,7 +149,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
             {current.script&&(
               <div style={{borderRadius:7,padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",maxHeight:180,overflowY:"auto"}}>
                 <div style={{fontSize:10,color:"var(--t4)",marginBottom:6,fontFamily:"'DM Mono',monospace"}}>v{current.script_version||1} · {wc(current.script)} words</div>
-                <div style={{fontSize:13,color:"var(--t2)",lineHeight:1.8,fontFamily:"Georgia,serif",whiteSpace:"pre-wrap"}}>{current.script}</div>
+                <div className="type-script" style={{fontSize:13,color:"var(--t2)",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{current.script}</div>
               </div>
             )}
           </div>
@@ -190,6 +194,24 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
                 )}
               </div>
             </div>
+
+            {gateIssues.length>0&&(
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Quality Gate</div>
+                  <span style={{fontSize:10,fontWeight:700,fontFamily:"'DM Mono',monospace",color:gateBlockers?"var(--error)":"var(--warning)"}}>
+                    {gateBlockers ? `${gateBlockers} blocker` : `${gateWarnings} warning${gateWarnings===1?"":"s"}`}
+                  </span>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                  {gateIssues.slice(0,6).map(issue=>(
+                    <div key={issue.code} style={{fontSize:11,color:issue.severity==="blocker"?"var(--error)":"var(--t3)",padding:"6px 8px",borderRadius:6,background:"var(--fill2)",border:"0.5px solid var(--border)"}}>
+                      {issue.message}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Intelligence metadata */}
             <div>

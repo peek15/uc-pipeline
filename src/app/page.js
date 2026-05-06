@@ -404,7 +404,7 @@ export default function Home() {
           {sidebarOpen
             ? <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:"-0.02em", color:"var(--t1)" }}>Uncle Carter</span>
+                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)" }}>Uncle Carter</span>
                   <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
                 </div>
               </div>

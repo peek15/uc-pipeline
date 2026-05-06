@@ -180,17 +180,28 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
 
   const addAllToPipeline = () => {
     const gated = results
-      .map((s, i) => ({ s, i, gate: auditStoryQuality({ ...s, format: s.format || format || suggestFormat(s.era) }, stories) }))
+      .map((s, i) => {
+        const sc = scores[i];
+        const normalized = {
+          ...s,
+          format: s.format || format || suggestFormat(s.era),
+          ...(sc ? { score_total: sc.total } : {}),
+        };
+        return { s: normalized, i, gate: auditStoryQuality(normalized, stories), score: sc };
+      })
       .filter(({ gate }) => gate.canAdd);
     const blocked = results.length - gated.length;
-    const sortedResultsList = gated.map(({ s, i }) => {
-      const sc = scores[i];
+    const sortedResultsList = gated.map(({ s, gate, score: sc }) => {
       return {
         ...s,
         id: crypto.randomUUID(),
         status: "accepted",
         created_at: new Date().toISOString(),
-        format: s.format || format || suggestFormat(s.era),
+        quality_gate: gate,
+        quality_gate_status: gate.ok ? "passed" : "warnings",
+        quality_gate_blockers: gate.blockerCount,
+        quality_gate_warnings: gate.warningCount,
+        quality_gate_checked_at: new Date().toISOString(),
         ...(sc ? {
           score_total:     sc.total,
           score_emotional: sc.emotional_depth,
@@ -383,7 +394,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize:15, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.02em", lineHeight:1.3, marginBottom:4 }}>{s.title}</div>
+                      <div style={{ fontSize:15, fontWeight:600, color:"var(--t1)", letterSpacing:0, lineHeight:1.3, marginBottom:4 }}>{s.title}</div>
                       {s.players&&<div style={{ fontSize:12, color:"var(--t3)", marginBottom:8 }}>{Array.isArray(s.players)?s.players.join(", "):s.players}</div>}
                     </div>
                     <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft:12 }}>

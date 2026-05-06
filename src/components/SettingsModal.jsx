@@ -720,7 +720,7 @@ ${fileText.slice(0,3000)}` : text };
           {SECTIONS.map(s=>(
             <button key={s.key} onClick={()=>setSection(s.key)} style={{
               display:"flex", alignItems:"center", justifyContent:"space-between",
-              padding:"9px 16px", fontSize:13, fontWeight:section===s.key?500:400, letterSpacing:"-0.01em",
+              padding:"9px 16px", fontSize:13, fontWeight:section===s.key?500:400, letterSpacing:0,
               background:section===s.key?"var(--fill2)":"transparent",
               color:section===s.key?"var(--t1)":s.danger?"rgba(192,102,106,0.7)":"var(--t3)",
               border:"none", cursor:"pointer", textAlign:"left", width:"100%",
@@ -748,7 +748,7 @@ ${fileText.slice(0,3000)}` : text };
         {/* ── Right content ── */}
         <div style={{ flex:1, overflowY:"auto", padding:"24px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-            <div style={{ fontSize:16, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.01em" }}>{SECTIONS.find(s=>s.key===section)?.label}</div>
+            <div style={{ fontSize:16, fontWeight:600, color:"var(--t1)", letterSpacing:0 }}>{SECTIONS.find(s=>s.key===section)?.label}</div>
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               {section==="rules" && rulesTab==="scheduling" && (<>
                 <button onClick={addRule} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
@@ -1312,7 +1312,7 @@ ${fileText.slice(0,3000)}` : text };
                 ].map(m=>(
                   <div key={m.label} style={{ padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                     <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>{m.label}</div>
-                    <div style={{ fontSize:18, fontWeight:400, color:"var(--t1)", letterSpacing:"-0.02em" }}>{m.value}</div>
+                    <div style={{ fontSize:18, fontWeight:400, color:"var(--t1)", letterSpacing:0 }}>{m.value}</div>
                   </div>
                 ))}
               </div>

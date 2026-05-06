@@ -312,7 +312,7 @@ export default function AnalyzeView({ stories, onUpdate }) {
             ].map(m=>(
               <div key={m.label} style={{ padding:"12px 14px", borderRadius:9, background:"var(--bg2)", border:"1px solid var(--border)" }}>
                 <div style={{ fontSize:10, color:"var(--t3)", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.06em" }}>{m.label}</div>
-                <div style={{ fontSize:22, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)", letterSpacing:"-0.03em" }}>
+                <div style={{ fontSize:22, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)", letterSpacing:0 }}>
                   {m.value}<span style={{ fontSize:12, color:"var(--t3)", fontWeight:400 }}>{m.suffix}</span>
                 </div>
               </div>

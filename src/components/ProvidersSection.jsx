@@ -508,7 +508,7 @@ function AIUsage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setCalls(await getAiCalls({ limit: 250 })); }
+    try { setCalls(await getAiCalls({ limit: 1000 })); }
     finally { setLoading(false); }
   }, []);
 
@@ -529,6 +529,13 @@ function AIUsage() {
   }, { calls: 0, failed: 0, totalCost: 0, tokensIn: 0, tokensOut: 0, byType: {} });
   const byType = Object.values(summary.byType).sort((a, b) => b.cost - a.cost || b.calls - a.calls);
   const failures = calls.filter(c => !c.success).slice(0, 6);
+  const costSince = (days) => {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return calls.reduce((sum, call) => {
+      const t = call.created_at ? new Date(call.created_at).getTime() : 0;
+      return t >= cutoff ? sum + (Number(call.cost_estimate) || 0) : sum;
+    }, 0);
+  };
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -538,8 +545,11 @@ function AIUsage() {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
         {[
+          ["Today", loading ? "..." : formatCost(costSince(1))],
+          ["7 days", loading ? "..." : formatCost(costSince(7))],
+          ["30 days", loading ? "..." : formatCost(costSince(30))],
+          ["Loaded total", loading ? "..." : formatCost(summary.totalCost)],
           ["Recent calls", loading ? "..." : summary.calls],
-          ["Estimated cost", loading ? "..." : formatCost(summary.totalCost)],
           ["Input tokens", loading ? "..." : summary.tokensIn.toLocaleString()],
           ["Failures", loading ? "..." : summary.failed],
         ].map(([label, value]) => (

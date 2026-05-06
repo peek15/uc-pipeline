@@ -41,10 +41,11 @@ module.exports = {
       },
 
       fontFamily: {
-        display: ["'DM Sans'", "-apple-system", "system-ui", "sans-serif"],
-        body:    ["'DM Sans'", "-apple-system", "system-ui", "sans-serif"],
-        mono:    ["'DM Mono'", "ui-monospace", "monospace"],
-        serif:   ["Georgia", "'Times New Roman'", "serif"],
+        display: ["var(--font-display)"],
+        body:    ["var(--font-body)"],
+        mono:    ["var(--font-mono)"],
+        serif:   ["var(--font-editorial)"],
+        script:  ["var(--font-script)"],
       },
 
       boxShadow: {

@@ -19,6 +19,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { runPrompt } from "@/lib/ai/runner";
+import { logProviderCost } from "@/lib/ai/audit";
 import { supabase } from "@/lib/db";
 import { getAtmosphericProvider, getLicensedProvider, selectVisualProvider } from "@/lib/providers/visual/visual";
 import { loadAgentContext, formatFeedbackContext, brandIdentityBlock,
@@ -120,12 +121,14 @@ export async function run({ story, brief, brand_profile_id, workspace_id = null,
     results: atmosphericResults, story, brand_profile_id, workspace_id,
     asset_type: "atmospheric", brief, format: story.format,
   });
+  await logVisualProviderCosts({ assets: atmospheric_assets, story, brand_profile_id, workspace_id, asset_type: "atmospheric" });
   total_cost += atmospheric_assets.reduce((s, a) => s + (a.provider_cost || 0), 0);
 
   const licensed_assets = await persistGenerationResults({
     results: licensedResults, story, brand_profile_id, workspace_id,
     asset_type: "licensed", brief, format: story.format,
   });
+  await logVisualProviderCosts({ assets: licensed_assets, story, brand_profile_id, workspace_id, asset_type: "licensed" });
   total_cost += licensed_assets.reduce((s, a) => s + (a.provider_cost || 0), 0);
 
   const all_assets = [...atmospheric_assets, ...licensed_assets];
@@ -292,6 +295,31 @@ async function persistGenerationResults({ results, story, brand_profile_id, work
     return [];
   }
   return data || [];
+}
+
+async function logVisualProviderCosts({ assets, story, brand_profile_id, workspace_id, asset_type }) {
+  const totals = new Map();
+  for (const asset of assets || []) {
+    const provider = asset.source || "unknown";
+    const cost = Number(asset.provider_cost) || 0;
+    const current = totals.get(provider) || { cost: 0, count: 0 };
+    current.cost += cost;
+    current.count += 1;
+    totals.set(provider, current);
+  }
+
+  await Promise.all([...totals.entries()].map(([provider, total]) =>
+    logProviderCost({
+      type: `visual-${asset_type}`,
+      provider_name: provider,
+      model_version: `${total.count} asset${total.count === 1 ? "" : "s"}`,
+      cost_estimate: total.cost,
+      story_id: story?.id || null,
+      brand_profile_id,
+      workspace_id,
+      success: true,
+    })
+  ));
 }
 
 // ─── Prompt construction ────────────────────────────────

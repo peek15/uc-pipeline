@@ -69,7 +69,7 @@ export default function ShortcutsCheatSheet({ isOpen, onClose }) {
                 {group}
               </div>
               <div style={{ display: "grid", gap: 4 }}>
-                {items.map(({ key, label, description }) => (
+                {items.map(({ key, label, description, hint }) => (
                   <div key={key} style={{
                     display: "grid",
                     gridTemplateColumns: "1fr auto",
@@ -77,7 +77,10 @@ export default function ShortcutsCheatSheet({ isOpen, onClose }) {
                     padding: "6px 0",
                     fontSize: 13, color: "var(--t1)",
                   }}>
-                    <span style={{ lineHeight: 1.4 }}>{description}</span>
+                    <span style={{ lineHeight: 1.4 }}>
+                      {description}
+                      {hint && <span style={{ fontSize: 10, color: "var(--t4)", marginLeft: 6 }}>{hint}</span>}
+                    </span>
                     <kbd style={{
                       fontFamily: "'DM Mono', monospace",
                       fontSize: 11, fontWeight: 600,

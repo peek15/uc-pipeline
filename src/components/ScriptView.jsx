@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal } from "lucide-react";
 import { LANGS, ACCENT } from "@/lib/constants";
+import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
@@ -105,8 +106,7 @@ export default function ScriptView({ stories, onUpdate }) {
   // Keyboard navigation
   useEffect(() => {
     const handler = (e) => {
-      const tag = document.activeElement?.tagName;
-      if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
+      if (shouldIgnoreFromInput()) return;
       if (!focusedStory) return;
 
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -122,12 +122,12 @@ export default function ScriptView({ stories, onUpdate }) {
       if (e.key === "ArrowRight") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.add(focusedStory.id); return n; }); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.delete(focusedStory.id); return n; }); }
       if (e.key === " ") { e.preventDefault(); setExpandedIds(s => { const n = new Set(s); n.has(focusedStory.id) ? n.delete(focusedStory.id) : n.add(focusedStory.id); return n; }); }
-      // Cmd+G = generate/rewrite focused story
-      if (e.metaKey && e.key === "g") { e.preventDefault(); if (!loading) generate(focusedStory); }
-      // Cmd+T = translate all for focused story
-      if (e.metaKey && e.key === "t") { e.preventDefault(); if (!loading && focusedStory.script) translateAll(focusedStory); }
+      // Alt+G = generate/rewrite focused story
+      if (matches(e, SHORTCUTS.scriptGenerate.combo)) { e.preventDefault(); if (!loading) generate(focusedStory); }
+      // Alt+T = translate all for focused story
+      if (matches(e, SHORTCUTS.scriptTranslate.combo)) { e.preventDefault(); if (!loading && focusedStory.script) translateAll(focusedStory); }
       // Cmd+C when expanded = copy current lang
-      if (e.metaKey && e.key === "c" && expandedIds.has(focusedStory.id)) {
+      if (matches(e, SHORTCUTS.scriptCopy.combo) && expandedIds.has(focusedStory.id)) {
         const vl2 = getViewLang(focusedStory.id);
         const sc = getScript(focusedStory, vl2);
         if (sc) { navigator.clipboard.writeText(sc); setCopied(`${focusedStory.id}-${vl2}`); setTimeout(()=>setCopied(false),2000); }
@@ -508,7 +508,7 @@ export default function ScriptView({ stories, onUpdate }) {
 
                   {/* Shortcut hint */}
                   <div style={{ marginTop:10, fontSize:10, color:"var(--t4)", display:"flex", gap:10, flexWrap:"wrap" }}>
-                    {[["⌘G","Generate/rewrite"],["⌘T","Translate all"],["1-4","Switch lang"],["→←","Expand/collapse"]].map(([k,v])=>(
+                    {[["⌥G","Generate/rewrite"],["⌥T","Translate all"],["1-4","Switch lang"],["→←","Expand/collapse"]].map(([k,v])=>(
                       <span key={k}><kbd style={{fontFamily:"'DM Mono',monospace",fontSize:9,padding:"1px 4px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
                     ))}
                   </div>

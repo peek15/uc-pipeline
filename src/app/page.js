@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench } from "lucide-react";
 import { STAGES } from "@/lib/constants";
@@ -20,7 +20,7 @@ import ProductionAlert from "@/components/ProductionAlert";
 import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 
-const VERSION = "3.11.4";
+const VERSION = "3.11.6";
 
 const TABS = [
   { key: "pipeline",   label: "Pipeline",   Icon: Layers },
@@ -37,6 +37,8 @@ export default function Home() {
   const [authError, setAuthError]     = useState(null);
   const [showUserMenu, setShowUserMenu] = useState(null); // "actions" | "user" | null
   const [stories, setStories]         = useState([]);
+  const storiesRef = useRef([]);
+  useEffect(() => { storiesRef.current = stories; }, [stories]);
   const [tab, setTab]                 = usePersistentState("tab", "pipeline");
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
@@ -107,19 +109,19 @@ export default function Home() {
   }, []);
 
   const updateStory = useCallback(async (id, c) => {
-    const story = stories.find(s => s.id === id);
+    const story = storiesRef.current.find(s => s.id === id);
     if (!story) return;
     const saved = await upsertStory({ ...story, ...c });
     if (saved) { setStories(p => p.map(s => s.id === id ? saved : s)); syncToAirtable(saved).catch(() => {}); }
-  }, [stories]);
+  }, []);
 
   const stageChange = useCallback(async (id, st) => {
-    const story = stories.find(s => s.id === id);
+    const story = storiesRef.current.find(s => s.id === id);
     if (!story) return;
     setUndoStack(u => [...u.slice(-9), { type:"stage", id, prev: story.status }]);
     await updateStory(id, { status: st });
     toast(`Moved to ${STAGES[st].label}`);
-  }, [updateStory, stories]);
+  }, [updateStory]);
 
   const bulkAction = useCallback(async (from, to) => {
     const up = stories.filter(s => s.status === from).map(s => ({ ...s, status: to }));
@@ -132,11 +134,11 @@ export default function Home() {
   }, [stories]);
 
   const bulkReject = useCallback(async (ids) => {
-    const prev = ids.map(id => ({ id, status: stories.find(s=>s.id===id)?.status }));
+    const prev = ids.map(id => ({ id, status: storiesRef.current.find(s=>s.id===id)?.status }));
     setUndoStack(u => [...u.slice(-9), { type:"bulkStage", prev }]);
     await Promise.all(ids.map(id => updateStory(id, { status: "rejected" })));
     toast(`${ids.length} ${ids.length===1?"story":"stories"} rejected`);
-  }, [updateStory, stories]);
+  }, [updateStory]);
 
   const bulkDelete = useCallback(async (ids) => {
     await Promise.all(ids.map(id => dbDelete(id)));
@@ -270,7 +272,7 @@ export default function Home() {
       if (shouldIgnoreFromInput()) return;
 
       // Cheat sheet
-      if (matches(e, SHORTCUTS.showShortcuts.combo))      { e.preventDefault(); setShowShortcuts(s => !s); return; }
+      if (matches(e, SHORTCUTS.showShortcuts.combo)) { e.preventDefault(); setShowShortcuts(s => !s); return; }
 
       // Global commands
       if (matches(e, SHORTCUTS.toggleSettings.combo))     { e.preventDefault(); setShowSettings(s=>!s);             return; }

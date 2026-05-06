@@ -52,7 +52,15 @@ export function matches(e, combo) {
   if (hasMod   !== wantMod)   return false;
   if (hasAlt   !== wantAlt)   return false;
   if (hasShift !== wantShift) return false;
-  return e.key.toLowerCase() === combo.key.toLowerCase();
+  const key = combo.key.toLowerCase();
+  if (e.key.toLowerCase() === key) return true;
+  // On Mac, Option/Alt changes e.key for letter/digit keys (e.g. Alt+T → "†").
+  // Fall back to e.code (physical key) so Alt+letter combos work cross-platform.
+  if (wantAlt && key.length === 1) {
+    if (/[a-z]/.test(key)) return e.code === `Key${key.toUpperCase()}`;
+    if (/[0-9]/.test(key)) return e.code === `Digit${key}`;
+  }
+  return false;
 }
 
 /**
@@ -66,13 +74,16 @@ export function shouldIgnoreFromInput() {
   return false;
 }
 
+// Keys where shift is already implied by the character — don't render ⇧ prefix.
+const SHIFT_IMPLIED = new Set(["?", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+", "{", "}", "|", ":", '"', "<", ">", "~"]);
+
 export function renderCombo(combo) {
   if (!combo) return "";
   const s = symbols();
   const parts = [];
   if (combo.mod)   parts.push(s.mod);
   if (combo.alt)   parts.push(s.alt);
-  if (combo.shift) parts.push(s.shift);
+  if (combo.shift && !SHIFT_IMPLIED.has(combo.key)) parts.push(s.shift);
   parts.push(renderKey(combo.key, s));
   return parts.join(s.separator);
 }
@@ -99,17 +110,18 @@ function renderKey(key, s) {
 export const SHORTCUTS = {
   // Global
   toggleSettings:     { combo: { mod: true, key: "," },           description: "Open / close Settings",          group: "Global" },
-  showShortcuts:      { combo: { mod: true, key: "/" },           description: "Show this cheat sheet",         group: "Global" },
-  undo:               { combo: { mod: true, key: "z" },           description: "Undo last action",              group: "Global" },
-  productionShortcut: { combo: { mod: true, key: "j" },           description: "Production shortcut",           group: "Global" },
+  showShortcuts:      { combo: { shift: true, key: "?" },           description: "Show this cheat sheet",          group: "Global" },
+  undo:               { combo: { mod: true, key: "z" },           description: "Undo last action",               group: "Global" },
+  productionShortcut: { combo: { alt: true, key: "j" },           description: "Smart jump to Research",         group: "Global" },
 
-  // Tab jumps
-  tabPipeline:   { combo: { mod: true, key: "1" }, description: "Go to Pipeline",   group: "Tabs" },
-  tabResearch:   { combo: { mod: true, key: "2" }, description: "Go to Research",   group: "Tabs" },
-  tabScript:     { combo: { mod: true, key: "3" }, description: "Go to Script",     group: "Tabs" },
-  tabProduction: { combo: { mod: true, key: "4" }, description: "Go to Production", group: "Tabs" },
-  tabCalendar:   { combo: { mod: true, key: "5" }, description: "Go to Calendar",   group: "Tabs" },
-  tabAnalyze:    { combo: { mod: true, key: "6" }, description: "Go to Analyze",    group: "Tabs" },
+  // Tab jumps — Chrome on Mac intercepts Cmd+1–9 for browser tab switching.
+  // Use Ctrl+1–6 in Chrome; matches() checks metaKey||ctrlKey so both fire the handler.
+  tabPipeline:   { combo: { mod: true, key: "1" }, description: "Go to Pipeline",   hint: "Ctrl+1 in Chrome", group: "Tabs" },
+  tabResearch:   { combo: { mod: true, key: "2" }, description: "Go to Research",   hint: "Ctrl+2 in Chrome", group: "Tabs" },
+  tabScript:     { combo: { mod: true, key: "3" }, description: "Go to Script",     hint: "Ctrl+3 in Chrome", group: "Tabs" },
+  tabProduction: { combo: { mod: true, key: "4" }, description: "Go to Production", hint: "Ctrl+4 in Chrome", group: "Tabs" },
+  tabCalendar:   { combo: { mod: true, key: "5" }, description: "Go to Calendar",   hint: "Ctrl+5 in Chrome", group: "Tabs" },
+  tabAnalyze:    { combo: { mod: true, key: "6" }, description: "Go to Analyze",    hint: "Ctrl+6 in Chrome", group: "Tabs" },
 
   // Tab cycling
   tabPrev: { combo: { alt: true, key: "ArrowLeft" },  description: "Previous tab", group: "Tabs" },
@@ -134,20 +146,20 @@ export const SHORTCUTS = {
   scriptExpand:    { combo: { key: "ArrowRight" },       description: "Expand story",                                group: "Script" },
   scriptCollapse:  { combo: { key: "ArrowLeft" },        description: "Collapse story",                              group: "Script" },
   scriptToggle:    { combo: { key: " " },                description: "Toggle expand",                               group: "Script" },
-  scriptGenerate:  { combo: { mod: true, key: "g" },     description: "Generate script for focused story",           group: "Script" },
-  scriptTranslate: { combo: { mod: true, key: "t" },     description: "Translate to FR/ES/PT",                       group: "Script" },
+  scriptGenerate:  { combo: { alt: true, key: "g" },     description: "Generate script for focused story",           group: "Script" },
+  scriptTranslate: { combo: { alt: true, key: "t" },     description: "Translate to FR/ES/PT",                       group: "Script" },
   scriptCopy:      { combo: { mod: true, key: "c" },     description: "Copy current language script (when expanded)", group: "Script" },
 
   // Production
-  productionDown:    { combo: { alt: true, key: "ArrowDown" },         description: "Next queued story",       group: "Production" },
-  productionUp:      { combo: { alt: true, key: "ArrowUp" },           description: "Previous queued story",   group: "Production" },
-  productionBrief:   { combo: { mod: true, key: "b" },                 description: "Generate visual brief",   group: "Production" },
-  productionVoice:   { combo: { mod: true, shift: true, key: "v" },    description: "Generate voice (EN)",     group: "Production" },
-  productionVisual:  { combo: { mod: true, shift: true, key: "i" },    description: "Generate visuals",        group: "Production" },
-  productionApprove: { combo: { mod: true, key: "Enter" },             description: "Approve current section", group: "Production" },
+  productionDown:    { combo: { alt: true, key: "ArrowDown" },      description: "Next queued story",       group: "Production" },
+  productionUp:      { combo: { alt: true, key: "ArrowUp" },        description: "Previous queued story",   group: "Production" },
+  productionBrief:   { combo: { mod: true, key: "b" },              description: "Generate visual brief",   group: "Production" },
+  productionVoice:   { combo: { mod: true, shift: true, key: "v" }, description: "Generate voice (EN)",     group: "Production" },
+  productionVisual:  { combo: { alt: true, key: "i" },              description: "Generate visuals",        group: "Production" },
+  productionApprove: { combo: { mod: true, key: "Enter" },          description: "Approve current section", group: "Production" },
 
   // Calendar
-  calendarAutoFill: { combo: { mod: true, key: "f" }, description: "Auto-fill calendar slots", group: "Calendar" },
+  calendarAutoFill: { combo: { alt: true, key: "f" }, description: "Auto-fill calendar slots", group: "Calendar" },
 
   // Detail Modal
   detailPrev:  { combo: { key: "ArrowLeft" },  description: "Previous story",  group: "Detail Modal" },
@@ -166,6 +178,7 @@ export function getGroupedShortcuts() {
       key: name,
       combo: def.combo,
       description: def.description,
+      hint: def.hint || null,
       label: renderCombo(def.combo),
     });
   }

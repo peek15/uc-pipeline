@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { X, ChevronLeft, ChevronRight, Plus, Circle } from "lucide-react";
 import { STAGES, ACCENT, ARCHETYPES, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
+import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 
 const PLATFORMS = ["TikTok","Instagram","YouTube","All"];
 const DEFAULT_CADENCE = 5;
@@ -192,12 +193,11 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
     }
   };
 
-  // Cmd+F = auto-fill week
+  // Alt+F = auto-fill week
   useEffect(() => {
     const handler = (e) => {
-      if (e.metaKey && e.key === "f" && !e.shiftKey) {
-        const tag = document.activeElement?.tagName;
-        if (["INPUT","TEXTAREA","SELECT"].includes(tag)) return;
+      if (matches(e, SHORTCUTS.calendarAutoFill.combo)) {
+        if (shouldIgnoreFromInput()) return;
         e.preventDefault();
         autoFillWeek();
       }

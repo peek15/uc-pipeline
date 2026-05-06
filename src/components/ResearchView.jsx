@@ -370,7 +370,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
               const fmt = FORMAT_MAP[s.format || format || suggestFormat(s.era)];
               const gate = auditStoryQuality({ ...s, format: s.format || format || suggestFormat(s.era), score_total: scoreData?.total ?? sc }, stories);
               return (
-                <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"1px solid var(--border)", borderLeft:`3px solid ${fmt?.color||"var(--border)"}` }}>
+                <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"0.5px solid var(--border)", borderLeft:`2px solid ${fmt?.color||"var(--border)"}` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
@@ -378,7 +378,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                         {s.era&&<span style={{ fontSize:10, color:"var(--t4)" }}>{s.era}</span>}
                         {fmt&&<span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:`${fmt.color}15`, color:fmt.color, border:`1px solid ${fmt.color}25` }}>{fmt.label}</span>}
                         {gate.issues.length > 0 && (
-                          <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:gate.canAdd?"rgba(196,154,60,0.12)":"rgba(192,102,106,0.12)", color:gate.canAdd?"#C49A3C":"#C0666A", border:`1px solid ${gate.canAdd?"rgba(196,154,60,0.25)":"rgba(192,102,106,0.25)"}` }}>
+                          <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:gate.canAdd?"var(--warning-bg)":"var(--error-bg)", color:gate.canAdd?"var(--warning)":"var(--error)", border:`0.5px solid ${gate.canAdd?"rgba(196,154,60,0.30)":"var(--error-border)"}` }}>
                             Gate · {gate.blockerCount ? `${gate.blockerCount} blocker` : `${gate.warningCount} warning${gate.warningCount === 1 ? "" : "s"}`}
                           </span>
                         )}
@@ -404,7 +404,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                   {gate.issues.length > 0 && (
                     <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:10, marginBottom:scoreData?0:4 }}>
                       {gate.issues.slice(0, 4).map(issue => (
-                        <span key={issue.code} style={{ fontSize:10, color:issue.severity==="blocker"?"#C0666A":"var(--t3)", padding:"2px 7px", borderRadius:99, background:"var(--fill2)", border:"1px solid var(--border)" }}>
+                        <span key={issue.code} style={{ fontSize:10, color:issue.severity==="blocker"?"var(--error)":"var(--t3)", padding:"2px 7px", borderRadius:99, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                           {issue.message}
                         </span>
                       ))}

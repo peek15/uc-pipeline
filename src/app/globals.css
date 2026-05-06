@@ -58,26 +58,26 @@
   :root {
     /* ── Backgrounds — warm near-black ── */
     --bg:    #1A1917;  /* warm near-black */
-    --bg2:   #242220;  /* cards, panels */
-    --bg3:   #2E2C2A;  /* deeper fills */
-    --card:  #242220;
-    --sheet: #1E1C1A;
-    --nav:   rgba(26,25,23,0.92);
+    --bg2:   #272523;  /* sidebar/panels — distinct from page */
+    --bg3:   #322F2D;  /* deeper fills */
+    --card:  #252321;  /* card lifts above bg */
+    --sheet: #201E1C;  /* modals */
+    --nav:   rgba(26,25,23,0.94);
 
     /* ── Text — warm grays with real separation ── */
     --t1: #EEECEA;  /* primary — warm near-white */
-    --t2: #A8A5A1;  /* secondary — good contrast from t1 */
-    --t3: #6B6965;  /* tertiary — clearly muted */
-    --t4: #3A3835;  /* hints — barely visible */
+    --t2: #B8B4AF;  /* secondary — clearly readable */
+    --t3: #7D7A76;  /* tertiary — muted but legible */
+    --t4: #4A4745;  /* hints/disabled — visible not invisible */
 
     /* ── Borders ── */
-    --border:    rgba(255,255,255,0.07);
-    --border2:   rgba(255,255,255,0.05);
-    --border-in: rgba(255,255,255,0.09);
+    --border:    rgba(255,255,255,0.10);
+    --border2:   rgba(255,255,255,0.07);
+    --border-in: rgba(255,255,255,0.13);
 
     /* ── Fills ── */
-    --fill:  rgba(255,255,255,0.03);
-    --fill2: rgba(255,255,255,0.06);
+    --fill:  rgba(255,255,255,0.04);
+    --fill2: rgba(255,255,255,0.09);
 
     /* ── Stage colors ── */
     --c-new:       #EEECEA;
@@ -194,20 +194,20 @@ textarea:focus-visible {
 /* ── Theme overrides (from Settings > Appearance) ── */
 [data-theme="dark"] {
   --bg:    #1A1917;
-  --bg2:   #242220;
-  --bg3:   #2E2C2A;
-  --card:  #242220;
-  --sheet: #1E1C1A;
-  --nav:   rgba(26,25,23,0.92);
+  --bg2:   #272523;
+  --bg3:   #322F2D;
+  --card:  #252321;
+  --sheet: #201E1C;
+  --nav:   rgba(26,25,23,0.94);
   --t1: #EEECEA;
-  --t2: #A8A5A1;
-  --t3: #6B6965;
-  --t4: #3A3835;
-  --border:    rgba(255,255,255,0.07);
-  --border2:   rgba(255,255,255,0.05);
-  --border-in: rgba(255,255,255,0.09);
-  --fill:  rgba(255,255,255,0.03);
-  --fill2: rgba(255,255,255,0.06);
+  --t2: #B8B4AF;
+  --t3: #7D7A76;
+  --t4: #4A4745;
+  --border:    rgba(255,255,255,0.10);
+  --border2:   rgba(255,255,255,0.07);
+  --border-in: rgba(255,255,255,0.13);
+  --fill:  rgba(255,255,255,0.04);
+  --fill2: rgba(255,255,255,0.09);
 }
 
 [data-theme="light"] {

@@ -474,7 +474,7 @@ function ProviderHealth({ configs, onReload }) {
       {rows.map(row => {
         const cfg = row.config;
         const state = !cfg ? "missing" : cfg.last_test_ok === true ? "ok" : cfg.last_test_ok === false ? "error" : "unknown";
-        const color = state === "ok" ? "#4A9B7F" : state === "error" ? "#C0666A" : state === "missing" ? "var(--t4)" : "#C49A3C";
+        const color = state === "ok" ? "var(--success)" : state === "error" ? "var(--error)" : state === "missing" ? "var(--t4)" : "var(--warning)";
         return (
           <div key={row.type} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 9, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
             <div style={{ minWidth: 0 }}>
@@ -555,7 +555,7 @@ function AIUsage() {
           <div key={row.type} style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 10, alignItems: "center", padding: "5px 0", fontSize: 12 }}>
             <span style={{ color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.type}</span>
             <span style={{ color: "var(--t2)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.calls}</span>
-            <span style={{ color: row.failed ? "#C0666A" : "var(--t3)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.failed}</span>
+            <span style={{ color: row.failed ? "var(--error)" : "var(--t3)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.failed}</span>
             <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{formatCost(row.cost)}</span>
           </div>
         )) : <div style={{ fontSize: 12, color: "var(--t4)" }}>{loading ? "Loading AI usage..." : "No AI calls logged yet. Run the ai_calls SQL if this stays empty after AI usage."}</div>}
@@ -564,7 +564,7 @@ function AIUsage() {
         <div style={{ ...labelStyle, marginBottom: 12 }}>Recent failures</div>
         {failures.length ? failures.map(call => (
           <div key={call.id} style={{ display: "grid", gridTemplateColumns: "130px 1fr auto", gap: 10, alignItems: "center", padding: "7px 0", borderTop: "0.5px solid var(--border2)" }}>
-            <span style={{ fontSize: 11, color: "#C0666A", fontFamily: "'DM Mono',monospace" }}>{call.type}</span>
+            <span style={{ fontSize: 11, color: "var(--error)", fontFamily: "'DM Mono',monospace" }}>{call.type}</span>
             <span style={{ fontSize: 12, color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{call.error_message || call.error_type || "Unknown error"}</span>
             <span style={{ fontSize: 10, color: "var(--t4)" }}>{call.created_at ? new Date(call.created_at).toLocaleDateString() : ""}</span>
           </div>

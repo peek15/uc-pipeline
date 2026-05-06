@@ -346,7 +346,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
                       {/* Content */}
                       <div onClick={()=>setExpanded(ex=>{const n=new Set(ex);n.has(s.id)?n.delete(s.id):n.add(s.id);return n;})} style={{minWidth:0}}>
-                        <div style={{fontSize:14,fontWeight:400,color:"var(--t1)",letterSpacing:"-0.01em",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Instrument Serif', Georgia, serif"}}>{s.title}</div>
+                        <div style={{fontSize:14,fontWeight:500,color:"var(--t1)",letterSpacing:"-0.01em",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
                         <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--t3)",flexWrap:"wrap"}}>
                           <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
                             <span style={{width:6,height:6,borderRadius:"50%",background:ac,display:"inline-block",flexShrink:0}}/>

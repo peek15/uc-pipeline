@@ -119,6 +119,67 @@ export async function callClaudeStream(prompt, maxTokens = 1000, onChunk) {
   return fullText;
 }
 
+// ─── RUNNER-COMPATIBLE VARIANTS (return { text, usage, model }) ───
+
+export async function callClaudeRaw(prompt, maxTokens = 1000, model = "sonnet") {
+  const token = await getToken();
+  const res = await fetch("/api/claude", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify({ prompt, maxTokens, model }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `API ${res.status}`);
+  }
+  const data = await res.json();
+  return { text: data.text, usage: data.usage, model: data.model };
+}
+
+export async function callClaudeStreamRaw(prompt, maxTokens = 1000, onChunk, model = "sonnet") {
+  const token = await getToken();
+  const res = await fetch("/api/claude", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify({ prompt, maxTokens, stream: true, model }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `API ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = "";
+  let buffer = "";
+  let usage = { input_tokens: null, output_tokens: null };
+  let resolvedModel = model;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (data === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.type === "usage") {
+          usage = parsed.usage;
+          if (parsed.model) resolvedModel = parsed.model;
+          continue;
+        }
+        const chunk = parsed?.delta?.text || "";
+        if (chunk) { fullText += chunk; onChunk?.(fullText); }
+      } catch {}
+    }
+  }
+  return { text: fullText, usage, model: resolvedModel };
+}
+
 // ─── AUDIT LOG ───
 
 export async function logAudit(action, storyId = null, storyTitle = null, details = null) {

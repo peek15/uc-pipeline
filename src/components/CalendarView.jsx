@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
-import { X, ChevronLeft, ChevronRight, Plus, Circle } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Plus, Circle, RefreshCw } from "lucide-react";
 import { STAGES, ACCENT, ARCHETYPES, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 
@@ -34,7 +34,7 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
 
   const covered   = scheduled.length + ready.length;
   const pct       = Math.min(100, Math.round((covered/totalSlots)*100));
-  const color     = covered >= totalSlots ? "#4A9B7F" : covered >= totalSlots*0.6 ? "#C49A3C" : "#C0666A";
+  const color     = covered >= totalSlots ? "var(--success)" : covered >= totalSlots*0.6 ? "var(--warning)" : "var(--error)";
 
   // Format balance in next 3 weeks
   const fmtCounts = {};
@@ -44,7 +44,7 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
   }
 
   return (
-    <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:16 }}>
+    <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"0.5px solid var(--border)", marginBottom:16 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
         <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>3-week coverage</span>
         <span style={{ fontSize:12, fontWeight:700, fontFamily:"'DM Mono',monospace", color }}>{covered}/{totalSlots} slots</span>
@@ -265,7 +265,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
 
       {/* Auto-produce banner */}
       {needsScript > 0 && (
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:9, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:14 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:9, background:"var(--fill2)", border:"0.5px solid var(--border)", marginBottom:14 }}>
           <div>
             <span style={{ fontSize:13, fontWeight:500, color:"var(--t1)" }}>{needsScript} scheduled {needsScript===1?"story":"stories"} need{needsScript===1?"s":""} scripting</span>
             <span style={{ fontSize:12, color:"var(--t3)", marginLeft:8 }}>in the next 14 days</span>
@@ -277,25 +277,25 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
             border:"none", cursor: producing?"not-allowed":"pointer",
             display:"flex", alignItems:"center", gap:6,
           }}>
-            {producing ? "Producing..." : `⚡ Auto-produce ${needsScript}`}
+            {producing ? <><RefreshCw size={12} className="spin" /> Producing...</> : `⚡ Auto-produce ${needsScript}`}
           </button>
         </div>
       )}
       {produceStatus && (
-        <div style={{ padding:"8px 12px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)", fontSize:12, color:"var(--t2)", marginBottom:12 }}>{produceStatus}</div>
+        <div style={{ padding:"8px 12px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:12, color:"var(--t2)", marginBottom:12 }}>{produceStatus}</div>
       )}
 
       {/* Controls */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, gap:8 }}>
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-          <button onClick={()=>setWeekOffset(w=>w-1)} style={{ width:30, height:30, borderRadius:7, border:"1px solid var(--border)", background:"var(--fill2)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <button onClick={()=>setWeekOffset(w=>w-1)} style={{ width:30, height:30, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
             <ChevronLeft size={14} color="var(--t2)"/>
           </button>
           <div style={{ textAlign:"center", minWidth:140 }}>
             <div style={{ fontSize:14, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.02em" }}>{weekLabel()}</div>
             {weekOffset!==0 && <button onClick={()=>setWeekOffset(0)} style={{ fontSize:10, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer", padding:0 }}>Today</button>}
           </div>
-          <button onClick={()=>setWeekOffset(w=>w+1)} style={{ width:30, height:30, borderRadius:7, border:"1px solid var(--border)", background:"var(--fill2)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <button onClick={()=>setWeekOffset(w=>w+1)} style={{ width:30, height:30, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
             <ChevronRight size={14} color="var(--t2)"/>
           </button>
         </div>
@@ -303,7 +303,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           <button onClick={autoFillWeek} style={{
             padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500,
-            background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer",
+            background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer",
             display:"flex", alignItems:"center", gap:5,
           }}>
             ⌘F Auto-fill week
@@ -316,7 +316,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
               padding:"5px 10px", borderRadius:6, fontSize:11, fontWeight:500,
               background: platform===p?"var(--t1)":"var(--fill2)",
               color:      platform===p?"var(--bg)":"var(--t3)",
-              border: platform===p?"1px solid var(--t1)":"1px solid var(--border)",
+              border: platform===p?"0.5px solid var(--t1)":"0.5px solid var(--border)",
               cursor:"pointer",
             }}>{p}</button>
           ))}
@@ -352,7 +352,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                 </div>
                 {!past && (
                   <button onClick={()=>setShowAssign(showAssign===di?null:di)} style={{
-                    width:24, height:24, borderRadius:6, border:"1px solid var(--border)", background: showAssign===di?"var(--t1)":"var(--fill2)",
+                    width:24, height:24, borderRadius:6, border:"0.5px solid var(--border)", background: showAssign===di?"var(--t1)":"var(--fill2)",
                     cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
                   }}>
                     <Plus size={12} color={showAssign===di?"var(--bg)":"var(--t3)"}/>
@@ -384,7 +384,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                             {LANGS.filter(l=>l.key==="en"?s.script:s[`script_${l.key}`]).map(l=>(
                               <span key={l.key} style={{ fontSize:8, fontWeight:700, padding:"1px 4px", borderRadius:3, background:"var(--fill2)", color:"var(--t3)" }}>{l.label}</span>
                             ))}
-                            <span style={{ fontSize:9, color: ready4===4?"#4A9B7F":"var(--t4)", marginLeft:2 }}>{ready4}/4 langs</span>
+                            <span style={{ fontSize:9, color: ready4===4?"var(--success)":"var(--t4)", marginLeft:2 }}>{ready4}/4 langs</span>
                           </div>
                         </div>
                         <button onClick={()=>onUpdate(s.id,{scheduled_date:null})} style={{ width:22, height:22, borderRadius:5, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
@@ -398,7 +398,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
 
               {/* Assign panel */}
               {showAssign===di && (() => { const assignDay = new Date(d); return (
-                <div style={{ margin:"0 8px 8px", padding:"12px", borderRadius:8, background:"var(--bg2)", border:"1px solid var(--border)" }}>
+                <div style={{ margin:"0 8px 8px", padding:"12px", borderRadius:8, background:"var(--bg2)", border:"0.5px solid var(--border)" }}>
                   <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>
                     Assign to {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][di]} {d.getMonth()+1}/{d.getDate()}
                   </div>
@@ -410,7 +410,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                         padding:"3px 8px", borderRadius:5, fontSize:10, fontWeight:500,
                         background:platform===p?"var(--t1)":"var(--fill2)",
                         color:platform===p?"var(--bg)":"var(--t3)",
-                        border:"1px solid var(--border)", cursor:"pointer",
+                        border:"0.5px solid var(--border)", cursor:"pointer",
                       }}>{p}</button>
                     ))}
                   </div>
@@ -426,7 +426,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                           <button key={s.id} onClick={()=>assignToDay(s.id,assignDay,platform)} style={{
                             display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:7,
                             background: i===0?"var(--fill2)":"transparent",
-                            border: i===0?"1px solid var(--border)":"1px solid transparent",
+                            border: i===0?"0.5px solid var(--border)":"0.5px solid transparent",
                             cursor:"pointer", textAlign:"left",
                           }}>
                             <div style={{ width:3, height:32, borderRadius:2, background:ac, flexShrink:0 }}/>
@@ -434,7 +434,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:1 }}>
                                 {fmtObj && <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:`${fmtObj.color}15`, color:fmtObj.color }}>{fmtObj.label}</span>}
                                 <span style={{ fontSize:10, color:ACCENT[s.archetype]||"var(--t3)" }}>{s.archetype}</span>
-                                {i===0 && <span style={{ fontSize:9, color:"#4A9B7F", fontWeight:600 }}>· Suggested</span>}
+                                {i===0 && <span style={{ fontSize:9, color:"var(--success)", fontWeight:600 }}>· Suggested</span>}
                               </div>
                               <div style={{ fontSize:12, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
                             </div>
@@ -452,7 +452,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
       </div>
 
       {/* Ready bank */}
-      <div style={{ marginTop:20, padding:"12px 14px", borderRadius:9, background:"var(--bg2)", border:"1px solid var(--border)" }}>
+      <div style={{ marginTop:20, padding:"12px 14px", borderRadius:9, background:"var(--bg2)", border:"0.5px solid var(--border)" }}>
         <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>
           Ready to schedule — {ready.length} stories
         </div>
@@ -468,7 +468,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                 </span>
               );
             })}
-            <span style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", color:"var(--t3)", border:"1px solid var(--border)" }}>
+            <span style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", color:"var(--t3)", border:"0.5px solid var(--border)" }}>
               No format · {ready.filter(s=>!s.format).length}
             </span>
           </div>

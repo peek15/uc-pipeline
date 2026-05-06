@@ -94,6 +94,38 @@ export async function recordFeedback(opts) {
   return logFeedback({ ...opts, agent_name: AGENT_NAME });
 }
 
+// For streaming use in ProductionView.
+export async function buildStreamPrompt({ story, brand_profile_id }) {
+  const { brand, feedback } = await loadAgentContext({
+    brand_profile_id, agent_name: AGENT_NAME, feedback_limit: 3,
+  });
+  return buildPrompt({ story, brand, feedback });
+}
+
+// Parse raw streamed text into structured assembly output.
+export function parseOutput(text, story = {}) {
+  const parsed = extractJson(text) || {};
+  const scenes = Array.isArray(parsed.scenes)
+    ? parsed.scenes.slice(0, 20).map(normalizeScene)
+    : [];
+  const voice_tracks = normalizeVoiceTracks(parsed.voice_tracks || {}, story.audio_refs || {});
+  const total_duration_ms = Number(parsed.total_duration_ms) || estimateDuration(voice_tracks);
+  return {
+    assembly: {
+      title:            story.title   || "",
+      format:           story.format  || "",
+      languages:        Object.keys(voice_tracks),
+      total_duration_ms,
+      scenes,
+      voice_tracks,
+      export_notes: String(parsed.export_notes || "").slice(0, 1000),
+    },
+    markdown_brief: parsed.markdown_brief ? String(parsed.markdown_brief).slice(0, 8000) : "",
+    confidence:     Number(parsed.confidence) || 70,
+    reasoning:      String(parsed.reasoning || "").slice(0, 300),
+  };
+}
+
 // ─── Prompt ────────────────────────────────────────────────
 
 function buildPrompt({ story, brand, feedback }) {

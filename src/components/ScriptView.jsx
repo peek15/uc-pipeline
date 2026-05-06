@@ -473,7 +473,7 @@ export default function ScriptView({ stories, onUpdate }) {
                       <button onClick={()=>translateAll(s)} disabled={!!loading} style={{
                         padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color:"var(--t1)",
-                        border:"1px solid var(--border)", cursor:loading?"not-allowed":"pointer",
+                        border:"0.5px solid var(--border)", cursor:loading?"not-allowed":"pointer",
                         display:"flex", alignItems:"center", gap:5,
                       }}>
                         <Layers size={12} />
@@ -485,7 +485,7 @@ export default function ScriptView({ stories, onUpdate }) {
                       <button onClick={()=>{ const vl=getViewLang(s.id); navigator.clipboard.writeText(getScript(s,vl)); setCopied(`${s.id}-${vl}`); setTimeout(()=>setCopied(false),2000); }} style={{
                         padding:"8px 12px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color: copied===`${s.id}-${getViewLang(s.id)}` ? "var(--t1)" : "var(--t2)",
-                        border:"1px solid var(--border)", cursor:"pointer",
+                        border:"0.5px solid var(--border)", cursor:"pointer",
                         display:"flex", alignItems:"center", gap:5,
                       }}>
                         <Copy size={12} />{copied===`${s.id}-${getViewLang(s.id)}` ? "Copied!" : `Copy ${getViewLang(s.id).toUpperCase()}`}
@@ -496,7 +496,7 @@ export default function ScriptView({ stories, onUpdate }) {
                       <button onClick={()=>exportVoicePack(s)} style={{
                         padding:"8px 12px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color:"var(--t2)",
-                        border:"1px solid var(--border)", cursor:"pointer",
+                        border:"0.5px solid var(--border)", cursor:"pointer",
                         display:"flex", alignItems:"center", gap:5,
                       }} title="Download zip for ElevenLabs">
                         <Zap size={12} /> Voice pack
@@ -504,7 +504,7 @@ export default function ScriptView({ stories, onUpdate }) {
                     )}
                   </div>
 
-                  {error && <div style={{ marginTop:8, fontSize:11, color:"var(--t3)" }}>{error}</div>}
+                  {error && <div style={{ marginTop:8, fontSize:11, color:"var(--error)", background:"var(--error-bg)", border:"0.5px solid var(--error-border)", padding:"6px 10px", borderRadius:6 }}>{error}</div>}
 
                   {/* Shortcut hint */}
                   <div style={{ marginTop:10, fontSize:10, color:"var(--t4)", display:"flex", gap:10, flexWrap:"wrap" }}>

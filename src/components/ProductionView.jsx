@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Sparkles, Search, Volume2, Image as ImageIcon, FileText, Check, X, RefreshCw, AlertCircle, Layers, Play, Pause, Download, Copy, Library } from "lucide-react";
 import { PRODUCTION_STATUS_LABELS, isInProductionQueue } from "@/lib/constants";
 import { runAgent, recordAgentFeedback, voiceAgent, visualAgent, assemblyAgent } from "@/lib/ai/agent-runner";
+import { runPromptStream } from "@/lib/ai/runner";
+import { buildStreamPrompt as buildBriefPrompt, parseOutput as parseBriefOutput } from "@/lib/ai/agents/brief-author";
+import { buildStreamPrompt as buildAssemblyPrompt, parseOutput as parseAssemblyOutput } from "@/lib/ai/agents/assembly-author";
 import AssetLibraryModal from "./AssetLibraryModal";
 import { updateProductionStatus, supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
@@ -22,7 +25,7 @@ function formatBorder(format) {
 
 // ─── Reusable styles ───
 const btnPrimary   = { padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: "var(--t1)", color: "var(--bg)", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 };
-const btnSecondary = { padding: "6px 12px", borderRadius: 7, fontSize: 12, fontWeight: 500, background: "var(--fill2)", color: "var(--t1)", border: "1px solid var(--border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 };
+const btnSecondary = { padding: "6px 12px", borderRadius: 7, fontSize: 12, fontWeight: 500, background: "var(--fill2)", color: "var(--t1)", border: "0.5px solid var(--border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 };
 const btnGhost     = { padding: "6px 10px", borderRadius: 7, fontSize: 12, fontWeight: 500, background: "transparent", color: "var(--t3)", border: "1px solid var(--border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 };
 const inputStyle   = { flex: 1, padding: "8px 12px", borderRadius: 7, fontSize: 13, background: "var(--fill2)", border: "1px solid var(--border-in)", color: "var(--t1)", outline: "none", fontFamily: "inherit" };
 const textareaStyle = { ...inputStyle, width: "100%", minHeight: 64, resize: "vertical", lineHeight: 1.5 };
@@ -60,8 +63,8 @@ function Section({ title, status, statusColor, description, children }) {
         </div>
         {status && (
           <span style={{ fontSize: 10, fontWeight: 600, fontFamily: "'DM Mono',monospace", padding: "2px 8px", borderRadius: 4,
-            background: statusColor === "success" ? "rgba(74,155,127,0.12)" : statusColor === "warning" ? "rgba(196,154,60,0.12)" : "var(--fill)",
-            color: statusColor === "success" ? "#4A9B7F" : statusColor === "warning" ? "var(--gold)" : "var(--t3)",
+            background: statusColor === "success" ? "var(--success-bg)" : statusColor === "warning" ? "var(--warning-bg)" : "var(--fill)",
+            color: statusColor === "success" ? "var(--success)" : statusColor === "warning" ? "var(--warning)" : "var(--t3)",
             border: "0.5px solid var(--border)", whiteSpace: "nowrap", flexShrink: 0 }}>{status}</span>
         )}
       </div>
@@ -83,19 +86,93 @@ function Field({ label, value, onChange, multiline = false }) {
 
 function ErrorBox({ children }) {
   return (
-    <div style={{ marginTop: 10, fontSize: 11, color: "#C0666A", padding: "8px 12px", borderRadius: 6, background: "rgba(192,102,106,0.08)", border: "0.5px solid rgba(192,102,106,0.3)", display: "flex", gap: 6, alignItems: "flex-start" }}>
+    <div style={{ marginTop: 10, fontSize: 11, color: "var(--error)", padding: "8px 12px", borderRadius: 6, background: "var(--error-bg)", border: "0.5px solid var(--error-border)", display: "flex", gap: 6, alignItems: "flex-start" }}>
       <AlertCircle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
       <span>{children}</span>
     </div>
   );
 }
 
-// ─── Brief section (unchanged from v3.10.x) ─────────────
+// Dispatch a section-status event so PipelineProgress can react.
+function sectionEvent(section, status) {
+  window.dispatchEvent(new CustomEvent("production:section-status", { detail: { section, status } }));
+}
+
+// StreamPreview — live raw text while Claude writes.
+function StreamPreview({ text }) {
+  if (!text) return null;
+  return (
+    <pre style={{
+      margin: 0, padding: "10px 12px", borderRadius: 7,
+      background: "var(--fill)", border: "0.5px solid var(--border)",
+      fontSize: 10, color: "var(--t3)", lineHeight: 1.6,
+      fontFamily: "'DM Mono', monospace", whiteSpace: "pre-wrap",
+      wordBreak: "break-word", maxHeight: 120, overflowY: "auto",
+    }}>
+      {text}<span className="anim-pulse" style={{ display: "inline-block", width: 6, height: 10, background: "var(--t3)", marginLeft: 2, verticalAlign: "text-bottom", borderRadius: 1 }} />
+    </pre>
+  );
+}
+
+// PipelineProgress — horizontal stage tracker at top of detail panel.
+function PipelineProgress({ story }) {
+  const [live, setLive] = useState({});
+
+  useEffect(() => {
+    setLive({});
+  }, [story.id]);
+
+  useEffect(() => {
+    const h = (e) => setLive(p => ({ ...p, [e.detail.section]: e.detail.status }));
+    window.addEventListener("production:section-status", h);
+    return () => window.removeEventListener("production:section-status", h);
+  }, []);
+
+  const stages = [
+    { key: "brief",    label: "Brief",    done: !!story.visual_brief },
+    { key: "matches",  label: "Matches",  done: false },
+    { key: "voice",    label: "Voice",    done: !!(story.audio_refs && Object.keys(story.audio_refs || {}).length > 0) },
+    { key: "visual",   label: "Visual",   done: !!(story.visual_refs?.selected?.length) },
+    { key: "assembly", label: "Assembly", done: !!story.assembly_brief },
+  ];
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", padding: "12px 0 16px", gap: 0 }}>
+      {stages.map((stage, i) => {
+        const status = live[stage.key];
+        const isRunning = status === "running";
+        const isError   = status === "error";
+        const isDone    = stage.done || status === "done";
+        const dotColor  = isError ? "#C0666A" : isRunning ? "var(--gold)" : isDone ? "#4A9B7F" : "var(--t4)";
+
+        return (
+          <div key={stage.key} style={{ display: "flex", alignItems: "flex-start", flex: i < stages.length - 1 ? 1 : "none" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0,
+                ...(isRunning ? { animation: "pulse 1s ease infinite" } : {}),
+              }} />
+              <span style={{ fontSize: 9, fontWeight: isDone || isRunning ? 600 : 400, color: isRunning ? "var(--t1)" : isDone ? "#4A9B7F" : "var(--t4)", whiteSpace: "nowrap" }}>
+                {stage.label}
+              </span>
+            </div>
+            {i < stages.length - 1 && (
+              <div style={{ flex: 1, height: "0.5px", background: "var(--border)", margin: "4px 4px 0" }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Brief section ───────────────────────────────────────
 
 function BriefSection({ story, brand_profile_id, onSaved }) {
   const [draft, setDraft]       = useState(story.visual_brief || null);
   const [original, setOriginal] = useState(story.visual_brief || null);
   const [running, setRunning]   = useState(false);
+  const [streamText, setStreamText] = useState("");
   const [confidence, setConfidence] = useState(null);
   const [reasoning, setReasoning]   = useState(null);
   const [aiCallId, setAiCallId]     = useState(null);
@@ -104,10 +181,9 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
 
   useEffect(() => {
     setDraft(story.visual_brief || null); setOriginal(story.visual_brief || null);
-    setConfidence(null); setReasoning(null); setAiCallId(null); setError(null);
+    setConfidence(null); setReasoning(null); setAiCallId(null); setError(null); setStreamText("");
   }, [story.id]);
 
-  // v3.11.4 — listen for ⌘B from global handler
   useEffect(() => {
     const h = () => { if (!running) generate(); };
     window.addEventListener("production:generate-brief", h);
@@ -115,11 +191,20 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
   }, [running]);
 
   const generate = async () => {
-    setRunning(true); setError(null);
+    setRunning(true); setError(null); setStreamText("");
+    sectionEvent("brief", "running");
     try {
-      const result = await runAgent({ agent_name: "brief-author", params: { story, brand_profile_id } });
-      setDraft(result.brief); setConfidence(result.confidence); setReasoning(result.reasoning); setAiCallId(result.ai_call_id);
-    } catch (e) { setError(e?.message || String(e)); }
+      const prompt = await buildBriefPrompt({ story, brand_profile_id });
+      const { text, ai_call_id } = await runPromptStream({
+        type: "agent-call", params: { prompt }, maxTokens: 800,
+        context: { story_id: story.id, brand_profile_id },
+        onChunk: (t) => setStreamText(t),
+      });
+      const { brief, confidence: conf, reasoning: rsn } = parseBriefOutput(text);
+      setDraft(brief); setConfidence(conf); setReasoning(rsn); setAiCallId(ai_call_id);
+      setStreamText("");
+      sectionEvent("brief", "done");
+    } catch (e) { setError(e?.message || String(e)); sectionEvent("brief", "error"); }
     finally    { setRunning(false); }
   };
 
@@ -157,7 +242,8 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
   return (
     <Section title="Visual brief" status={status} statusColor={statusColor}
       description="AI writes a structured brief from the story, brand, and your past corrections. Edit any field and approve to save.">
-      {!draft && (<button onClick={generate} disabled={running} style={btnPrimary}><Sparkles size={12} />{running ? "Writing brief…" : "Generate brief"}</button>)}
+      {!draft && !running && (<button onClick={generate} style={btnPrimary}><Sparkles size={12} />Generate brief</button>)}
+      {running && !draft && <StreamPreview text={streamText} />}
       {draft && (
         <div style={{ display: "grid", gap: 12 }}>
           {confidence != null && (
@@ -180,9 +266,12 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
           </div>
           <Field label="Avoid" value={draft.avoid} onChange={(v) => updateField("avoid", v)} multiline />
           {reasoning && <div style={{ fontSize: 11, color: "var(--t3)", fontStyle: "italic", padding: "8px 12px", borderRadius: 6, background: "var(--fill)", borderLeft: "2px solid var(--gold)" }}>{reasoning}</div>}
+          {running && <StreamPreview text={streamText} />}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={approve} style={btnPrimary}><Check size={12} />{wasEdited ? "Save edits" : "Approve as-is"}</button>
-            <button onClick={generate} disabled={running} style={btnSecondary}><RefreshCw size={12} />{running ? "Re-writing…" : "Regenerate"}</button>
+            <button onClick={generate} disabled={running} style={btnSecondary}>
+              <RefreshCw size={12} className={running ? "spin" : ""} />{running ? "Rewriting…" : "Regenerate"}
+            </button>
             <button onClick={reject} style={btnGhost}><X size={12} />Reject</button>
           </div>
         </div>
@@ -194,17 +283,19 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
 
 // ─── Voice section ──────────────────────────────────────
 
+const ALL_VOICE_LANGS = ["en", "fr", "es", "pt"];
+
 function VoiceSection({ story, brand_profile_id, onSaved }) {
-  const [running, setRunning] = useState(null); // null | "en" | "all" | "cascade"
-  const [enResult, setEnResult] = useState(null);
-  const [error, setError] = useState(null);
-  const [audioRefs, setAudioRefs] = useState(story.audio_refs || {});
-  const [playing, setPlaying] = useState(null);
+  const [running, setRunning]       = useState(null);
+  const [audioRefs, setAudioRefs]   = useState(story.audio_refs || {});
+  const [langStatus, setLangStatus] = useState({});
+  const [langErrors, setLangErrors] = useState({});
+  const [playing, setPlaying]       = useState(null);
   const [audioEl] = useState(() => typeof Audio !== "undefined" ? new Audio() : null);
 
   useEffect(() => {
     setAudioRefs(story.audio_refs || {});
-    setEnResult(null); setError(null);
+    setLangStatus({}); setLangErrors({});
   }, [story.id]);
 
   useEffect(() => {
@@ -213,7 +304,6 @@ function VoiceSection({ story, brand_profile_id, onSaved }) {
     return () => { audioEl.pause(); audioEl.src = ""; };
   }, [audioEl]);
 
-  // v3.11.4 — listen for ⌘⇧V from global handler
   useEffect(() => {
     const h = () => { if (!running) generateEN(); };
     window.addEventListener("production:generate-voice", h);
@@ -227,98 +317,108 @@ function VoiceSection({ story, brand_profile_id, onSaved }) {
     audioEl.src = ref.url; audioEl.play().catch(() => {}); setPlaying(lang);
   };
 
-  const generateEN = async () => {
-    setRunning("en"); setError(null); setEnResult(null);
+  const runLang = async (lang) => {
+    setLangStatus(p => ({ ...p, [lang]: "running" }));
     try {
-      const result = await voiceAgent.runEnglishOnly({ story, brand_profile_id });
+      const result = await voiceAgent.runOne({ story, language: lang, brand_profile_id });
       const merged = await voiceAgent.persistAudioRefs(story.id, [result]);
       setAudioRefs(merged);
-      setEnResult(result);
-      onSaved?.();
-    } catch (e) { setError(e?.message || String(e)); }
-    finally    { setRunning(null); }
+      setLangStatus(p => ({ ...p, [lang]: "done" }));
+    } catch (e) {
+      setLangStatus(p => ({ ...p, [lang]: "error" }));
+      setLangErrors(p => ({ ...p, [lang]: e?.message || String(e) }));
+    }
+  };
+
+  const generateEN = async () => {
+    setRunning("en"); sectionEvent("voice", "running");
+    await runLang("en");
+    setRunning(null); sectionEvent("voice", "done"); onSaved?.();
   };
 
   const cascadeOthers = async () => {
-    setRunning("cascade"); setError(null);
-    try {
-      const langs = ["fr", "es", "pt"].filter(l => story[`script_${l}`]);
-      const { results, errors } = await voiceAgent.runAll({ story, brand_profile_id, languages: langs });
-      if (results.length) {
-        const merged = await voiceAgent.persistAudioRefs(story.id, results);
-        setAudioRefs(merged);
-        onSaved?.();
-      }
-      if (errors.length) setError(errors.map(e => `${e.language}: ${e.error}`).join(" · "));
-    } catch (e) { setError(e?.message || String(e)); }
-    finally    { setRunning(null); }
+    setRunning("cascade"); sectionEvent("voice", "running");
+    for (const lang of ["fr", "es", "pt"]) { await runLang(lang); }
+    setRunning(null); sectionEvent("voice", "done"); onSaved?.();
   };
 
   const generateAll = async () => {
-    setRunning("all"); setError(null);
-    try {
-      const { results, errors } = await voiceAgent.runAll({ story, brand_profile_id });
-      if (results.length) {
-        const merged = await voiceAgent.persistAudioRefs(story.id, results);
-        setAudioRefs(merged);
-        onSaved?.();
-      }
-      if (errors.length) setError(errors.map(e => `${e.language}: ${e.error}`).join(" · "));
-    } catch (e) { setError(e?.message || String(e)); }
-    finally    { setRunning(null); }
+    setRunning("all"); sectionEvent("voice", "running");
+    const langs = ALL_VOICE_LANGS.filter(l => story[`script_${l}`] || l === "en");
+    for (const lang of langs) { await runLang(lang); }
+    setRunning(null); sectionEvent("voice", "done"); onSaved?.();
   };
 
-  const langs   = Object.keys(audioRefs);
-  const hasEN   = !!audioRefs.en;
-  const hasAll  = ["en", "fr", "es", "pt"].every(l => audioRefs[l]);
-  const status  = hasAll ? "all 4 languages ✓" : hasEN ? "EN ready" : langs.length ? `${langs.length} language${langs.length>1?"s":""}` : "not started";
-  const statusColor = hasAll ? "success" : hasEN ? "warning" : "default";
+  const hasEN      = !!audioRefs.en;
+  const hasAll     = ALL_VOICE_LANGS.every(l => audioRefs[l]);
+  const doneCount  = ALL_VOICE_LANGS.filter(l => audioRefs[l]).length;
+  const showGrid   = running || doneCount > 0;
+  const status     = hasAll ? "all 4 ✓" : doneCount > 0 ? `${doneCount} / 4` : "not started";
+  const statusColor = hasAll ? "success" : doneCount > 0 ? "warning" : "default";
 
   return (
     <Section title="Voice generation" status={status} statusColor={statusColor}
-      description="EN first for approval, then FR/ES/PT cascade in parallel. Or generate all at once.">
-      {Object.keys(audioRefs).length === 0 && (
+      description="Generate EN first, then cascade FR / ES / PT one by one.">
+
+      {!showGrid && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={generateEN}  disabled={!!running} style={btnPrimary}>
-            {running === "en" ? <RefreshCw size={12} className="spin" /> : <Volume2 size={12} />}
-            {running === "en" ? "Generating EN…" : "Generate EN first"}
+          <button onClick={generateEN} disabled={!!running} style={btnPrimary}>
+            <Volume2 size={12} /> Generate EN first
           </button>
           <button onClick={generateAll} disabled={!!running} style={btnSecondary}>
-            {running === "all" ? <RefreshCw size={12} className="spin" /> : null}
-            {running === "all" ? "Generating all…" : "Generate all 4 languages"}
+            Generate all 4
           </button>
         </div>
       )}
 
-      {Object.keys(audioRefs).length > 0 && (
-        <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
-          {Object.entries(audioRefs).map(([lang, ref]) => (
-            <div key={lang} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 6, background: "var(--fill)", border: "0.5px solid var(--border)" }}>
-              <button onClick={() => playAudio(lang)} style={{ ...btnGhost, padding: "4px 8px" }}>
-                {playing === lang ? <Pause size={12} /> : <Play size={12} />}
-              </button>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", width: 80 }}>{LANG_LABELS[lang] || lang}</span>
-              <span style={{ fontSize: 10, fontFamily: "'DM Mono',monospace", color: "var(--t3)" }}>
-                {ref.provider || "—"} · {ref.duration_estimate_ms ? Math.round(ref.duration_estimate_ms/1000) + "s" : "—"}
-              </span>
-            </div>
-          ))}
+      {showGrid && (
+        <div style={{ display: "grid", gap: 6 }}>
+          {ALL_VOICE_LANGS.map(lang => {
+            const ref   = audioRefs[lang];
+            const lstat = langStatus[lang];
+            const lerr  = langErrors[lang];
+            const hasRef = !!ref?.url;
+            return (
+              <div key={lang} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 12px", borderRadius: 6,
+                background: "var(--fill)", border: "0.5px solid var(--border)",
+                opacity: !hasRef && !lstat ? 0.4 : 1, transition: "opacity 0.25s",
+              }}>
+                <div style={{
+                  width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                  background: lerr ? "#C0666A" : (lstat === "done" || hasRef) ? "#4A9B7F" : lstat === "running" ? "var(--gold)" : "var(--t4)",
+                  ...(lstat === "running" ? { animation: "pulse 1s ease infinite" } : {}),
+                }} />
+                {hasRef
+                  ? <button onClick={() => playAudio(lang)} style={{ ...btnGhost, padding: "3px 7px" }}>
+                      {playing === lang ? <Pause size={11} /> : <Play size={11} />}
+                    </button>
+                  : <div style={{ width: 28 }}>
+                      {lstat === "running" && <RefreshCw size={11} className="spin" style={{ color: "var(--t3)" }} />}
+                    </div>
+                }
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", width: 76 }}>{LANG_LABELS[lang] || lang}</span>
+                <span style={{ fontSize: 10, fontFamily: "'DM Mono',monospace", color: lerr ? "#C0666A" : "var(--t3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {lerr ? lerr.slice(0, 60) : hasRef ? `${ref.provider || "—"} · ${ref.duration_estimate_ms ? Math.round(ref.duration_estimate_ms / 1000) + "s" : "—"}` : lstat === "running" ? "generating…" : "—"}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {hasEN && !hasAll && (
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={cascadeOthers} disabled={!!running} style={btnPrimary}>
-            {running === "cascade" ? <RefreshCw size={12} className="spin" /> : <Volume2 size={12} />}
-            {running === "cascade" ? "Cascading…" : "Approve EN, cascade FR/ES/PT"}
-          </button>
-          <button onClick={generateEN} disabled={!!running} style={btnGhost}>
-            <RefreshCw size={12} /> Re-generate EN
-          </button>
+      {hasEN && !hasAll && !running && (
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button onClick={cascadeOthers} style={btnPrimary}><Volume2 size={12} /> Cascade FR / ES / PT</button>
+          <button onClick={generateEN} style={btnGhost}><RefreshCw size={12} /> Re-gen EN</button>
         </div>
       )}
-
-      {error && <ErrorBox>{error}</ErrorBox>}
+      {hasAll && !running && (
+        <div style={{ marginTop: 10 }}>
+          <button onClick={generateAll} style={btnGhost}><RefreshCw size={12} /> Regenerate all</button>
+        </div>
+      )}
     </Section>
   );
 }
@@ -361,18 +461,21 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
     setAllAssets(data || []);
   };
 
+  const [revealCount, setRevealCount] = useState(0);
+
   const generate = async () => {
     if (!canRun) return;
-    setRunning(true); setError(null);
+    setRunning(true); setError(null); setRevealCount(0);
+    sectionEvent("visual", "running");
     try {
-      const r = await visualAgent.run({
-        story, brief: story.visual_brief, brand_profile_id,
-      });
+      const r = await visualAgent.run({ story, brief: story.visual_brief, brand_profile_id });
       setResult(r);
-      setAllAssets(r.all_assets || []);
-      // Pre-select top-ranked
+      const assets = r.all_assets || [];
+      setAllAssets(assets);
       setSelectedIds(new Set((r.ranked_top || []).slice(0, 6).map(a => a.id)));
-    } catch (e) { setError(e?.message || String(e)); }
+      assets.forEach((_, i) => setTimeout(() => setRevealCount(i + 1), i * 55));
+      sectionEvent("visual", "done");
+    } catch (e) { setError(e?.message || String(e)); sectionEvent("visual", "error"); }
     finally    { setRunning(false); }
   };
 
@@ -409,9 +512,16 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
       )}
 
       {running && (
-        <div style={{ fontSize: 12, color: "var(--t3)", padding: "10px 0", display: "flex", alignItems: "center", gap: 8 }}>
-          <RefreshCw size={14} className="spin" /> Generating + ranking… 30-60 seconds.
-        </div>
+        <>
+          <div style={{ fontSize: 11, color: "var(--t3)", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <RefreshCw size={12} className="spin" /> Generating 12 visuals + ranking… 30–60 seconds
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8, marginBottom: 12 }}>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} style={{ aspectRatio: "9/16", borderRadius: 7, background: "var(--fill2)", border: "0.5px solid var(--border)", animation: `pulse 1.6s ease ${(i % 4) * 0.18}s infinite` }} />
+            ))}
+          </div>
+        </>
       )}
 
       {allAssets.length > 0 && (
@@ -422,14 +532,17 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8, marginBottom: 14 }}>
-            {allAssets.map(a => {
-              const picked = selectedIds.has(a.id);
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8, marginBottom: 14 }}>
+            {allAssets.map((a, i) => {
+              const picked   = selectedIds.has(a.id);
+              const visible  = i < revealCount || revealCount === 0;
               return (
                 <button key={a.id} onClick={() => togglePick(a.id)}
+                  className={visible ? "anim-fade" : ""}
                   style={{ position: "relative", aspectRatio: "9/16", overflow: "hidden", borderRadius: 7,
                     border: picked ? "2px solid var(--t1)" : "0.5px solid var(--border)",
-                    background: "var(--fill)", padding: 0, cursor: "pointer" }}>
+                    background: "var(--fill)", padding: 0, cursor: "pointer",
+                    opacity: visible ? 1 : 0, transition: "border 0.15s" }}>
                   <img src={a.thumbnail_url || a.file_url} alt={a.prompt || ""}
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                   <div style={{ position: "absolute", top: 4, left: 4, fontSize: 9, fontWeight: 600,
@@ -461,7 +574,7 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
               <Check size={12} /> {savedFlash ? "Saved ✓" : `Save ${selectedIds.size} picks`}
             </button>
             <button onClick={generate} disabled={running} style={btnSecondary}>
-              <RefreshCw size={12} /> Regenerate
+              <RefreshCw size={12} className={running ? "spin" : ""} /> Regenerate
             </button>
           </div>
         </div>
@@ -475,29 +588,39 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
 // ─── Assembly section ────────────────────────────────────
 
 function AssemblySection({ story, brand_profile_id, onSaved }) {
-  const [data, setData]         = useState(story.assembly_brief || null);
-  const [running, setRunning]   = useState(false);
-  const [error, setError]       = useState(null);
-  const [copied, setCopied]     = useState(false);
+  const [data, setData]           = useState(story.assembly_brief || null);
+  const [running, setRunning]     = useState(false);
+  const [streamText, setStreamText] = useState("");
+  const [error, setError]         = useState(null);
+  const [copied, setCopied]       = useState(false);
 
   useEffect(() => {
     setData(story.assembly_brief || null);
-    setError(null);
+    setError(null); setStreamText("");
   }, [story.id]);
 
   const canRun = !!story.script;
 
   const generate = async () => {
     if (!canRun) return;
-    setRunning(true); setError(null);
+    setRunning(true); setError(null); setStreamText("");
+    sectionEvent("assembly", "running");
     try {
-      const result = await assemblyAgent.run({ story, brand_profile_id });
+      const prompt = await buildAssemblyPrompt({ story, brand_profile_id });
+      const { text } = await runPromptStream({
+        type: "agent-call", params: { prompt }, maxTokens: 2000,
+        context: { story_id: story.id, brand_profile_id },
+        onChunk: (t) => setStreamText(t),
+      });
+      const { assembly, markdown_brief } = parseAssemblyOutput(text, story);
       const saved = await updateProductionStatus(story.id, {
-        assembly_brief: { assembly: result.assembly, markdown_brief: result.markdown_brief },
+        assembly_brief: { assembly, markdown_brief },
       });
       setData(saved.assembly_brief);
+      setStreamText("");
+      sectionEvent("assembly", "done");
       onSaved?.();
-    } catch (e) { setError(e?.message || String(e)); }
+    } catch (e) { setError(e?.message || String(e)); sectionEvent("assembly", "error"); }
     finally    { setRunning(false); }
   };
 
@@ -537,27 +660,27 @@ function AssemblySection({ story, brand_profile_id, onSaved }) {
         <div style={{ fontSize: 11, color: "var(--t3)", fontStyle: "italic" }}>Generate a script first.</div>
       )}
 
-      {canRun && !data && (
-        <button onClick={generate} disabled={running} style={btnPrimary}>
-          {running ? <RefreshCw size={12} className="spin" /> : <FileText size={12} />}
-          {running ? "Generating assembly…" : "Generate assembly brief"}
+      {canRun && !data && !running && (
+        <button onClick={generate} style={btnPrimary}>
+          <FileText size={12} /> Generate assembly brief
         </button>
       )}
+      {running && <StreamPreview text={streamText} />}
 
       {data && (
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={copyMarkdown} style={btnPrimary}>
+            <button onClick={copyMarkdown} disabled={running} style={btnPrimary}>
               <Copy size={12} /> {copied ? "Copied!" : "Copy markdown"}
             </button>
-            <button onClick={downloadJson} style={btnSecondary}>
+            <button onClick={downloadJson} disabled={running} style={btnSecondary}>
               <Download size={12} /> Download JSON
             </button>
             <button onClick={generate} disabled={running} style={btnGhost}>
-              {running ? <RefreshCw size={12} className="spin" /> : <RefreshCw size={12} />}
-              Regenerate
+              <RefreshCw size={12} className={running ? "spin" : ""} /> Regenerate
             </button>
           </div>
+          {running && <StreamPreview text={streamText} />}
 
           {assembly?.scenes?.length > 0 && (
             <div style={{ display: "grid", gap: 4 }}>
@@ -615,11 +738,12 @@ function AssetMatchesSection({ story, brand_profile_id }) {
   const canRun = !!story.visual_brief;
   const run = async () => {
     if (!story.visual_brief) return;
-    setRunning(true); setError(null);
+    setRunning(true); setError(null); sectionEvent("matches", "running");
     try {
       const result = await runAgent({ agent_name: "asset-curator", params: { story, brief: story.visual_brief, brand_profile_id } });
       setMatches(result.matches); setGaps(result.gaps); setConf(result.confidence);
-    } catch (e) { setError(e?.message || String(e)); }
+      sectionEvent("matches", "done");
+    } catch (e) { setError(e?.message || String(e)); sectionEvent("matches", "error"); }
     finally    { setRunning(false); }
   };
   const status = matches == null ? "not run yet" : matches.length === 0 ? `${gaps?.length || 0} gaps` : `${matches.length} matches · ${gaps?.length || 0} gaps`;
@@ -747,6 +871,7 @@ export default function ProductionView({ stories, onUpdate }) {
                 </div>
               </div>
 
+              <PipelineProgress story={selected} />
               <BriefSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />
               <AssetMatchesSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} />
               <VisualSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />

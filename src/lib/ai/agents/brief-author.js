@@ -91,6 +91,29 @@ export async function recordFeedback(opts) {
   return logFeedback({ ...opts, agent_name: AGENT_NAME });
 }
 
+// For streaming use in ProductionView — builds the prompt without running Claude.
+export async function buildStreamPrompt({ story, brand_profile_id }) {
+  const { brand, feedback } = await loadAgentContext({
+    brand_profile_id, agent_name: AGENT_NAME, feedback_limit: 5,
+  });
+  return buildPrompt({ story, brand, feedback });
+}
+
+// Parse raw streamed text into structured brief fields.
+export function parseOutput(text) {
+  const parsed = extractJson(text) || {};
+  return {
+    brief: {
+      scene:      String(parsed.scene      || "").slice(0, 1000),
+      mood:       String(parsed.mood       || "").slice(0, 500),
+      references: Array.isArray(parsed.references) ? parsed.references.slice(0, 8).map(String) : [],
+      avoid:      String(parsed.avoid      || "").slice(0, 500),
+    },
+    confidence: clamp(Number(parsed.confidence) || 50, 0, 100),
+    reasoning:  String(parsed.reasoning || "").slice(0, 500),
+  };
+}
+
 // ─────────────── prompt construction ───────────────
 
 function buildPrompt({ story, brand, feedback }) {

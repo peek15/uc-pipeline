@@ -20,7 +20,7 @@ import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.13.1";
+const VERSION = "3.13.2";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },

@@ -141,14 +141,14 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         const next = visibleIds[Math.min(idx+1,visibleIds.length-1)];
         setFocused(next);
         if (e.shiftKey) setSelected(s=>{const n=new Set(s);n.add(next);return n;});
-        setTimeout(()=>{const el=document.getElementById(`story-${next}`);if(el){const r=el.getBoundingClientRect();window.scrollTo({top:window.scrollY+r.top-window.innerHeight/2+r.height/2,behavior:"smooth"});}},50);
+        setTimeout(()=>{document.getElementById(`story-${next}`)?.scrollIntoView({block:"center",behavior:"smooth"});},50);
       }
       if (e.key==="ArrowUp") {
         e.preventDefault();
         const prev = visibleIds[Math.max(idx-1,0)];
         setFocused(prev);
         if (e.shiftKey) setSelected(s=>{const n=new Set(s);n.add(prev);return n;});
-        setTimeout(()=>{const el=document.getElementById(`story-${prev}`);if(el){const r=el.getBoundingClientRect();window.scrollTo({top:window.scrollY+r.top-window.innerHeight/2+r.height/2,behavior:"smooth"});}},50);
+        setTimeout(()=>{document.getElementById(`story-${prev}`)?.scrollIntoView({block:"center",behavior:"smooth"});},50);
       }
       if (e.key==="ArrowRight") { e.preventDefault(); setExpanded(s=>{const n=new Set(s);n.add(focused);return n;}); }
       if (e.key==="ArrowLeft")  { e.preventDefault(); setExpanded(s=>{const n=new Set(s);n.delete(focused);return n;}); }
@@ -283,7 +283,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>{[...selected].forEach(id=>onStageChange(id,"approved"));setSelected(new Set());}} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--bg)",color:"var(--t1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><Check size={12}/> Approve</button>
             <button onClick={()=>{onBulkReject([...selected]);setSelected(new Set());}} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"var(--bg)",border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><X size={12}/> Reject</button>
-            <button onClick={()=>{onBulkDelete([...selected]);setSelected(new Set());}} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"var(--bg)",border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><Trash2 size={12}/> Delete</button>
+            <button onClick={()=>{ const ids=[...selected]; if (window.confirm(`Delete ${ids.length} ${ids.length===1?"story":"stories"}? This cannot be undone.`)) { onBulkDelete(ids); setSelected(new Set()); } }} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"var(--bg)",border:"0.5px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><Trash2 size={12}/> Delete</button>
             <button onClick={()=>setSelected(new Set())} style={{padding:"6px 10px",borderRadius:7,fontSize:12,background:"transparent",color:"rgba(255,255,255,0.5)",border:"none",cursor:"pointer"}}><X size={14}/></button>
           </div>
         </div>

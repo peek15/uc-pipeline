@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-const ALLOWED_DOMAIN = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.co";
+const ALLOWED_DOMAIN = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
 
 export async function POST(request) {
   // Auth check

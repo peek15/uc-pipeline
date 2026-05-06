@@ -7,8 +7,9 @@ import {
   uploadLibraryAsset, listLibraryAssets, deleteLibraryAsset, setAssetActive,
   ASSET_LIB_TYPES, POSITION_INTENT_OPTIONS,
 } from "@/lib/assetLibrary";
+import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
+const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 
 const FILE_ACCEPT = "video/mp4,video/quicktime,video/webm,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,image/jpeg,image/png,image/webp";
 

@@ -11,8 +11,9 @@ import AssetLibraryModal from "./AssetLibraryModal";
 import { updateProductionStatus, supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
+import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
+const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 const LANG_LABELS = { en: "English", fr: "French", es: "Spanish", pt: "Portuguese", de: "German", it: "Italian", ja: "Japanese", zh: "Chinese" };
 
 // ─── Format border colors ───

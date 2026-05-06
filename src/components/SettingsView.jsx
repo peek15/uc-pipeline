@@ -3,8 +3,9 @@ import { useState, useEffect } from "react";
 import { Check, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
 import { supabase } from "@/lib/db";
+import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
+const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 
 const DEFAULT_SETTINGS = {
   brand: {

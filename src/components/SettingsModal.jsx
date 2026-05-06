@@ -8,8 +8,9 @@ import { runPrompt } from "@/lib/ai/runner";
 import ProvidersSection from "@/components/ProvidersSection";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
+import { DEFAULT_BRAND_PROFILE_ID, DEFAULT_WORKSPACE_ID } from "@/lib/brand";
 
-const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
+const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 
 const DEFAULT_SETTINGS = {
   brand: {
@@ -384,8 +385,8 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [assetError,    setAssetError]    = useState(null);
   const [dragOver,      setDragOver]      = useState(false);
 
-  const BRAND_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
-  const WORKSPACE_ID     = "00000000-0000-0000-0000-000000000001";
+  const BRAND_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
+  const WORKSPACE_ID     = DEFAULT_WORKSPACE_ID;
 
   useEffect(() => {
     if (section === "brand" && isOpen && assets.length === 0) {
@@ -1382,7 +1383,7 @@ ${fileText.slice(0,3000)}` : text };
               <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
                 {[
                   { label:"Workspace", value:"Uncle Carter Pipeline", editable:false },
-                  { label:"Workspace ID",   value:"00000000-0000-0000-0000-000000000001", editable:false, mono:true },
+                  { label:"Workspace ID",   value:DEFAULT_WORKSPACE_ID, editable:false, mono:true },
                   { label:"Plan",           value:"Peek Studios — Internal", editable:false },
                 ].map(({label,value,editable,mono})=>(
                   <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>

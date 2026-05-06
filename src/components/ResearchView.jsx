@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Check, X, Star, Plus, Play, Pause, Trash2 } from "lucide-react";
 import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, suggestFormat } from "@/lib/constants";
 import { runPrompt } from "@/lib/ai/runner";
+import { auditStoryQuality } from "@/lib/qualityGate";
 
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null) return null;
@@ -48,18 +49,15 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
   queueRef.current = queue;
 
   // Apply prefill from ProductionAlert / Cmd+J
-  const [_prefillApplied, setPrefillApplied] = useState(false);
   useEffect(() => {
-    if (prefill && !_prefillApplied) {
-      if (prefill.topic)     setTopic(prefill.topic);
-      if (prefill.era)       setEra(prefill.era);
-      if (prefill.archetype) setArchetype(prefill.archetype);
-      if (prefill.format)    setFormat(prefill.format);
-      if (prefill.count)     setCount(String(prefill.count));
-      setPrefillApplied(true);
-      if (onPrefillUsed) onPrefillUsed();
-    }
-  }, [prefill, _prefillApplied, onPrefillUsed]);
+    if (!prefill) return;
+    if (prefill.topic)     setTopic(prefill.topic);
+    if (prefill.era)       setEra(prefill.era);
+    if (prefill.archetype) setArchetype(prefill.archetype);
+    if (prefill.format)    setFormat(prefill.format);
+    if (prefill.count)     setCount(String(prefill.count));
+    if (onPrefillUsed) onPrefillUsed();
+  }, [prefill, onPrefillUsed]);
 
   const getExisting = useCallback(() =>
     [...stories.map(s=>s.title), ...results.map(s=>s.title)].slice(-40).join("; "),
@@ -181,7 +179,11 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
   const loading = singleLoading || queueRunning;
 
   const addAllToPipeline = () => {
-    const sortedResultsList = results.map((s,i) => {
+    const gated = results
+      .map((s, i) => ({ s, i, gate: auditStoryQuality({ ...s, format: s.format || format || suggestFormat(s.era) }, stories) }))
+      .filter(({ gate }) => gate.canAdd);
+    const blocked = results.length - gated.length;
+    const sortedResultsList = gated.map(({ s, i }) => {
       const sc = scores[i];
       return {
         ...s,
@@ -198,8 +200,11 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         } : {}),
       };
     });
+    if (blocked > 0) setError(`${blocked} ${blocked === 1 ? "story was" : "stories were"} held back by quality-gate blockers.`);
+    if (sortedResultsList.length === 0) return;
     onAddStories(sortedResultsList);
-    setResults([]); setScores({});
+    setResults(prev => prev.filter((s, i) => !gated.some(g => g.i === i)));
+    setScores({});
   };
 
   const dismiss = (i) => {
@@ -363,6 +368,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
             {sortedResults.map(({ s, i, score: sc }) => {
               const scoreData = scores[i];
               const fmt = FORMAT_MAP[s.format || format || suggestFormat(s.era)];
+              const gate = auditStoryQuality({ ...s, format: s.format || format || suggestFormat(s.era), score_total: scoreData?.total ?? sc }, stories);
               return (
                 <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"1px solid var(--border)", borderLeft:`3px solid ${fmt?.color||"var(--border)"}` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
@@ -371,6 +377,11 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                         <span style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>{s.archetype}</span>
                         {s.era&&<span style={{ fontSize:10, color:"var(--t4)" }}>{s.era}</span>}
                         {fmt&&<span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:`${fmt.color}15`, color:fmt.color, border:`1px solid ${fmt.color}25` }}>{fmt.label}</span>}
+                        {gate.issues.length > 0 && (
+                          <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:3, background:gate.canAdd?"rgba(196,154,60,0.12)":"rgba(192,102,106,0.12)", color:gate.canAdd?"#C49A3C":"#C0666A", border:`1px solid ${gate.canAdd?"rgba(196,154,60,0.25)":"rgba(192,102,106,0.25)"}` }}>
+                            Gate · {gate.blockerCount ? `${gate.blockerCount} blocker` : `${gate.warningCount} warning${gate.warningCount === 1 ? "" : "s"}`}
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize:15, fontWeight:600, color:"var(--t1)", letterSpacing:"-0.02em", lineHeight:1.3, marginBottom:4 }}>{s.title}</div>
                       {s.players&&<div style={{ fontSize:12, color:"var(--t3)", marginBottom:8 }}>{Array.isArray(s.players)?s.players.join(", "):s.players}</div>}
@@ -390,6 +401,16 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                   </div>
                   <div style={{ fontSize:13, color:"var(--t2)", lineHeight:1.6, marginBottom:8 }}>{s.angle}</div>
                   <div style={{ fontSize:13, color:"var(--t3)", fontStyle:"italic", paddingLeft:12, borderLeft:"2px solid var(--border)", lineHeight:1.5, marginBottom:scoreData?12:0 }}>"{s.hook}"</div>
+                  {gate.issues.length > 0 && (
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:10, marginBottom:scoreData?0:4 }}>
+                      {gate.issues.slice(0, 4).map(issue => (
+                        <span key={issue.code} style={{ fontSize:10, color:issue.severity==="blocker"?"#C0666A":"var(--t3)", padding:"2px 7px", borderRadius:99, background:"var(--fill2)", border:"1px solid var(--border)" }}>
+                          {issue.message}
+                        </span>
+                      ))}
+                      {gate.issues.length > 4 && <span style={{ fontSize:10, color:"var(--t4)", padding:"2px 4px" }}>+{gate.issues.length - 4} more</span>}
+                    </div>
+                  )}
                   {scoreData&&(
                     <div style={{ padding:"10px 12px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginTop:12, display:"flex", flexDirection:"column", gap:5 }}>
                       <ScoreBar score={scoreData.emotional_depth}  label="Emotional depth"/>

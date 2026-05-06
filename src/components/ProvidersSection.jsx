@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Loader2, Plus, X, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Loader2, Plus, X, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { loadProviderConfig, saveProviderConfig, testProviderConnection } from "@/lib/providers/config-loader";
+import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
+import { getAiCalls } from "@/lib/ai/audit";
+import { formatCost } from "@/lib/ai/costs";
 
-const UNCLE_CARTER_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
+const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -434,12 +437,150 @@ function LicensedFields({ providerName, config, updateConfig, secrets, updateSec
   return null;
 }
 
+function providerRows(configs) {
+  return [
+    { type: "voice", label: "Voice", config: configs.voice },
+    { type: "visual_atmospheric", label: "Visual — atmospheric", config: configs.visual_atmospheric },
+    { type: "visual_licensed", label: "Visual — licensed", config: configs.visual_licensed },
+    { type: "storage", label: "Storage", config: configs.storage },
+  ];
+}
+
+function ProviderHealth({ configs, onReload }) {
+  const [testing, setTesting] = useState(null);
+  const rows = providerRows(configs);
+  const configured = rows.filter(r => r.config).length;
+  const passing = rows.filter(r => r.config?.last_test_ok === true).length;
+  const failing = rows.filter(r => r.config?.last_test_ok === false).length;
+
+  const test = async (type) => {
+    setTesting(type);
+    try {
+      await testProviderConnection(UNCLE_CARTER_PROFILE_ID, type);
+      await onReload();
+    } finally {
+      setTesting(null);
+    }
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 12, color: "var(--t3)" }}>
+          {configured} configured · {passing} passing · {failing} failing
+        </div>
+        <button onClick={onReload} style={btnSecondary}><RefreshCw size={12}/> Refresh</button>
+      </div>
+      {rows.map(row => {
+        const cfg = row.config;
+        const state = !cfg ? "missing" : cfg.last_test_ok === true ? "ok" : cfg.last_test_ok === false ? "error" : "unknown";
+        const color = state === "ok" ? "#4A9B7F" : state === "error" ? "#C0666A" : state === "missing" ? "var(--t4)" : "#C49A3C";
+        return (
+          <div key={row.type} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 9, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{row.label}</span>
+                {cfg?.provider_name && <span style={{ fontSize: 11, color: "var(--t3)", fontFamily: "'DM Mono',monospace" }}>{cfg.provider_name}</span>}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {!cfg ? "Not configured" : cfg.last_test_error || (cfg.last_test_at ? `Last tested ${new Date(cfg.last_test_at).toLocaleString()}` : "Not tested yet")}
+              </div>
+            </div>
+            <button onClick={() => test(row.type)} disabled={!cfg || testing === row.type} style={{
+              ...btnPrimary,
+              background: !cfg || testing === row.type ? "var(--fill2)" : "var(--t1)",
+              color: !cfg || testing === row.type ? "var(--t3)" : "var(--bg)",
+              cursor: !cfg || testing === row.type ? "not-allowed" : "pointer",
+            }}>
+              {testing === row.type ? "Testing..." : "Test"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AIUsage() {
+  const [calls, setCalls] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setCalls(await getAiCalls({ limit: 250 })); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const summary = calls.reduce((acc, call) => {
+    acc.totalCost += Number(call.cost_estimate) || 0;
+    acc.calls += 1;
+    acc.failed += call.success ? 0 : 1;
+    acc.tokensIn += Number(call.tokens_input) || 0;
+    acc.tokensOut += Number(call.tokens_output) || 0;
+    const key = call.type || "unknown";
+    acc.byType[key] = acc.byType[key] || { type: key, calls: 0, cost: 0, failed: 0 };
+    acc.byType[key].calls += 1;
+    acc.byType[key].cost += Number(call.cost_estimate) || 0;
+    if (!call.success) acc.byType[key].failed += 1;
+    return acc;
+  }, { calls: 0, failed: 0, totalCost: 0, tokensIn: 0, tokensOut: 0, byType: {} });
+  const byType = Object.values(summary.byType).sort((a, b) => b.cost - a.cost || b.calls - a.calls);
+  const failures = calls.filter(c => !c.success).slice(0, 6);
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 12, color: "var(--t3)" }}>Recent AI calls and estimated Anthropic/provider spend.</div>
+        <button onClick={load} disabled={loading} style={btnSecondary}><RefreshCw size={12}/>{loading ? "Loading..." : "Refresh"}</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
+        {[
+          ["Recent calls", loading ? "..." : summary.calls],
+          ["Estimated cost", loading ? "..." : formatCost(summary.totalCost)],
+          ["Input tokens", loading ? "..." : summary.tokensIn.toLocaleString()],
+          ["Failures", loading ? "..." : summary.failed],
+        ].map(([label, value]) => (
+          <div key={label} style={{ padding: "12px 14px", borderRadius: 9, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+            <div style={labelStyle}>{label}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--t1)" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+        <div style={{ ...labelStyle, marginBottom: 12 }}>Cost by workflow</div>
+        {byType.length ? byType.map(row => (
+          <div key={row.type} style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 10, alignItems: "center", padding: "5px 0", fontSize: 12 }}>
+            <span style={{ color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.type}</span>
+            <span style={{ color: "var(--t2)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.calls}</span>
+            <span style={{ color: row.failed ? "#C0666A" : "var(--t3)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.failed}</span>
+            <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{formatCost(row.cost)}</span>
+          </div>
+        )) : <div style={{ fontSize: 12, color: "var(--t4)" }}>{loading ? "Loading AI usage..." : "No AI calls logged yet. Run the ai_calls SQL if this stays empty after AI usage."}</div>}
+      </div>
+      <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+        <div style={{ ...labelStyle, marginBottom: 12 }}>Recent failures</div>
+        {failures.length ? failures.map(call => (
+          <div key={call.id} style={{ display: "grid", gridTemplateColumns: "130px 1fr auto", gap: 10, alignItems: "center", padding: "7px 0", borderTop: "0.5px solid var(--border2)" }}>
+            <span style={{ fontSize: 11, color: "#C0666A", fontFamily: "'DM Mono',monospace" }}>{call.type}</span>
+            <span style={{ fontSize: 12, color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{call.error_message || call.error_type || "Unknown error"}</span>
+            <span style={{ fontSize: 10, color: "var(--t4)" }}>{call.created_at ? new Date(call.created_at).toLocaleDateString() : ""}</span>
+          </div>
+        )) : <div style={{ fontSize: 12, color: "var(--t4)" }}>No recent AI failures.</div>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ────────────────────────────────────────────────
 
 export default function ProvidersSection() {
   const [configs, setConfigs] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
+  const [tab, setTab] = usePersistentState("providers_tab", "configure");
 
   const reload = useCallback(async () => {
     setLoading(true); setError(null);
@@ -471,6 +612,22 @@ export default function ProvidersSection() {
         stored server-side and never exposed to your browser. Test buttons fire real API pings.
       </p>
 
+      <div style={{ display: "flex", gap: 4, marginBottom: 18, flexWrap: "wrap" }}>
+        {[
+          ["configure", "Configure"],
+          ["health", "Health"],
+          ["usage", "AI Usage"],
+        ].map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)} style={{
+            padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: tab === key ? 600 : 400,
+            background: tab === key ? "var(--t1)" : "transparent",
+            color: tab === key ? "var(--bg)" : "var(--t3)",
+            border: tab === key ? "0.5px solid var(--t1)" : "0.5px solid transparent",
+            cursor: "pointer",
+          }}>{label}</button>
+        ))}
+      </div>
+
       {loading && <div style={{ fontSize: 12, color: "var(--t3)", padding: "20px 0" }}>Loading providers…</div>}
 
       {error && (
@@ -485,7 +642,10 @@ export default function ProvidersSection() {
         </div>
       )}
 
-      {!loading && (
+      {!loading && tab === "health" && <ProviderHealth configs={configs} onReload={reload} />}
+      {!loading && tab === "usage" && <AIUsage />}
+
+      {!loading && tab === "configure" && (
         <>
           <ProviderCard id="voice" title="Voice" defaultExpanded={true}
             description="Text-to-speech for English, French, Spanish, Portuguese (and any language you add)."

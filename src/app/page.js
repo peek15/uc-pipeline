@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench } from "lucide-react";
+import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings } from "lucide-react";
 import { STAGES } from "@/lib/constants";
 import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable } from "@/lib/db";
 import { signInWithGoogle, signOut, isEmailAllowed } from "@/lib/auth";
@@ -15,20 +15,20 @@ import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
 import SettingsModal from "@/components/SettingsModal";
-import { Settings } from "lucide-react";
 import ProductionAlert from "@/components/ProductionAlert";
 import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
+import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.11.6";
+const VERSION = "3.13.0";
 
 const TABS = [
-  { key: "pipeline",   label: "Pipeline",   Icon: Layers },
-  { key: "research",   label: "Research",   Icon: Search },
-  { key: "script",     label: "Script",     Icon: FileText },
-  { key: "production", label: "Production", Icon: Wrench },
-  { key: "calendar",   label: "Calendar",   Icon: Clock },
-  { key: "analyze",    label: "Analyze",    Icon: BarChart3 },
+  { key: "pipeline",   label: "Stories",  Icon: Layers },
+  { key: "research",   label: "Research", Icon: Search },
+  { key: "script",     label: "Write",    Icon: FileText },
+  { key: "production", label: "Produce",  Icon: Wrench },
+  { key: "calendar",   label: "Schedule", Icon: Clock },
+  { key: "analyze",    label: "Insights", Icon: BarChart3 },
 ];
 
 export default function Home() {
@@ -40,6 +40,7 @@ export default function Home() {
   const storiesRef = useRef([]);
   useEffect(() => { storiesRef.current = stories; }, [stories]);
   const [tab, setTab]                 = usePersistentState("tab", "pipeline");
+  const [sidebarOpen, setSidebarOpen] = usePersistentState("sidebar_open", true);
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
   const [undoStack,       setUndoStack]       = useState([]);
@@ -84,7 +85,7 @@ export default function Home() {
         }
       } catch {}
       // Then sync from Supabase (source of truth)
-      supabase.from("brand_profiles").select("brief_doc").eq("id","00000000-0000-0000-0000-000000000001").single()
+      supabase.from("brand_profiles").select("brief_doc").eq("id", DEFAULT_BRAND_PROFILE_ID).single()
         .then(({ data, error }) => {
           if (data?.brief_doc) {
             setAppSettings(data.brief_doc);
@@ -141,6 +142,7 @@ export default function Home() {
   }, [updateStory]);
 
   const bulkDelete = useCallback(async (ids) => {
+    if (typeof window !== "undefined" && !window.confirm(`Delete ${ids.length} ${ids.length===1 ? "story" : "stories"}? This cannot be undone.`)) return;
     await Promise.all(ids.map(id => dbDelete(id)));
     setStories(p => p.filter(s => !ids.includes(s.id)));
     toast(`${ids.length} ${ids.length===1?"story":"stories"} deleted`, "error");
@@ -276,6 +278,7 @@ export default function Home() {
 
       // Global commands
       if (matches(e, SHORTCUTS.toggleSettings.combo))     { e.preventDefault(); setShowSettings(s=>!s);             return; }
+      if (matches(e, SHORTCUTS.sidebarToggle.combo))      { e.preventDefault(); setSidebarOpen(s=>!s);              return; }
       if (matches(e, SHORTCUTS.undo.combo))               { e.preventDefault(); handleUndo();                       return; }
       if (matches(e, SHORTCUTS.productionShortcut.combo)) { e.preventDefault(); handleProductionShortcut();         return; }
 
@@ -310,13 +313,55 @@ export default function Home() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `UC_pipeline_${new Date().toISOString().split("T")[0]}.csv`; a.click();
   };
 
+  const parseCSVLine = (line) => {
+    const cells = [];
+    let cell = "";
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      const next = line[i + 1];
+      if (ch === "\"" && quoted && next === "\"") { cell += "\""; i++; continue; }
+      if (ch === "\"") { quoted = !quoted; continue; }
+      if (ch === "," && !quoted) { cells.push(cell.trim()); cell = ""; continue; }
+      cell += ch;
+    }
+    cells.push(cell.trim());
+    return cells;
+  };
+
   const importCSV = () => {
     const input = document.createElement("input"); input.type="file"; input.accept=".csv";
     input.onchange = async e => {
       const file = e.target.files[0]; if (!file) return;
-      const text = await file.text(); const lines = text.split("\n").slice(1).filter(l=>l.trim());
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(l=>l.trim());
+      const header = parseCSVLine(lines.shift() || "").map(h=>h.toLowerCase());
+      const idx = (name) => header.indexOf(name.toLowerCase());
       const existing = new Set(stories.map(s=>s.title?.toLowerCase())); const n = [];
-      for (const line of lines) { const p = line.match(/(\".*?\"|[^,]+)/g)?.map(x=>x.replace(/^\"|\"$/g,"").trim())||[]; if (p[0]&&!existing.has(p[0].toLowerCase())) n.push({id:crypto.randomUUID(),title:p[0],archetype:p[1]||"",obscurity:parseInt(p[3])||3,players:p[4]||"",era:p[5]||"",angle:p[7]||"",hook:p[8]||"",status:"accepted",created_at:new Date().toISOString()}); }
+      for (const line of lines) {
+        const p = parseCSVLine(line);
+        const title = p[idx("Title")] || p[0];
+        if (!title || existing.has(title.toLowerCase())) continue;
+        n.push({
+          id: crypto.randomUUID(),
+          title,
+          status: p[idx("Status")] || "accepted",
+          archetype: p[idx("Archetype")] || "",
+          era: p[idx("Era")] || "",
+          players: p[idx("Players")] || "",
+          angle: p[idx("Angle")] || "",
+          hook: p[idx("Hook")] || "",
+          script: p[idx("Script")] || "",
+          script_fr: p[idx("Script FR")] || "",
+          script_es: p[idx("Script ES")] || "",
+          script_pt: p[idx("Script PT")] || "",
+          score_total: parseInt(p[idx("Score")]) || null,
+          metrics_views: parseInt(p[idx("Views")]) || null,
+          metrics_completion: parseFloat(p[idx("Completion%")]) || null,
+          metrics_saves: parseInt(p[idx("Saves")]) || null,
+          created_at: new Date().toISOString(),
+        });
+      }
       if (n.length>0) await addStories(n);
     }; input.click();
   };
@@ -335,85 +380,104 @@ export default function Home() {
   if (!user) return <LoginScreen onSignIn={handleSignIn} loading={authLoading} error={authError} />;
   if (loading) return <Spinner />;
 
+  const menuBtn = { width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" };
+
   return (
-    <div style={{ minHeight:"100vh", background:"var(--bg)", color:"var(--t1)" }}>
+    <div style={{ height:"100vh", background:"var(--bg)", color:"var(--t1)", display:"flex", overflow:"hidden" }}>
 
-      {/* ── Header ── */}
-      <header style={{ position:"sticky", top:0, zIndex:20, background:"var(--nav)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderBottom:"1px solid var(--border)" }}>
-        <div style={{ maxWidth:1200, margin:"0 auto", padding:"0 24px", height:52, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+      {/* ── Sidebar ── */}
+      <aside style={{
+        width: sidebarOpen ? 200 : 0,
+        flexShrink: 0,
+        overflow: "hidden",
+        transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)",
+        background: "var(--bg2)",
+        borderRight: "0.5px solid var(--border)",
+        display: "flex",
+        flexDirection: "column",
+        position: "relative",
+        zIndex: 15,
+      }}>
+        {/* Inner wrapper — fixed 200px so content doesn't squish during transition */}
+        <div style={{ width:200, display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
 
-          {/* Left — brand + stage pills */}
-          <div style={{ display:"flex", alignItems:"center", gap:16 }}>
-<span className="font-display" style={{ fontSize:15, fontWeight:600, letterSpacing:"-0.02em", color:"var(--t1)" }}>Uncle Carter</span>
-            <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 5px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>v{VERSION}</span>
-            <div style={{ width:"1px", height:16, background:"var(--border)" }}/>
-            <div style={{ display:"flex", gap:2 }}>
-              {[
-                {k:"accepted",  dot:"var(--t4)"},
-                {k:"approved",  dot:"#5B8FB9"},
-                {k:"scripted",  dot:"#8B7EC8"},
-                {k:"produced",  dot:"#C49A3C"},
-                {k:"published", dot:"#4A9B7F"},
-              ].map(({k, dot}) => (counts[k]||0) > 0 ? (
-                <div key={k} style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"var(--fill2)", border:"0.5px solid var(--border2)" }}>
-                  <span style={{ width:5, height:5, borderRadius:"50%", background:dot, flexShrink:0, display:"inline-block" }} />
-                  <span style={{ fontSize:11, color:"var(--t2)", fontFamily:"'DM Mono',monospace" }}>{counts[k]}</span>
-                  <span style={{ fontSize:10, color:"var(--t3)" }}>{STAGES[k].label}</span>
-                </div>
-              ) : null)}
-              {bankSize > 0 && (
-                <div style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"rgba(74,155,127,0.08)", border:"0.5px solid rgba(74,155,127,0.2)" }}>
-                  <span style={{ width:5, height:5, borderRadius:"50%", background:"#4A9B7F", display:"inline-block" }} />
-                  <span style={{ fontSize:10, fontWeight:500, color:"#4A9B7F" }}>{bankSize} ready</span>
-                </div>
-              )}
+          {/* Brand */}
+          <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:"-0.02em", color:"var(--t1)" }}>Uncle Carter</span>
+              <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
             </div>
           </div>
 
-          {/* Right — actions + user */}
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            {/* Collapsed actions menu */}
-            <div style={{ position:"relative" }}>
-              <button onClick={()=>setShowUserMenu(m=>m==="actions"?null:"actions")} style={{ width:32, height:32, borderRadius:8, background:"transparent", border:"0.5px solid var(--border)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)" }}>
-                <span style={{ fontSize:16, lineHeight:1, letterSpacing:1 }}>···</span>
-              </button>
-              {showUserMenu==="actions" && (
-                <div style={{ position:"absolute", right:0, top:38, width:160, zIndex:40, background:"var(--sheet)", borderRadius:10, padding:4, border:"0.5px solid var(--border)", boxShadow:"var(--shadow-lg)" }}>
-                  <button onClick={()=>{importCSV();setShowUserMenu(null);}} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" }}
-                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <Upload size={12}/> Import CSV
-                  </button>
-                  <button onClick={()=>{exportCSV();setShowUserMenu(null);}} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" }}
-                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <Download size={12}/> Export CSV
-                  </button>
-                </div>
-              )}
-            </div>
+          {/* Nav items */}
+          <nav style={{ flex:1, padding:"0 8px", overflowY:"auto" }}>
+            {TABS.map(t => {
+              const active = tab === t.key;
+              return (
+                <button key={t.key} onClick={() => setTab(t.key)} style={{
+                  width:"100%", display:"flex", alignItems:"center", gap:10,
+                  padding:"8px 10px", borderRadius:8, border:"none", cursor:"pointer",
+                  background: active ? "var(--fill2)" : "transparent",
+                  color: active ? "var(--t1)" : "var(--t3)",
+                  fontSize:13, fontWeight: active ? 600 : 400,
+                  textAlign:"left", marginBottom:2,
+                  boxShadow: active ? "inset 2px 0 0 var(--gold)" : "inset 2px 0 0 transparent",
+                  transition:"background 0.12s, color 0.12s",
+                }}>
+                  <t.Icon size={15} strokeWidth={active ? 2.5 : 1.8} style={{ flexShrink:0 }} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </nav>
 
-            {/* User menu */}
+          {/* Bottom — settings + user */}
+          <div style={{ padding:"8px", flexShrink:0, borderTop:"0.5px solid var(--border2)" }}>
+            <button onClick={() => setShowSettings(s=>!s)} style={{
+              width:"100%", display:"flex", alignItems:"center", gap:10,
+              padding:"8px 10px", borderRadius:8, border:"none", cursor:"pointer",
+              background: showSettings ? "var(--fill2)" : "transparent",
+              color:"var(--t3)", fontSize:13, marginBottom:4,
+            }}>
+              <Settings size={15} strokeWidth={1.8} style={{ flexShrink:0 }} />
+              Settings
+            </button>
+
+            {/* User row */}
             <div style={{ position:"relative" }}>
-              <button onClick={()=>setShowUserMenu(m=>m==="user"?null:"user")} style={{ height:32, padding:"0 8px 0 4px", borderRadius:8, display:"flex", alignItems:"center", gap:6, background:"transparent", border:"0.5px solid var(--border)", cursor:"pointer" }}>
+              <button onClick={() => setShowUserMenu(m=>m==="user"?null:"user")} style={{
+                width:"100%", display:"flex", alignItems:"center", gap:8,
+                padding:"7px 10px", borderRadius:8, border:"none", cursor:"pointer",
+                background:"transparent", color:"var(--t2)", fontSize:12,
+              }}>
                 {user.user_metadata?.avatar_url
-                  ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:22, height:22, borderRadius:99, objectFit:"cover" }} />
-                  : <div style={{ width:22, height:22, borderRadius:99, background:"var(--bg3)", display:"flex", alignItems:"center", justifyContent:"center" }}><User size={11} color="var(--t3)" /></div>
+                  ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:22, height:22, borderRadius:99, objectFit:"cover", flexShrink:0 }} />
+                  : <div style={{ width:22, height:22, borderRadius:99, background:"var(--bg3)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><User size={11} color="var(--t3)" /></div>
                 }
-                <span onClick={e=>{e.stopPropagation();setShowSettings(s=>!s);}} style={{ fontSize:12, color:"var(--t2)", maxWidth:110, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:"pointer" }} title="Open settings">{user.user_metadata?.full_name || user.email}</span>
-                <ChevronDown size={11} color="var(--t4)" />
+                <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textAlign:"left" }}>{user.user_metadata?.full_name || user.email}</span>
+                <ChevronDown size={11} color="var(--t4)" style={{ flexShrink:0 }} />
               </button>
               {showUserMenu==="user" && (
-                <div style={{ position:"absolute", right:0, top:38, width:200, zIndex:40, background:"var(--sheet)", borderRadius:10, padding:4, border:"0.5px solid var(--border)", boxShadow:"var(--shadow-lg)" }}>
-                  <div style={{ padding:"8px 10px", marginBottom:2 }}>
+                <div style={{ position:"absolute", bottom:"100%", left:0, right:0, zIndex:40, background:"var(--sheet)", borderRadius:10, padding:4, border:"0.5px solid var(--border)", boxShadow:"var(--shadow-lg)", marginBottom:4 }}>
+                  <div style={{ padding:"8px 10px 6px" }}>
                     <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)" }}>{user.user_metadata?.full_name||"User"}</div>
                     <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>{user.email}</div>
-                    <div style={{ fontSize:10, color:"var(--t4)", marginTop:2, fontFamily:"'DM Mono',monospace" }}>v{VERSION}</div>
                   </div>
                   <div style={{ height:"0.5px", background:"var(--border2)", margin:"0 4px 4px" }}/>
-                  <button onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" }}
+                  <button onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={menuBtn}
                     onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <Settings size={12}/> Settings
                   </button>
-                  <button onClick={handleSignOut} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" }}
+                  <button onClick={()=>{importCSV();setShowUserMenu(null);}} style={menuBtn}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <Upload size={12}/> Import CSV
+                  </button>
+                  <button onClick={()=>{exportCSV();setShowUserMenu(null);}} style={menuBtn}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <Download size={12}/> Export CSV
+                  </button>
+                  <div style={{ height:"0.5px", background:"var(--border2)", margin:"4px 4px" }}/>
+                  <button onClick={handleSignOut} style={menuBtn}
                     onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <LogOut size={12}/> Sign out
                   </button>
@@ -422,57 +486,77 @@ export default function Home() {
             </div>
           </div>
         </div>
+      </aside>
 
-        {/* Tab bar - full width */}
-        <div style={{ borderTop:"1px solid var(--border2)", display:"flex" }}>
-          {TABS.map((t, i) => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"10px 0",
-              fontSize:13, fontWeight: tab===t.key ? 600 : 400,
-              color: tab===t.key ? "var(--t1)" : "var(--t3)",
-              background:"transparent", border:"none", cursor:"pointer",
-              borderBottom: tab===t.key ? "1.5px solid var(--t1)" : "1.5px solid transparent",
-              marginBottom:-1, transition:"color 0.15s",
-            }}>
-              <t.Icon size={14} strokeWidth={tab===t.key ? 2.5 : 1.8} />
-              {t.label}
-              {i === 0 && <span style={{ fontSize:9, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌥←→</span>}
-            </button>
-          ))}
-        </div>
-      </header>
+      {/* ── Main column ── */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, overflow:"hidden" }}>
 
-      {/* ── Content ── */}
-      <main style={{ maxWidth:1200, margin:"0 auto", padding:"28px 24px 80px" }}>
+        {/* Header — slim strip */}
+        <header style={{ flexShrink:0, height:48, display:"flex", alignItems:"center", gap:10, padding:"0 16px", background:"var(--nav)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderBottom:"0.5px solid var(--border)", zIndex:20, position:"sticky", top:0 }}>
 
-        {/* ProductionAlert — always visible on all tabs */}
-        <ProductionAlert
-          stories={stories}
-          onNavigate={(t) => setTab(t)}
-          onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
-          forceExpanded={showCmdK}
-          onToggle={() => setShowCmdK(s=>!s)}
-        />
+          {/* Sidebar toggle */}
+          <button onClick={()=>setSidebarOpen(s=>!s)} title="Toggle sidebar (⌘\\)" style={{ width:30, height:30, borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)", flexShrink:0 }}>
+            <PanelLeft size={14} />
+          </button>
 
-        {/* All tabs mounted always — CSS hides inactive ones to preserve state */}
-        <div style={{ display: tab==="pipeline" ? "block" : "none" }}>
-          <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />
-        </div>
-        <div style={{ display: tab==="research" ? "block" : "none" }}>
-          <ResearchView
-            stories={stories}
-            onAddStories={addStories}
-            onStateChange={setResearchState}
-            prefill={researchPrefill}
-            onPrefillUsed={() => setResearchPrefill(null)}
-          />
-        </div>
-        <div style={{ display: tab==="script"     ? "block" : "none" }}><ScriptView     stories={stories} onUpdate={updateStory} /></div>
-        <div style={{ display: tab==="production" ? "block" : "none" }}><ProductionView stories={stories} onUpdate={updateStory} /></div>
-        <div style={{ display: tab==="calendar" ? "block" : "none" }}><CalendarView  stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
-        <div style={{ display: tab==="analyze"  ? "block" : "none" }}><AnalyzeView   stories={stories} onUpdate={updateStory} /></div>
+          <div style={{ width:"0.5px", height:16, background:"var(--border)", flexShrink:0 }} />
 
-      </main>
+          {/* Stage pills */}
+          <div style={{ display:"flex", gap:4, flex:1, overflow:"hidden" }}>
+            {[
+              {k:"accepted",  dot:"var(--t4)"},
+              {k:"approved",  dot:"#5B8FB9"},
+              {k:"scripted",  dot:"#8B7EC8"},
+              {k:"produced",  dot:"#C49A3C"},
+              {k:"published", dot:"#4A9B7F"},
+            ].map(({k, dot}) => (counts[k]||0) > 0 ? (
+              <div key={k} style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"var(--fill2)", border:"0.5px solid var(--border2)", flexShrink:0 }}>
+                <span style={{ width:5, height:5, borderRadius:"50%", background:dot, flexShrink:0, display:"inline-block" }} />
+                <span style={{ fontSize:11, color:"var(--t2)", fontFamily:"'DM Mono',monospace" }}>{counts[k]}</span>
+                <span style={{ fontSize:10, color:"var(--t3)" }}>{STAGES[k].label}</span>
+              </div>
+            ) : null)}
+            {bankSize > 0 && (
+              <div style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"rgba(74,155,127,0.08)", border:"0.5px solid rgba(74,155,127,0.2)", flexShrink:0 }}>
+                <span style={{ width:5, height:5, borderRadius:"50%", background:"#4A9B7F", display:"inline-block" }} />
+                <span style={{ fontSize:10, fontWeight:500, color:"#4A9B7F" }}>{bankSize} ready</span>
+              </div>
+            )}
+          </div>
+
+          {/* Current section label */}
+          <span style={{ fontSize:12, fontWeight:500, color:"var(--t3)", flexShrink:0 }}>
+            {TABS.find(t=>t.key===tab)?.label}
+          </span>
+        </header>
+
+        {/* ── Content ── */}
+        <main style={{ flex:1, overflowY:"auto", padding:"28px 24px 80px" }}>
+          <div style={{ maxWidth:1200, margin:"0 auto" }}>
+
+            <ProductionAlert
+              stories={stories}
+              onNavigate={(t) => setTab(t)}
+              onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
+              forceExpanded={showCmdK}
+              onToggle={() => setShowCmdK(s=>!s)}
+            />
+
+            {/* All views mounted always — CSS visibility preserves state */}
+            <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
+              <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />
+            </div>
+            <div style={{ display: tab==="research"   ? "block" : "none" }}>
+              <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} />
+            </div>
+            <div style={{ display: tab==="script"     ? "block" : "none" }}><ScriptView     stories={stories} onUpdate={updateStory} /></div>
+            <div style={{ display: tab==="production" ? "block" : "none" }}><ProductionView stories={stories} onUpdate={updateStory} /></div>
+            <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
+            <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} /></div>
+
+          </div>
+        </main>
+      </div>
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}

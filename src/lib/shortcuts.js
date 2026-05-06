@@ -110,22 +110,22 @@ function renderKey(key, s) {
 export const SHORTCUTS = {
   // Global
   toggleSettings:     { combo: { mod: true, key: "," },           description: "Open / close Settings",          group: "Global" },
-  showShortcuts:      { combo: { shift: true, key: "?" },           description: "Show this cheat sheet",          group: "Global" },
+  showShortcuts:      { combo: { shift: true, key: "?" },          description: "Show this cheat sheet",          group: "Global" },
   undo:               { combo: { mod: true, key: "z" },           description: "Undo last action",               group: "Global" },
   productionShortcut: { combo: { alt: true, key: "j" },           description: "Smart jump to Research",         group: "Global" },
+  sidebarToggle:      { combo: { mod: true, key: "\\" },          description: "Toggle sidebar",                 group: "Global" },
 
-  // Tab jumps — Chrome on Mac intercepts Cmd+1–9 for browser tab switching.
-  // Use Ctrl+1–6 in Chrome; matches() checks metaKey||ctrlKey so both fire the handler.
-  tabPipeline:   { combo: { mod: true, key: "1" }, description: "Go to Pipeline",   hint: "Ctrl+1 in Chrome", group: "Tabs" },
-  tabResearch:   { combo: { mod: true, key: "2" }, description: "Go to Research",   hint: "Ctrl+2 in Chrome", group: "Tabs" },
-  tabScript:     { combo: { mod: true, key: "3" }, description: "Go to Script",     hint: "Ctrl+3 in Chrome", group: "Tabs" },
-  tabProduction: { combo: { mod: true, key: "4" }, description: "Go to Production", hint: "Ctrl+4 in Chrome", group: "Tabs" },
-  tabCalendar:   { combo: { mod: true, key: "5" }, description: "Go to Calendar",   hint: "Ctrl+5 in Chrome", group: "Tabs" },
-  tabAnalyze:    { combo: { mod: true, key: "6" }, description: "Go to Analyze",    hint: "Ctrl+6 in Chrome", group: "Tabs" },
+  // Navigation — Ctrl+1–6 in Chrome (Cmd is intercepted for browser tabs)
+  tabPipeline:   { combo: { mod: true, key: "1" }, description: "Go to Stories",  hint: "Ctrl+1 in Chrome", group: "Navigation" },
+  tabResearch:   { combo: { mod: true, key: "2" }, description: "Go to Research", hint: "Ctrl+2 in Chrome", group: "Navigation" },
+  tabScript:     { combo: { mod: true, key: "3" }, description: "Go to Write",    hint: "Ctrl+3 in Chrome", group: "Navigation" },
+  tabProduction: { combo: { mod: true, key: "4" }, description: "Go to Produce",  hint: "Ctrl+4 in Chrome", group: "Navigation" },
+  tabCalendar:   { combo: { mod: true, key: "5" }, description: "Go to Schedule", hint: "Ctrl+5 in Chrome", group: "Navigation" },
+  tabAnalyze:    { combo: { mod: true, key: "6" }, description: "Go to Insights", hint: "Ctrl+6 in Chrome", group: "Navigation" },
 
-  // Tab cycling
-  tabPrev: { combo: { alt: true, key: "ArrowLeft" },  description: "Previous tab", group: "Tabs" },
-  tabNext: { combo: { alt: true, key: "ArrowRight" }, description: "Next tab",     group: "Tabs" },
+  // Section cycling
+  tabPrev: { combo: { alt: true, key: "ArrowLeft" },  description: "Previous section", group: "Navigation" },
+  tabNext: { combo: { alt: true, key: "ArrowRight" }, description: "Next section",     group: "Navigation" },
 
   // Pipeline (no-modifier nav, plus modified actions)
   pipelineDown:      { combo: { key: "ArrowDown" },                          description: "Next story",                 group: "Pipeline" },
@@ -182,6 +182,6 @@ export function getGroupedShortcuts() {
       label: renderCombo(def.combo),
     });
   }
-  const order = ["Global", "Tabs", "Pipeline", "Script", "Production", "Calendar", "Detail Modal"];
+  const order = ["Global", "Navigation", "Pipeline", "Script", "Production", "Calendar", "Detail Modal"];
   return order.filter(g => groups[g]).map(g => ({ group: g, items: groups[g] }));
 }

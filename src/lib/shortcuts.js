@@ -113,7 +113,7 @@ export const SHORTCUTS = {
   showShortcuts:      { combo: { shift: true, key: "?" },          description: "Show this cheat sheet",          group: "Global" },
   undo:               { combo: { mod: true, key: "z" },           description: "Undo last action",               group: "Global" },
   productionShortcut: { combo: { alt: true, key: "j" },           description: "Smart jump to Research",         group: "Global" },
-  sidebarToggle:      { combo: { mod: true, key: "\\" },          description: "Toggle sidebar",                 group: "Global" },
+  sidebarToggle:      { combo: { mod: true, key: "\\" },          description: "Collapse / expand sidebar",      group: "Global" },
 
   // Navigation — Ctrl+1–6 in Chrome (Cmd is intercepted for browser tabs)
   tabPipeline:   { combo: { mod: true, key: "1" }, description: "Go to Stories",  hint: "Ctrl+1 in Chrome", group: "Navigation" },

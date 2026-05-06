@@ -20,7 +20,7 @@ import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.13.2";
+const VERSION = "3.14.0";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -386,7 +386,7 @@ export default function Home() {
 
       {/* ── Sidebar ── */}
       <aside style={{
-        width: sidebarOpen ? 200 : 0,
+        width: sidebarOpen ? 200 : 44,
         flexShrink: 0,
         overflow: "hidden",
         transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)",
@@ -397,64 +397,78 @@ export default function Home() {
         position: "relative",
         zIndex: 15,
       }}>
-        {/* Inner wrapper — fixed 200px so content doesn't squish during transition */}
-        <div style={{ width:200, display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+        {/* Inner wrapper — full width so content adapts to collapsed/expanded */}
+        <div style={{ width:"100%", display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
 
-          {/* Brand */}
-          <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:"-0.02em", color:"var(--t1)" }}>Uncle Carter</span>
-              <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
-            </div>
-          </div>
+          {/* Brand — hidden in icon-only mode */}
+          {sidebarOpen
+            ? <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:"-0.02em", color:"var(--t1)" }}>Uncle Carter</span>
+                  <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
+                </div>
+              </div>
+            : <div style={{ height:16, flexShrink:0 }} />
+          }
 
           {/* Nav items */}
-          <nav style={{ flex:1, padding:"0 8px", overflowY:"auto" }}>
+          <nav style={{ flex:1, padding: sidebarOpen ? "0 8px" : "0 4px", overflowY:"auto" }}>
             {TABS.map(t => {
               const active = tab === t.key;
               return (
-                <button key={t.key} onClick={() => setTab(t.key)} style={{
-                  width:"100%", display:"flex", alignItems:"center", gap:10,
-                  padding:"8px 10px", borderRadius:8, border:"none", cursor:"pointer",
+                <button key={t.key} onClick={() => setTab(t.key)} title={t.label} style={{
+                  width:"100%", display:"flex", alignItems:"center",
+                  justifyContent: sidebarOpen ? "flex-start" : "center",
+                  gap: sidebarOpen ? 10 : 0,
+                  padding: sidebarOpen ? "8px 10px" : "9px 0",
+                  borderRadius:8, border:"none", cursor:"pointer",
                   background: active ? "var(--fill2)" : "transparent",
                   color: active ? "var(--t1)" : "var(--t3)",
                   fontSize:13, fontWeight: active ? 600 : 400,
-                  textAlign:"left", marginBottom:2,
-                  boxShadow: active ? "inset 2px 0 0 var(--gold)" : "inset 2px 0 0 transparent",
+                  marginBottom:2,
+                  boxShadow: sidebarOpen ? (active ? "inset 2px 0 0 var(--gold)" : "inset 2px 0 0 transparent") : "none",
                   transition:"background 0.12s, color 0.12s",
                 }}>
-                  <t.Icon size={15} strokeWidth={active ? 2.5 : 1.8} style={{ flexShrink:0 }} />
-                  {t.label}
+                  <t.Icon size={sidebarOpen ? 15 : 16} strokeWidth={active ? 2.5 : 1.8} style={{ flexShrink:0 }} />
+                  {sidebarOpen && t.label}
                 </button>
               );
             })}
           </nav>
 
           {/* Bottom — settings + user */}
-          <div style={{ padding:"8px", flexShrink:0, borderTop:"0.5px solid var(--border2)" }}>
-            <button onClick={() => setShowSettings(s=>!s)} style={{
-              width:"100%", display:"flex", alignItems:"center", gap:10,
-              padding:"8px 10px", borderRadius:8, border:"none", cursor:"pointer",
+          <div style={{ padding: sidebarOpen ? "8px" : "8px 4px", flexShrink:0, borderTop:"0.5px solid var(--border2)" }}>
+            <button onClick={() => setShowSettings(s=>!s)} title="Settings" style={{
+              width:"100%", display:"flex", alignItems:"center",
+              justifyContent: sidebarOpen ? "flex-start" : "center",
+              gap: sidebarOpen ? 10 : 0,
+              padding: sidebarOpen ? "8px 10px" : "9px 0",
+              borderRadius:8, border:"none", cursor:"pointer",
               background: showSettings ? "var(--fill2)" : "transparent",
               color:"var(--t3)", fontSize:13, marginBottom:4,
             }}>
-              <Settings size={15} strokeWidth={1.8} style={{ flexShrink:0 }} />
-              Settings
+              <Settings size={sidebarOpen ? 15 : 16} strokeWidth={1.8} style={{ flexShrink:0 }} />
+              {sidebarOpen && "Settings"}
             </button>
 
             {/* User row */}
             <div style={{ position:"relative" }}>
-              <button onClick={() => setShowUserMenu(m=>m==="user"?null:"user")} style={{
-                width:"100%", display:"flex", alignItems:"center", gap:8,
-                padding:"7px 10px", borderRadius:8, border:"none", cursor:"pointer",
+              <button onClick={() => setShowUserMenu(m=>m==="user"?null:"user")} title={user.user_metadata?.full_name || user.email} style={{
+                width:"100%", display:"flex", alignItems:"center",
+                justifyContent: sidebarOpen ? "flex-start" : "center",
+                gap: sidebarOpen ? 8 : 0,
+                padding: sidebarOpen ? "7px 10px" : "7px 0",
+                borderRadius:8, border:"none", cursor:"pointer",
                 background:"transparent", color:"var(--t2)", fontSize:12,
               }}>
                 {user.user_metadata?.avatar_url
                   ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:22, height:22, borderRadius:99, objectFit:"cover", flexShrink:0 }} />
                   : <div style={{ width:22, height:22, borderRadius:99, background:"var(--bg3)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><User size={11} color="var(--t3)" /></div>
                 }
-                <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textAlign:"left" }}>{user.user_metadata?.full_name || user.email}</span>
-                <ChevronDown size={11} color="var(--t4)" style={{ flexShrink:0 }} />
+                {sidebarOpen && <>
+                  <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textAlign:"left" }}>{user.user_metadata?.full_name || user.email}</span>
+                  <ChevronDown size={11} color="var(--t4)" style={{ flexShrink:0 }} />
+                </>}
               </button>
               {showUserMenu==="user" && (
                 <div style={{ position:"absolute", bottom:"100%", left:0, right:0, zIndex:40, background:"var(--sheet)", borderRadius:10, padding:4, border:"0.5px solid var(--border)", boxShadow:"var(--shadow-lg)", marginBottom:4 }}>

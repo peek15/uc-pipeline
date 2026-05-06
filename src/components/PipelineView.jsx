@@ -321,17 +321,17 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 const ac         = ACCENT[s.archetype]||"var(--border)";
                 const fmt        = FORMAT_MAP[s.format];
                 const readiness  = getReadiness(s);
-                const rColor     = readiness===8?"#4A9B7F":readiness>=5?"#C49A3C":"var(--t4)";
+                const rColor     = readiness===8?"var(--success)":readiness>=5?"var(--warning)":"var(--t4)";
 
                 return (
                   <div key={s.id} id={`story-${s.id}`}
                     onClick={()=>setFocused(s.id)}
                     style={{
                       borderRadius:8, marginBottom:2,
-                      borderTop:    isFocused?"1px solid var(--t2)":isSelected?"1px solid var(--t1)":"1px solid var(--border2)",
-                      borderRight:  isFocused?"1px solid var(--t2)":isSelected?"1px solid var(--t1)":"1px solid var(--border2)",
-                      borderBottom: isFocused?"1px solid var(--t2)":isSelected?"1px solid var(--t1)":"1px solid var(--border2)",
-                      borderLeft:   fmt?`3px solid ${fmt.color}`:"3px solid var(--border2)",
+                      borderTop:    isFocused?"0.5px solid var(--t2)":isSelected?"0.5px solid var(--t1)":"0.5px solid var(--border2)",
+                      borderRight:  isFocused?"0.5px solid var(--t2)":isSelected?"0.5px solid var(--t1)":"0.5px solid var(--border2)",
+                      borderBottom: isFocused?"0.5px solid var(--t2)":isSelected?"0.5px solid var(--t1)":"0.5px solid var(--border2)",
+                      borderLeft:   fmt?`2px solid ${fmt.color}`:"2px solid var(--border2)",
                       background:   isSelected?"var(--fill2)":"var(--card)",
                       transition:   "background 0.1s",
                     }}>
@@ -346,7 +346,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
                       {/* Content */}
                       <div onClick={()=>setExpanded(ex=>{const n=new Set(ex);n.has(s.id)?n.delete(s.id):n.add(s.id);return n;})} style={{minWidth:0}}>
-                        <div style={{fontSize:14,fontWeight:500,color:"var(--t1)",letterSpacing:"-0.01em",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
+                        <div style={{fontSize:14,fontWeight:400,color:"var(--t1)",letterSpacing:"-0.01em",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Instrument Serif', Georgia, serif"}}>{s.title}</div>
                         <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--t3)",flexWrap:"wrap"}}>
                           <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
                             <span style={{width:6,height:6,borderRadius:"50%",background:ac,display:"inline-block",flexShrink:0}}/>

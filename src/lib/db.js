@@ -235,7 +235,7 @@ export async function updateProductionStatus(storyId, fields) {
   if (!fields || typeof fields !== "object") throw new Error("updateProductionStatus: missing fields");
   const { data, error } = await supabase
     .from("stories")
-    .update({ ...fields, updated_at: new Date().toISOString() })
+    .update(fields)
     .eq("id", storyId)
     .select()
     .single();

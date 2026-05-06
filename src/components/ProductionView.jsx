@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Sparkles, Search, Volume2, Image as ImageIcon, FileText, Check, X, RefreshCw, AlertCircle, Layers, Play, Pause, Download, Copy } from "lucide-react";
+import { Sparkles, Search, Volume2, Image as ImageIcon, FileText, Check, X, RefreshCw, AlertCircle, Layers, Play, Pause, Download, Copy, Library } from "lucide-react";
 import { PRODUCTION_STATUS_LABELS, isInProductionQueue } from "@/lib/constants";
 import { runAgent, recordAgentFeedback, voiceAgent, visualAgent, assemblyAgent } from "@/lib/ai/agent-runner";
+import AssetLibraryModal from "./AssetLibraryModal";
 import { updateProductionStatus, supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
@@ -648,6 +649,7 @@ function AssetMatchesSection({ story, brand_profile_id }) {
 export default function ProductionView({ stories, onUpdate }) {
   const queue = useMemo(() => (stories || []).filter(isInProductionQueue), [stories]);
   const [selectedId, setSelectedId] = usePersistentState("production_selected", queue[0]?.id || null);
+  const [showLibrary, setShowLibrary] = useState(false);
 
   useEffect(() => {
     if (!selectedId && queue.length) setSelectedId(queue[0].id);
@@ -697,9 +699,16 @@ export default function ProductionView({ stories, onUpdate }) {
 
   return (
     <div>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+      <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} />
+
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em", margin: 0, color: "var(--t1)" }}>Production</h1>
-        <span style={{ fontSize: 12, color: "var(--t3)", fontFamily: "'DM Mono',monospace" }}>{queue.length} in flight</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 12, color: "var(--t3)", fontFamily: "'DM Mono',monospace" }}>{queue.length} in flight</span>
+          <button onClick={() => setShowLibrary(true)} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 500, background: "var(--fill2)", color: "var(--t2)", border: "0.5px solid var(--border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Library size={12} /> Asset library
+          </button>
+        </div>
       </header>
       <p style={{ fontSize: 13, color: "var(--t3)", margin: "0 0 20px", maxWidth: 720 }}>
         Pick a story on the left. Five agents handle brief, library matching, voice, visuals, and assembly. Your edits train the system.

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Sparkles, Search, Volume2, Image as ImageIcon, FileText, Check, X, RefreshCw, AlertCircle, Layers, Play, Pause } from "lucide-react";
+import { Sparkles, Search, Volume2, Image as ImageIcon, FileText, Check, X, RefreshCw, AlertCircle, Layers, Play, Pause, Download, Copy } from "lucide-react";
 import { PRODUCTION_STATUS_LABELS, isInProductionQueue } from "@/lib/constants";
-import { runAgent, recordAgentFeedback, voiceAgent, visualAgent } from "@/lib/ai/agent-runner";
+import { runAgent, recordAgentFeedback, voiceAgent, visualAgent, assemblyAgent } from "@/lib/ai/agent-runner";
 import { updateProductionStatus, supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
@@ -44,8 +44,9 @@ function ProgressDots({ story }) {
   const hasBrief    = !!story.visual_brief;
   const hasVisuals  = !!(story.visual_refs?.selected?.length);
   const hasAudio    = !!(story.audio_refs && Object.keys(story.audio_refs || {}).length);
+  const hasAssembly = !!story.assembly_brief;
   const dot = (on) => <span style={{ width: 5, height: 5, borderRadius: "50%", background: on ? "var(--t1)" : "var(--t4)", display: "inline-block" }} />;
-  return <span style={{ display: "inline-flex", gap: 3 }}>{dot(hasBrief)}{dot(hasVisuals)}{dot(hasAudio)}</span>;
+  return <span style={{ display: "inline-flex", gap: 3 }}>{dot(hasBrief)}{dot(hasVisuals)}{dot(hasAudio)}{dot(hasAssembly)}</span>;
 }
 
 function Section({ title, status, statusColor, description, children }) {
@@ -470,12 +471,134 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
   );
 }
 
-// ─── Stub for assembly (Delivery 3) ─────────────────────
+// ─── Assembly section ────────────────────────────────────
 
-function StubSection({ Icon, title, description, deliveryLabel }) {
+function AssemblySection({ story, brand_profile_id, onSaved }) {
+  const [data, setData]         = useState(story.assembly_brief || null);
+  const [running, setRunning]   = useState(false);
+  const [error, setError]       = useState(null);
+  const [copied, setCopied]     = useState(false);
+
+  useEffect(() => {
+    setData(story.assembly_brief || null);
+    setError(null);
+  }, [story.id]);
+
+  const canRun = !!story.script;
+
+  const generate = async () => {
+    if (!canRun) return;
+    setRunning(true); setError(null);
+    try {
+      const result = await assemblyAgent.run({ story, brand_profile_id });
+      const saved = await updateProductionStatus(story.id, {
+        assembly_brief: { assembly: result.assembly, markdown_brief: result.markdown_brief },
+      });
+      setData(saved.assembly_brief);
+      onSaved?.();
+    } catch (e) { setError(e?.message || String(e)); }
+    finally    { setRunning(false); }
+  };
+
+  const copyMarkdown = async () => {
+    const md = data?.markdown_brief;
+    if (!md) return;
+    await navigator.clipboard.writeText(md).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  const downloadJson = () => {
+    const json = JSON.stringify(data?.assembly || data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement("a"), {
+      href: url,
+      download: `${story.title?.replace(/[^a-z0-9]/gi, "_") || "assembly"}.json`,
+    });
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const assembly = data?.assembly;
+  const sceneCount = assembly?.scenes?.length || 0;
+  const langCount  = Object.keys(assembly?.voice_tracks || {}).length;
+  const durSec     = assembly?.total_duration_ms ? Math.round(assembly.total_duration_ms / 1000) : null;
+
+  const status = !data ? "not generated"
+    : `${sceneCount} scene${sceneCount !== 1 ? "s" : ""} · ${langCount} lang${langCount !== 1 ? "s" : ""}${durSec ? ` · ~${durSec}s` : ""}`;
+  const statusColor = data ? "success" : "default";
+
   return (
-    <Section title={<span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--t3)" }}><Icon size={12} />{title}</span>}
-      status={deliveryLabel} description={description} />
+    <Section title="Assembly brief" status={status} statusColor={statusColor}
+      description="JSON + markdown handoff for CapCut. Generated from script, voice, and visuals.">
+      {!canRun && (
+        <div style={{ fontSize: 11, color: "var(--t3)", fontStyle: "italic" }}>Generate a script first.</div>
+      )}
+
+      {canRun && !data && (
+        <button onClick={generate} disabled={running} style={btnPrimary}>
+          {running ? <RefreshCw size={12} className="spin" /> : <FileText size={12} />}
+          {running ? "Generating assembly…" : "Generate assembly brief"}
+        </button>
+      )}
+
+      {data && (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={copyMarkdown} style={btnPrimary}>
+              <Copy size={12} /> {copied ? "Copied!" : "Copy markdown"}
+            </button>
+            <button onClick={downloadJson} style={btnSecondary}>
+              <Download size={12} /> Download JSON
+            </button>
+            <button onClick={generate} disabled={running} style={btnGhost}>
+              {running ? <RefreshCw size={12} className="spin" /> : <RefreshCw size={12} />}
+              Regenerate
+            </button>
+          </div>
+
+          {assembly?.scenes?.length > 0 && (
+            <div style={{ display: "grid", gap: 4 }}>
+              {assembly.scenes.map((scene, i) => (
+                <div key={i} style={{
+                  padding: "8px 12px", borderRadius: 6,
+                  background: "var(--fill)", border: "0.5px solid var(--border)",
+                  fontSize: 12,
+                }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: scene.script_segments?.en ? 4 : 0 }}>
+                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 10, color: "var(--t3)", width: 20 }}>#{scene.index}</span>
+                    <span style={{ fontWeight: 600, color: "var(--t1)", textTransform: "capitalize" }}>{scene.position}</span>
+                    {scene.asset_type && <span style={{ fontSize: 10, color: "var(--t3)" }}>{scene.asset_type}</span>}
+                    {scene.duration_ms && <span style={{ fontSize: 10, color: "var(--t3)", marginLeft: "auto", fontFamily: "'DM Mono',monospace" }}>{Math.round(scene.duration_ms/1000)}s</span>}
+                  </div>
+                  {scene.script_segments?.en && (
+                    <div style={{ fontSize: 11, color: "var(--t2)", lineHeight: 1.4, marginLeft: 30 }}>
+                      {scene.script_segments.en.slice(0, 140)}{scene.script_segments.en.length > 140 ? "…" : ""}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {data.markdown_brief && (
+            <pre style={{
+              margin: 0, padding: "12px 14px", borderRadius: 8,
+              background: "var(--bg3)", border: "0.5px solid var(--border)",
+              fontSize: 10, color: "var(--t2)", lineHeight: 1.6,
+              fontFamily: "'DM Mono', monospace",
+              overflowX: "auto", maxHeight: 280, overflowY: "auto",
+              whiteSpace: "pre-wrap", wordBreak: "break-word",
+            }}>
+              {data.markdown_brief}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {error && <ErrorBox>{error}</ErrorBox>}
+    </Section>
   );
 }
 
@@ -620,9 +743,7 @@ export default function ProductionView({ stories, onUpdate }) {
               <VisualSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />
               <VoiceSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />
 
-              <StubSection Icon={FileText} title="Assembly brief"
-                description="JSON + markdown export for CapCut. Generated once visual + voice are approved."
-                deliveryLabel="Delivery 3" />
+              <AssemblySection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />
             </>
           )}
         </div>

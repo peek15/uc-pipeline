@@ -3,16 +3,18 @@
 // v3.11.0 — adds voice-producer + visual-ranker.
 // ═══════════════════════════════════════════════════════════
 
-import * as briefAuthor   from "./agents/brief-author";
-import * as assetCurator  from "./agents/asset-curator";
-import * as voiceProducer from "./agents/voice-producer";
-import * as visualRanker  from "./agents/visual-ranker";
+import * as briefAuthor    from "./agents/brief-author";
+import * as assetCurator   from "./agents/asset-curator";
+import * as voiceProducer  from "./agents/voice-producer";
+import * as visualRanker   from "./agents/visual-ranker";
+import * as assemblyAuthor from "./agents/assembly-author";
 
 const REGISTRY = {
-  [briefAuthor.AGENT_NAME]:   briefAuthor,
-  [assetCurator.AGENT_NAME]:  assetCurator,
-  [voiceProducer.AGENT_NAME]: voiceProducer,
-  [visualRanker.AGENT_NAME]:  visualRanker,
+  [briefAuthor.AGENT_NAME]:    briefAuthor,
+  [assetCurator.AGENT_NAME]:   assetCurator,
+  [voiceProducer.AGENT_NAME]:  voiceProducer,
+  [visualRanker.AGENT_NAME]:   visualRanker,
+  [assemblyAuthor.AGENT_NAME]: assemblyAuthor,
 };
 
 /**
@@ -41,7 +43,8 @@ export async function recordAgentFeedback({ agent_name, ...rest }) {
 }
 
 // Special exports for agents with multi-method APIs
-export const voiceAgent  = voiceProducer;
-export const visualAgent = visualRanker;
+export const voiceAgent    = voiceProducer;
+export const visualAgent   = visualRanker;
+export const assemblyAgent = assemblyAuthor;
 
 export const AGENTS = Object.keys(REGISTRY);

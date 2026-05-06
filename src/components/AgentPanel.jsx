@@ -1,24 +1,34 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, Send, Trash2, Bot } from "lucide-react";
+import { X, Send, Trash2, Bot, Paperclip, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/db";
+import { usePersistentState } from "@/lib/usePersistentState";
 
-// ── Context ──────────────────────────────────────────────
+// ── Model registry ────────────────────────────────────────
+const MODELS = [
+  { id: "claude-sonnet-4-6",         provider: "anthropic", label: "Sonnet 4.6", desc: "Smart · fast"    },
+  { id: "claude-opus-4-7",           provider: "anthropic", label: "Opus 4.7",   desc: "Most capable"   },
+  { id: "claude-haiku-4-5-20251001", provider: "anthropic", label: "Haiku 4.5",  desc: "Fastest · cheap" },
+  { id: "gpt-4o",                    provider: "openai",    label: "GPT-4o",      desc: "Vision · strong" },
+  { id: "gpt-4o-mini",               provider: "openai",    label: "GPT-4o mini", desc: "Fast · cheap"   },
+];
+const PROVIDER_LABEL = { anthropic: "Claude", openai: "OpenAI" };
+
+// ── Pipeline context ──────────────────────────────────────
 function buildSystem(stories, tab) {
   const counts = {};
   for (const s of stories) counts[s.status] = (counts[s.status] || 0) + 1;
   const bank = stories.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
-
   const snapshot = stories
     .filter(s => !["rejected","archived"].includes(s.status))
     .slice(0, 25)
     .map(s => `  • "${s.title}" [${s.status}]${s.archetype ? ` · ${s.archetype}` : ""}${s.era ? ` · ${s.era}` : ""} (id:${s.id})`)
     .join("\n");
 
-  return `You are the pipeline agent for Uncle Carter, an NBA storytelling brand at Peek Studios. You help navigate and operate the content production pipeline.
+  return `You are the pipeline agent for Uncle Carter, an NBA storytelling brand at Peek Studios.
 
 Pipeline state (${new Date().toLocaleDateString()}):
-- Active stories: ${stories.filter(s => !["rejected","archived"].includes(s.status)).length} total
+- Active stories: ${stories.filter(s => !["rejected","archived"].includes(s.status)).length}
 - Stages: ${Object.entries(counts).map(([k,v]) => `${k}×${v}`).join(", ")}
 - Production bank (approved+scripted+produced): ${bank}
 - Current view: ${tab}
@@ -26,213 +36,321 @@ Pipeline state (${new Date().toLocaleDateString()}):
 Stories:
 ${snapshot || "(none yet)"}
 
-You can take actions by embedding tags in your response:
+Navigation actions — embed in your response to trigger them:
   [[nav:pipeline]]  [[nav:research]]  [[nav:script]]
   [[nav:production]]  [[nav:calendar]]  [[nav:analyze]]
-  [[story:STORY_ID]]   — open a story's detail panel
+  [[story:STORY_ID]]   — open a story detail panel
 
-When navigating, narrate it: "Taking you to Production —" then include [[nav:production]].
-Be concise. One short paragraph max unless detail is specifically requested.`;
+When navigating, narrate it briefly then include the tag.
+Be concise — one short paragraph unless detail is requested.`;
 }
 
-// ── Helpers ───────────────────────────────────────────────
 function stripActions(text) {
   return text.replace(/\[\[nav:\w+\]\]/g, "").replace(/\[\[story:[a-f0-9-]+\]\]/g, "").replace(/  +/g, " ").trim();
 }
-
 function parseActions(text) {
-  const nav   = text.match(/\[\[nav:(\w+)\]\]/)?.[1] ?? null;
-  const story = text.match(/\[\[story:([a-f0-9-]+)\]\]/)?.[1] ?? null;
-  return { nav, story };
+  return {
+    nav:   text.match(/\[\[nav:(\w+)\]\]/)?.[1]          ?? null,
+    story: text.match(/\[\[story:([a-f0-9-]+)\]\]/)?.[1] ?? null,
+  };
 }
 
-// ── Component ─────────────────────────────────────────────
+// ── Image helpers ─────────────────────────────────────────
+async function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload  = () => resolve({ data: r.result.split(",")[1], mimeType: file.type, name: file.name });
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// ── Message bubble ────────────────────────────────────────
+function Bubble({ m, streaming }) {
+  const isUser = m.role === "user";
+  const imgs   = Array.isArray(m.content) ? m.content.filter(p => p.type === "image")  : [];
+  const text   = Array.isArray(m.content) ? (m.content.find(p => p.type === "text")?.text ?? "") : m.content;
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems: isUser ? "flex-end" : "flex-start" }}>
+      <div style={{
+        maxWidth: "90%",
+        padding: "8px 11px",
+        borderRadius: isUser ? "10px 10px 3px 10px" : "10px 10px 10px 3px",
+        background: isUser ? "var(--t1)" : "var(--fill2)",
+        color: isUser ? "var(--bg)" : "var(--t1)",
+        fontSize: 13, lineHeight: 1.55,
+        border: isUser ? "none" : "0.5px solid var(--border)",
+        wordBreak: "break-word",
+      }}>
+        {imgs.length > 0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom: text ? 6 : 0 }}>
+            {imgs.map((img, i) => (
+              <img key={i} src={`data:${img.mimeType};base64,${img.data}`}
+                style={{ maxWidth:130, maxHeight:100, borderRadius:5, objectFit:"cover", border:"0.5px solid rgba(0,0,0,0.12)" }} />
+            ))}
+          </div>
+        )}
+        {m.role === "assistant" && !text && streaming
+          ? <span style={{ color:"var(--t4)", letterSpacing:3 }}>···</span>
+          : <span style={{ whiteSpace:"pre-wrap" }}>{isUser ? text : stripActions(text)}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────
 export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory }) {
   const [messages,  setMessages]  = useState([]);
   const [input,     setInput]     = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [pending,   setPending]   = useState([]); // images pending for current message
+  const [modelId,   setModelId]   = usePersistentState("agent_model", "claude-sonnet-4-6");
+  const [showPicker, setShowPicker] = useState(false);
+  const [providers, setProviders] = useState({ anthropic: true, openai: false });
+  const [dragOver,  setDragOver]  = useState(false);
+
   const scrollRef = useRef(null);
+  const fileRef   = useRef(null);
+  const panelRef  = useRef(null);
+
+  // Fetch available providers (no auth needed — only returns boolean flags)
+  useEffect(() => {
+    fetch("/api/agent").then(r => r.json()).then(setProviders).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
+  // Close model picker on outside click
+  useEffect(() => {
+    if (!showPicker) return;
+    const handler = (e) => { if (!panelRef.current?.contains(e.target)) setShowPicker(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showPicker]);
+
+  const selectedModel = MODELS.find(m => m.id === modelId) || MODELS[0];
+
+  const addImages = useCallback(async (files) => {
+    const valid = Array.from(files)
+      .filter(f => f.type.startsWith("image/") && f.size <= 5 * 1024 * 1024)
+      .slice(0, 4 - pending.length);
+    if (!valid.length) return;
+    const converted = await Promise.all(valid.map(toBase64));
+    setPending(p => [...p, ...converted].slice(0, 4));
+  }, [pending.length]);
+
+  // Drag & drop
+  const onDrop      = useCallback((e) => { e.preventDefault(); setDragOver(false); addImages(e.dataTransfer.files); }, [addImages]);
+  const onDragOver  = (e) => { e.preventDefault(); setDragOver(true); };
+  const onDragLeave = (e) => { if (!panelRef.current?.contains(e.relatedTarget)) setDragOver(false); };
+
+  // Paste images
+  const onPaste = useCallback((e) => {
+    const files = Array.from(e.clipboardData?.items || [])
+      .filter(i => i.type.startsWith("image/")).map(i => i.getAsFile()).filter(Boolean);
+    if (files.length) { e.preventDefault(); addImages(files); }
+  }, [addImages]);
+
   const runActions = useCallback((text) => {
     const { nav, story } = parseActions(text);
     if (nav) onNavigate(nav);
-    if (story) {
-      const s = stories.find(x => x.id === story);
-      if (s) onOpenStory(s);
-    }
+    if (story) { const s = stories.find(x => x.id === story); if (s) onOpenStory(s); }
   }, [onNavigate, onOpenStory, stories]);
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || streaming) return;
-    setInput("");
+    if ((!text && !pending.length) || streaming) return;
+    setInput(""); setPending([]);
 
-    const history = [...messages, { role: "user", content: text }];
-    setMessages([...history, { role: "assistant", content: "" }]);
+    const content = pending.length
+      ? [...pending.map(img => ({ type:"image", data:img.data, mimeType:img.mimeType })), ...(text ? [{ type:"text", text }] : [])]
+      : text;
+
+    const history = [...messages, { role:"user", content }];
+    setMessages([...history, { role:"assistant", content:"" }]);
     setStreaming(true);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-
       const res = await fetch("/api/agent", {
-        method:  "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Authorization": `Bearer ${session?.access_token || ""}`,
-        },
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization":`Bearer ${session?.access_token || ""}` },
         body: JSON.stringify({
-          messages:  history,
-          system:    buildSystem(stories, tab),
-          maxTokens: 600,
-          stream:    true,
+          provider: selectedModel.provider,
+          model:    modelId,
+          messages: history,
+          system:   buildSystem(stories, tab),
+          maxTokens: 700,
         }),
       });
 
-      if (!res.ok) throw new Error(`Agent API ${res.status}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Error ${res.status}`);
+      }
 
       const reader  = res.body.getReader();
       const decoder = new TextDecoder();
-      let full = "";
-      let buf  = "";
+      let full = ""; let buf = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop();
+        const lines = buf.split("\n"); buf = lines.pop();
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const raw = line.slice(6);
           if (raw === "[DONE]") continue;
           try {
             const ev = JSON.parse(raw);
-            if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
-              full += ev.delta.text;
-              setMessages(m => {
-                const next = [...m];
-                next[next.length - 1] = { role: "assistant", content: full };
-                return next;
-              });
+            if (ev.text) {
+              full += ev.text;
+              setMessages(m => { const n=[...m]; n[n.length-1]={role:"assistant",content:full}; return n; });
             }
           } catch {}
         }
       }
       runActions(full);
-    } catch {
-      setMessages(m => {
-        const next = [...m];
-        next[next.length - 1] = { role: "assistant", content: "Something went wrong — try again." };
-        return next;
-      });
-    } finally {
-      setStreaming(false);
-    }
-  }, [input, messages, streaming, stories, tab, runActions]);
+    } catch (err) {
+      setMessages(m => { const n=[...m]; n[n.length-1]={role:"assistant",content:`Error: ${err.message}`}; return n; });
+    } finally { setStreaming(false); }
+  }, [input, pending, messages, streaming, modelId, selectedModel, stories, tab, runActions]);
 
-  const handleKey = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-  };
+  const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
+
+  const btnIcon = { width:24, height:24, borderRadius:5, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" };
+
+  // Group models by provider for the picker
+  const groups = Object.entries(
+    MODELS.reduce((acc, m) => { (acc[m.provider] = acc[m.provider] || []).push(m); return acc; }, {})
+  );
 
   return (
-    <aside style={{
-      width: isOpen ? 320 : 0,
-      flexShrink: 0,
-      overflow: "hidden",
-      transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)",
-      background: "var(--bg2)",
-      borderLeft: "0.5px solid var(--border)",
-      display: "flex",
-      flexDirection: "column",
-      zIndex: 15,
-    }}>
-      <div style={{ width: 320, height: "100%", display: "flex", flexDirection: "column" }}>
+    <aside
+      ref={panelRef}
+      onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
+      style={{
+        width: isOpen ? 320 : 0,
+        flexShrink: 0, overflow:"hidden",
+        background: dragOver ? "var(--fill2)" : "var(--bg2)",
+        borderLeft: `0.5px solid ${dragOver ? "var(--gold)" : "var(--border)"}`,
+        display:"flex", flexDirection:"column", zIndex:15,
+        transition: "width 0.22s cubic-bezier(0.4,0,0.2,1), background 0.1s, border-color 0.1s",
+      }}
+    >
+      <div style={{ width:320, height:"100%", display:"flex", flexDirection:"column" }}>
 
-        {/* Header */}
-        <div style={{ padding: "14px 16px", borderBottom: "0.5px solid var(--border)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <Bot size={14} color="var(--gold)" />
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", flex: 1 }}>Agent</span>
-          {messages.length > 0 && (
-            <button
-              onClick={() => setMessages([])}
-              title="Clear conversation"
-              style={{ width: 24, height: 24, borderRadius: 5, border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--t4)" }}
-            >
-              <Trash2 size={12} />
-            </button>
-          )}
-          <button
-            onClick={onClose}
-            title="Close (⌘⌥A)"
-            style={{ width: 24, height: 24, borderRadius: 5, border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--t3)" }}
-          >
-            <X size={13} />
+        {/* ── Header ── */}
+        <div style={{ padding:"12px 14px", borderBottom:"0.5px solid var(--border)", display:"flex", alignItems:"center", gap:8, flexShrink:0, position:"relative" }}>
+          <Bot size={14} color="var(--gold)" style={{ flexShrink:0 }} />
+
+          {/* Model selector */}
+          <button onClick={() => setShowPicker(s=>!s)} style={{
+            display:"flex", alignItems:"center", gap:4, padding:"3px 7px",
+            borderRadius:6, border:"0.5px solid var(--border)", background:"var(--fill2)",
+            cursor:"pointer", color:"var(--t2)", fontSize:11, fontWeight:500,
+          }}>
+            {selectedModel.label}
+            <ChevronDown size={10} color="var(--t4)" />
           </button>
-        </div>
 
-        {/* Messages */}
-        <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {messages.length === 0 && (
-            <div style={{ color: "var(--t4)", fontSize: 12, textAlign: "center", paddingTop: 40, lineHeight: 2 }}>
-              Ask about the pipeline,<br />navigate views, or kick off<br />a production step.
+          <div style={{ flex:1 }} />
+
+          {messages.length > 0 && (
+            <button onClick={() => setMessages([])} title="Clear" style={{ ...btnIcon, color:"var(--t4)" }}><Trash2 size={12}/></button>
+          )}
+          <button onClick={onClose} title="Close (⌘⌥A)" style={{ ...btnIcon, color:"var(--t3)" }}><X size={13}/></button>
+
+          {/* Model picker dropdown */}
+          {showPicker && (
+            <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:50, background:"var(--sheet)", border:"0.5px solid var(--border)", borderRadius:10, boxShadow:"var(--shadow-lg)", padding:"6px 0", margin:"4px 8px 0" }}>
+              {groups.map(([provider, models]) => (
+                <div key={provider}>
+                  <div style={{ padding:"6px 12px 3px", fontSize:10, fontWeight:700, color:"var(--t4)", letterSpacing:"0.06em", textTransform:"uppercase" }}>
+                    {PROVIDER_LABEL[provider] || provider}
+                    {!providers[provider] && <span style={{ marginLeft:4, color:"var(--error)", fontWeight:400 }}>· key not set</span>}
+                  </div>
+                  {models.map(m => {
+                    const active   = m.id === modelId;
+                    const disabled = !providers[m.provider];
+                    return (
+                      <button key={m.id} disabled={disabled} onClick={() => { setModelId(m.id); setShowPicker(false); }} style={{
+                        width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between",
+                        gap:8, padding:"7px 12px", border:"none", cursor: disabled ? "not-allowed" : "pointer",
+                        background: active ? "var(--fill2)" : "transparent",
+                        opacity: disabled ? 0.4 : 1,
+                      }}>
+                        <span style={{ fontSize:12, fontWeight: active ? 600 : 400, color:"var(--t1)", textAlign:"left" }}>{m.label}</span>
+                        <span style={{ fontSize:11, color:"var(--t3)" }}>{m.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
-          {messages.map((m, i) => (
-            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
-              <div style={{
-                maxWidth: "88%",
-                padding: "8px 11px",
-                borderRadius: m.role === "user" ? "10px 10px 3px 10px" : "10px 10px 10px 3px",
-                background: m.role === "user" ? "var(--t1)" : "var(--fill2)",
-                color: m.role === "user" ? "var(--bg)" : "var(--t1)",
-                fontSize: 13,
-                lineHeight: 1.55,
-                border: m.role === "assistant" ? "0.5px solid var(--border)" : "none",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}>
-                {m.role === "assistant" && !m.content && streaming
-                  ? <span style={{ color: "var(--t4)", letterSpacing: 2 }}>···</span>
-                  : stripActions(m.content)}
-              </div>
-            </div>
-          ))}
         </div>
 
-        {/* Input */}
-        <div style={{ padding: "10px 12px", borderTop: "0.5px solid var(--border)", flexShrink: 0 }}>
-          <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
+        {/* ── Messages ── */}
+        <div ref={scrollRef} style={{ flex:1, overflowY:"auto", padding:"14px", display:"flex", flexDirection:"column", gap:10 }}>
+          {messages.length === 0 && (
+            <div style={{ color:"var(--t4)", fontSize:12, textAlign:"center", paddingTop:40, lineHeight:2 }}>
+              Ask about the pipeline,<br/>navigate views, or kick off<br/>a production step.<br/>
+              <span style={{ fontSize:10, opacity:0.6 }}>Drop images anytime.</span>
+            </div>
+          )}
+          {messages.map((m, i) => <Bubble key={i} m={m} streaming={streaming && i === messages.length - 1} />)}
+        </div>
+
+        {/* ── Pending image thumbnails ── */}
+        {pending.length > 0 && (
+          <div style={{ display:"flex", gap:6, padding:"6px 12px 0", flexWrap:"wrap" }}>
+            {pending.map((img, i) => (
+              <div key={i} style={{ position:"relative", flexShrink:0 }}>
+                <img src={`data:${img.mimeType};base64,${img.data}`}
+                  style={{ width:52, height:52, borderRadius:6, objectFit:"cover", border:"0.5px solid var(--border)", display:"block" }} />
+                <button onClick={() => setPending(p => p.filter((_,j) => j!==i))} style={{
+                  position:"absolute", top:-5, right:-5, width:16, height:16, borderRadius:99,
+                  background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer",
+                  display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700,
+                }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Input ── */}
+        <div style={{ padding:"10px 12px", borderTop:"0.5px solid var(--border)", flexShrink:0 }}>
+          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display:"none" }}
+            onChange={e => { addImages(e.target.files); e.target.value = ""; }} />
+          <div style={{ display:"flex", gap:6, alignItems:"flex-end" }}>
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
+              onPaste={onPaste}
               placeholder="Ask the agent…"
               rows={1}
               style={{
-                flex: 1, resize: "none", padding: "8px 10px", borderRadius: 8,
-                border: "0.5px solid var(--border-in)", background: "var(--bg)",
-                color: "var(--t1)", fontSize: 13, outline: "none",
-                fontFamily: "inherit", lineHeight: 1.4,
+                flex:1, resize:"none", padding:"8px 10px", borderRadius:8,
+                border:"0.5px solid var(--border-in)", background:"var(--bg)",
+                color:"var(--t1)", fontSize:13, outline:"none", fontFamily:"inherit", lineHeight:1.4,
               }}
             />
-            <button
-              onClick={send}
-              disabled={!input.trim() || streaming}
-              style={{
-                width: 32, height: 32, borderRadius: 8, border: "none", flexShrink: 0,
-                background: input.trim() && !streaming ? "var(--t1)" : "var(--fill2)",
-                color: input.trim() && !streaming ? "var(--bg)" : "var(--t4)",
-                cursor: input.trim() && !streaming ? "pointer" : "not-allowed",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "background 0.12s",
-              }}
-            >
-              <Send size={13} />
-            </button>
+            <button onClick={() => fileRef.current?.click()} title="Attach image" style={{
+              ...btnIcon, width:32, height:32, border:"0.5px solid var(--border)", color:"var(--t3)",
+            }}><Paperclip size={13}/></button>
+            <button onClick={send} disabled={(!input.trim() && !pending.length) || streaming} style={{
+              width:32, height:32, borderRadius:8, border:"none", flexShrink:0,
+              background: (input.trim() || pending.length) && !streaming ? "var(--t1)" : "var(--fill2)",
+              color: (input.trim() || pending.length) && !streaming ? "var(--bg)" : "var(--t4)",
+              cursor: (input.trim() || pending.length) && !streaming ? "pointer" : "not-allowed",
+              display:"flex", alignItems:"center", justifyContent:"center", transition:"background 0.12s",
+            }}><Send size={13}/></button>
           </div>
         </div>
 

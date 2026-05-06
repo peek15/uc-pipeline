@@ -26,79 +26,163 @@ function rateLimit(userId) {
   return limits.count > 20;
 }
 
+// ── Provider routing ──────────────────────────────────────
+
+function transformMessagesForAnthropic(messages) {
+  return messages.map(m => {
+    if (!Array.isArray(m.content)) return m;
+    return {
+      ...m,
+      content: m.content.map(part => {
+        if (part.type === "image") {
+          return { type: "image", source: { type: "base64", media_type: part.mimeType, data: part.data } };
+        }
+        return { type: "text", text: part.text ?? "" };
+      }),
+    };
+  });
+}
+
+function transformMessagesForOpenAI(messages, system) {
+  const out = [{ role: "system", content: system }];
+  for (const m of messages) {
+    if (!Array.isArray(m.content)) { out.push(m); continue; }
+    out.push({
+      ...m,
+      content: m.content.map(part => {
+        if (part.type === "image") {
+          return { type: "image_url", image_url: { url: `data:${part.mimeType};base64,${part.data}` } };
+        }
+        return { type: "text", text: part.text ?? "" };
+      }),
+    });
+  }
+  return out;
+}
+
+async function callAnthropic({ model, system, messages, maxTokens }) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY not configured");
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model,
+      system,
+      messages: transformMessagesForAnthropic(messages),
+      max_tokens: maxTokens,
+      stream: true,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Anthropic ${res.status}`);
+  }
+
+  // Normalize SSE: emit data: {"text":"..."} for each text delta
+  const { readable, writable } = new TransformStream();
+  const writer  = writable.getWriter();
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buf = "";
+
+  (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
+              await writer.write(encoder.encode(`data: ${JSON.stringify({ text: ev.delta.text })}\n\n`));
+            }
+          } catch {}
+        }
+      }
+      await writer.write(encoder.encode("data: [DONE]\n\n"));
+    } catch {} finally { await writer.close(); }
+  })();
+
+  return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
+}
+
+async function callOpenAI({ model, system, messages, maxTokens }) {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY not configured");
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+    body: JSON.stringify({
+      model,
+      messages: transformMessagesForOpenAI(messages, system),
+      max_tokens: maxTokens,
+      stream: true,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `OpenAI ${res.status}`);
+  }
+
+  const { readable, writable } = new TransformStream();
+  const writer  = writable.getWriter();
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buf = "";
+
+  (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6);
+          if (raw === "[DONE]") continue;
+          try {
+            const ev = JSON.parse(raw);
+            const text = ev.choices?.[0]?.delta?.content;
+            if (text) await writer.write(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
+          } catch {}
+        }
+      }
+      await writer.write(encoder.encode("data: [DONE]\n\n"));
+    } catch {} finally { await writer.close(); }
+  })();
+
+  return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
+}
+
+// GET — return which providers are configured (client uses this to hide unavailable models)
+export async function GET() {
+  return Response.json({
+    anthropic: !!process.env.ANTHROPIC_API_KEY,
+    openai:    !!process.env.OPENAI_API_KEY,
+  });
+}
+
 export async function POST(request) {
   const user = await authenticate(request);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return Response.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
-
-  const { messages = [], system = "", maxTokens = 600, stream = true } = await request.json();
-
-  const body = {
-    model:      "claude-sonnet-4-6",
-    max_tokens: maxTokens,
-    system,
-    messages,
-    stream,
-  };
+  const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700 } = await request.json();
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method:  "POST",
-      headers: {
-        "Content-Type":      "application/json",
-        "x-api-key":         apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      return Response.json({ error: err.error?.message || `Claude API ${res.status}` }, { status: res.status });
-    }
-
-    if (stream) {
-      const { readable, writable } = new TransformStream();
-      const writer  = writable.getWriter();
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      const encoder = new TextEncoder();
-      let buffer = "";
-
-      (async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop();
-            for (const line of lines) {
-              await writer.write(encoder.encode(line + "\n"));
-            }
-          }
-          await writer.write(encoder.encode("data: [DONE]\n\n"));
-        } catch {} finally {
-          await writer.close();
-        }
-      })();
-
-      return new Response(readable, {
-        headers: {
-          "Content-Type":  "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection":    "keep-alive",
-        },
-      });
-    }
-
-    const data = await res.json();
-    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-    return Response.json({ text });
-
+    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens });
+    return await callAnthropic({ model, system, messages, maxTokens });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }

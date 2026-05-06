@@ -225,7 +225,7 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
         agent_output: original, user_correction: wasEdited ? draft : null,
         correction_type: wasEdited ? "edit" : "approve", agent_confidence: confidence,
       });
-      setOriginal(draft); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1800); onSaved?.();
+      setOriginal(draft); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1800); onSaved?.({ visual_brief: draft });
     } catch (e) { setError(e?.message || String(e)); }
   };
 
@@ -324,29 +324,33 @@ function VoiceSection({ story, brand_profile_id, onSaved }) {
       const merged = await voiceAgent.persistAudioRefs(story.id, [result]);
       setAudioRefs(merged);
       setLangStatus(p => ({ ...p, [lang]: "done" }));
+      return merged;
     } catch (e) {
       setLangStatus(p => ({ ...p, [lang]: "error" }));
       setLangErrors(p => ({ ...p, [lang]: e?.message || String(e) }));
+      return null;
     }
   };
 
   const generateEN = async () => {
     setRunning("en"); sectionEvent("voice", "running");
-    await runLang("en");
-    setRunning(null); sectionEvent("voice", "done"); onSaved?.();
+    const merged = await runLang("en");
+    setRunning(null); sectionEvent("voice", "done"); onSaved?.(merged ? { audio_refs: merged } : undefined);
   };
 
   const cascadeOthers = async () => {
     setRunning("cascade"); sectionEvent("voice", "running");
-    for (const lang of ["fr", "es", "pt"]) { await runLang(lang); }
-    setRunning(null); sectionEvent("voice", "done"); onSaved?.();
+    let last;
+    for (const lang of ["fr", "es", "pt"]) { last = (await runLang(lang)) || last; }
+    setRunning(null); sectionEvent("voice", "done"); onSaved?.(last ? { audio_refs: last } : undefined);
   };
 
   const generateAll = async () => {
     setRunning("all"); sectionEvent("voice", "running");
     const langs = ALL_VOICE_LANGS.filter(l => story[`script_${l}`] || l === "en");
-    for (const lang of langs) { await runLang(lang); }
-    setRunning(null); sectionEvent("voice", "done"); onSaved?.();
+    let last;
+    for (const lang of langs) { last = (await runLang(lang)) || last; }
+    setRunning(null); sectionEvent("voice", "done"); onSaved?.(last ? { audio_refs: last } : undefined);
   };
 
   const hasEN      = !!audioRefs.en;
@@ -490,8 +494,9 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
   const approve = async () => {
     try {
       await visualAgent.persistUserSelections({ story_id: story.id, selected_ids: Array.from(selectedIds) });
+      const { data: fresh } = await supabase.from("stories").select("visual_refs").eq("id", story.id).single();
       setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1800);
-      onSaved?.();
+      onSaved?.(fresh?.visual_refs ? { visual_refs: fresh.visual_refs } : undefined);
     } catch (e) { setError(e?.message || String(e)); }
   };
 
@@ -619,7 +624,7 @@ function AssemblySection({ story, brand_profile_id, onSaved }) {
       setData(saved.assembly_brief);
       setStreamText("");
       sectionEvent("assembly", "done");
-      onSaved?.();
+      onSaved?.({ assembly_brief: saved.assembly_brief });
     } catch (e) { setError(e?.message || String(e)); sectionEvent("assembly", "error"); }
     finally    { setRunning(false); }
   };
@@ -872,12 +877,12 @@ export default function ProductionView({ stories, onUpdate }) {
               </div>
 
               <PipelineProgress story={selected} />
-              <BriefSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />
+              <BriefSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
               <AssetMatchesSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} />
-              <VisualSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />
-              <VoiceSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />
+              <VisualSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
+              <VoiceSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
 
-              <AssemblySection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={() => onUpdate?.(selected.id, {})} />
+              <AssemblySection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
             </>
           )}
         </div>

@@ -20,7 +20,7 @@ import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.13.0";
+const VERSION = "3.13.1";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -142,7 +142,6 @@ export default function Home() {
   }, [updateStory]);
 
   const bulkDelete = useCallback(async (ids) => {
-    if (typeof window !== "undefined" && !window.confirm(`Delete ${ids.length} ${ids.length===1 ? "story" : "stories"}? This cannot be undone.`)) return;
     await Promise.all(ids.map(id => dbDelete(id)));
     setStories(p => p.filter(s => !ids.includes(s.id)));
     toast(`${ids.length} ${ids.length===1?"story":"stories"} deleted`, "error");
@@ -534,13 +533,14 @@ export default function Home() {
         <main style={{ flex:1, overflowY:"auto", padding:"28px 24px 80px" }}>
           <div style={{ maxWidth:1200, margin:"0 auto" }}>
 
-            <ProductionAlert
-              stories={stories}
-              onNavigate={(t) => setTab(t)}
-              onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
-              forceExpanded={showCmdK}
-              onToggle={() => setShowCmdK(s=>!s)}
-            />
+        <ProductionAlert
+          stories={stories}
+          onNavigate={(t) => setTab(t)}
+          onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
+          forceExpanded={showCmdK}
+          onToggle={() => setShowCmdK(s=>!s)}
+          settings={appSettings}
+        />
 
             {/* All views mounted always — CSS visibility preserves state */}
             <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>

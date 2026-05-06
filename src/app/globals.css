@@ -72,10 +72,10 @@
     --nav:   rgba(26,25,23,0.94);
 
     /* ── Text — warm grays with real separation ── */
-    --t1: #EEECEA;  /* primary — warm near-white */
-    --t2: #B8B4AF;  /* secondary — clearly readable */
-    --t3: #7D7A76;  /* tertiary — muted but legible */
-    --t4: #4A4745;  /* hints/disabled — visible not invisible */
+    --t1: #F5F2EF;  /* primary — warm near-white */
+    --t2: #D2CDC7;  /* secondary — readable on dark panels */
+    --t3: #ADA7A0;  /* tertiary — muted but legible */
+    --t4: #817B73;  /* hints, disabled, timestamps */
 
     /* ── Borders ── */
     --border:    rgba(255,255,255,0.10);
@@ -212,10 +212,10 @@ textarea:focus-visible {
   --card:  #252321;
   --sheet: #201E1C;
   --nav:   rgba(26,25,23,0.94);
-  --t1: #EEECEA;
-  --t2: #B8B4AF;
-  --t3: #7D7A76;
-  --t4: #4A4745;
+  --t1: #F5F2EF;
+  --t2: #D2CDC7;
+  --t3: #ADA7A0;
+  --t4: #817B73;
   --border:    rgba(255,255,255,0.10);
   --border2:   rgba(255,255,255,0.07);
   --border-in: rgba(255,255,255,0.13);

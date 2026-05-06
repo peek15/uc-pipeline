@@ -446,8 +446,98 @@ function providerRows(configs) {
   ];
 }
 
+function callsForProvider(calls, cfg) {
+  if (!cfg?.provider_name) return [];
+  return calls.filter(call => call.provider_name === cfg.provider_name);
+}
+
+function summarizeCalls(calls) {
+  return calls.reduce((acc, call) => {
+    acc.calls += 1;
+    acc.failed += call.success ? 0 : 1;
+    acc.cost += Number(call.cost_estimate) || 0;
+    acc.durationTotal += Number(call.duration_ms) || 0;
+    if (call.duration_ms != null) acc.durationCount += 1;
+    const created = call.created_at ? new Date(call.created_at).getTime() : 0;
+    if (created > acc.lastAt) acc.lastAt = created;
+    return acc;
+  }, { calls: 0, failed: 0, cost: 0, durationTotal: 0, durationCount: 0, lastAt: 0 });
+}
+
+function healthState(cfg) {
+  if (!cfg) return "missing";
+  if (cfg.last_test_ok === true) return "ok";
+  if (cfg.last_test_ok === false) return "error";
+  return "unknown";
+}
+
+function healthColor(state) {
+  if (state === "ok") return "var(--success)";
+  if (state === "error") return "var(--error)";
+  if (state === "missing") return "var(--t4)";
+  return "var(--warning)";
+}
+
+function ProviderOverview({ configs, calls, onOpenTab }) {
+  const rows = providerRows(configs);
+  const configured = rows.filter(r => r.config).length;
+  const passing = rows.filter(r => r.config?.last_test_ok === true).length;
+  const total = summarizeCalls(calls);
+  const since30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const calls30 = calls.filter(call => call.created_at && new Date(call.created_at).getTime() >= since30);
+  const total30 = summarizeCalls(calls30);
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+        {[
+          ["Configured", `${configured}/${rows.length}`],
+          ["Passing", `${passing}/${configured || rows.length}`],
+          ["30d cost", formatCost(total30.cost)],
+          ["30d calls", total30.calls.toLocaleString()],
+          ["Failures", total.failed],
+        ].map(([label, value]) => (
+          <div key={label} style={{ padding: "12px 14px", borderRadius: 9, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+            <div style={labelStyle}>{label}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--t1)" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 0.8fr 0.7fr 0.7fr 0.8fr", gap: 10, paddingBottom: 8, borderBottom: "0.5px solid var(--border2)" }}>
+          {["Provider", "Selected", "Health", "Calls", "Failures", "30d cost"].map(h => <div key={h} style={labelStyle}>{h}</div>)}
+        </div>
+        {rows.map(row => {
+          const cfg = row.config;
+          const state = healthState(cfg);
+          const providerCalls = callsForProvider(calls30, cfg);
+          const stats = summarizeCalls(providerCalls);
+          return (
+            <div key={row.type} style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 0.8fr 0.7fr 0.7fr 0.8fr", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "0.5px solid var(--border2)", fontSize: 12 }}>
+              <span style={{ color: "var(--t1)", fontWeight: 600 }}>{row.label}</span>
+              <span style={{ color: cfg ? "var(--t2)" : "var(--t4)", fontFamily: "'DM Mono',monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfg?.provider_name || "missing"}</span>
+              <span style={{ color: healthColor(state), fontWeight: 600 }}>{state}</span>
+              <span style={{ color: "var(--t2)", fontFamily: "'DM Mono',monospace" }}>{stats.calls}</span>
+              <span style={{ color: stats.failed ? "var(--error)" : "var(--t3)", fontFamily: "'DM Mono',monospace" }}>{stats.failed}</span>
+              <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace" }}>{formatCost(stats.cost)}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => onOpenTab("configure")} style={btnSecondary}>Configure providers</button>
+        <button onClick={() => onOpenTab("health")} style={btnSecondary}>Open health checks</button>
+        <button onClick={() => onOpenTab("usage")} style={btnSecondary}>Open AI usage</button>
+      </div>
+    </div>
+  );
+}
+
 function ProviderHealth({ configs, onReload }) {
   const [testing, setTesting] = useState(null);
+  const [testingAll, setTestingAll] = useState(false);
   const rows = providerRows(configs);
   const configured = rows.filter(r => r.config).length;
   const passing = rows.filter(r => r.config?.last_test_ok === true).length;
@@ -463,13 +553,33 @@ function ProviderHealth({ configs, onReload }) {
     }
   };
 
+  const testAll = async () => {
+    setTestingAll(true);
+    try {
+      for (const row of rows.filter(r => r.config)) {
+        setTesting(row.type);
+        await testProviderConnection(UNCLE_CARTER_PROFILE_ID, row.type).catch(() => null);
+      }
+      await onReload();
+    } finally {
+      setTesting(null);
+      setTestingAll(false);
+    }
+  };
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <div style={{ fontSize: 12, color: "var(--t3)" }}>
           {configured} configured · {passing} passing · {failing} failing
         </div>
-        <button onClick={onReload} style={btnSecondary}><RefreshCw size={12}/> Refresh</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={testAll} disabled={!configured || testingAll} style={btnPrimary}>
+            {testingAll ? <Loader2 size={12} className="spin" /> : null}
+            {testingAll ? "Testing all..." : "Run all checks"}
+          </button>
+          <button onClick={onReload} style={btnSecondary}><RefreshCw size={12}/> Refresh</button>
+        </div>
       </div>
       {rows.map(row => {
         const cfg = row.config;
@@ -487,11 +597,11 @@ function ProviderHealth({ configs, onReload }) {
                 {!cfg ? "Not configured" : cfg.last_test_error || (cfg.last_test_at ? `Last tested ${new Date(cfg.last_test_at).toLocaleString()}` : "Not tested yet")}
               </div>
             </div>
-            <button onClick={() => test(row.type)} disabled={!cfg || testing === row.type} style={{
+            <button onClick={() => test(row.type)} disabled={!cfg || testing === row.type || testingAll} style={{
               ...btnPrimary,
-              background: !cfg || testing === row.type ? "var(--fill2)" : "var(--t1)",
-              color: !cfg || testing === row.type ? "var(--t3)" : "var(--bg)",
-              cursor: !cfg || testing === row.type ? "not-allowed" : "pointer",
+              background: !cfg || testing === row.type || testingAll ? "var(--fill2)" : "var(--t1)",
+              color: !cfg || testing === row.type || testingAll ? "var(--t3)" : "var(--bg)",
+              cursor: !cfg || testing === row.type || testingAll ? "not-allowed" : "pointer",
             }}>
               {testing === row.type ? "Testing..." : "Test"}
             </button>
@@ -528,6 +638,18 @@ function AIUsage() {
     return acc;
   }, { calls: 0, failed: 0, totalCost: 0, tokensIn: 0, tokensOut: 0, byType: {} });
   const byType = Object.values(summary.byType).sort((a, b) => b.cost - a.cost || b.calls - a.calls);
+  const byProvider = Object.values(calls.reduce((acc, call) => {
+    const key = call.provider_name || "unknown";
+    acc[key] = acc[key] || { provider: key, calls: 0, cost: 0, failed: 0, durationTotal: 0, durationCount: 0 };
+    acc[key].calls += 1;
+    acc[key].cost += Number(call.cost_estimate) || 0;
+    if (!call.success) acc[key].failed += 1;
+    if (call.duration_ms != null) {
+      acc[key].durationTotal += Number(call.duration_ms) || 0;
+      acc[key].durationCount += 1;
+    }
+    return acc;
+  }, {})).sort((a, b) => b.cost - a.cost || b.calls - a.calls);
   const failures = calls.filter(c => !c.success).slice(0, 6);
   const costSince = (days) => {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
@@ -571,6 +693,21 @@ function AIUsage() {
         )) : <div style={{ fontSize: 12, color: "var(--t4)" }}>{loading ? "Loading AI usage..." : "No AI calls logged yet. Run the ai_calls SQL if this stays empty after AI usage."}</div>}
       </div>
       <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+        <div style={{ ...labelStyle, marginBottom: 12 }}>Cost by provider</div>
+        {byProvider.length ? byProvider.map(row => {
+          const avg = row.durationCount ? Math.round(row.durationTotal / row.durationCount) : null;
+          return (
+            <div key={row.provider} style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 80px 70px", gap: 10, alignItems: "center", padding: "5px 0", fontSize: 12 }}>
+              <span style={{ color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'DM Mono',monospace" }}>{row.provider}</span>
+              <span style={{ color: "var(--t2)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.calls}</span>
+              <span style={{ color: row.failed ? "var(--error)" : "var(--t3)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.failed}</span>
+              <span style={{ color: "var(--t3)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{avg != null ? `${avg}ms` : "—"}</span>
+              <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{formatCost(row.cost)}</span>
+            </div>
+          );
+        }) : <div style={{ fontSize: 12, color: "var(--t4)" }}>{loading ? "Loading AI usage..." : "No provider usage logged yet."}</div>}
+      </div>
+      <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
         <div style={{ ...labelStyle, marginBottom: 12 }}>Recent failures</div>
         {failures.length ? failures.map(call => (
           <div key={call.id} style={{ display: "grid", gridTemplateColumns: "130px 1fr auto", gap: 10, alignItems: "center", padding: "7px 0", borderTop: "0.5px solid var(--border2)" }}>
@@ -588,18 +725,23 @@ function AIUsage() {
 
 export default function ProvidersSection() {
   const [configs, setConfigs] = useState({});
+  const [calls, setCalls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
-  const [tab, setTab] = usePersistentState("providers_tab", "configure");
+  const [tab, setTab] = usePersistentState("providers_tab", "overview");
 
   const reload = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const types = ["voice", "storage", "visual_atmospheric", "visual_licensed"];
-      const results = await Promise.all(types.map(t => loadProviderConfig(UNCLE_CARTER_PROFILE_ID, t)));
+      const [results, usage] = await Promise.all([
+        Promise.all(types.map(t => loadProviderConfig(UNCLE_CARTER_PROFILE_ID, t))),
+        getAiCalls({ limit: 1000 }),
+      ]);
       const map = {};
       types.forEach((t, i) => { map[t] = results[i]; });
       setConfigs(map);
+      setCalls(usage);
     } catch (e) { setError(e?.message || String(e)); }
     finally    { setLoading(false); }
   }, []);
@@ -624,6 +766,7 @@ export default function ProvidersSection() {
 
       <div style={{ display: "flex", gap: 4, marginBottom: 18, flexWrap: "wrap" }}>
         {[
+          ["overview", "Overview"],
           ["configure", "Configure"],
           ["health", "Health"],
           ["usage", "AI Usage"],
@@ -652,6 +795,7 @@ export default function ProvidersSection() {
         </div>
       )}
 
+      {!loading && tab === "overview" && <ProviderOverview configs={configs} calls={calls} onOpenTab={setTab} />}
       {!loading && tab === "health" && <ProviderHealth configs={configs} onReload={reload} />}
       {!loading && tab === "usage" && <AIUsage />}
 

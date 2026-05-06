@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Circle, Check, FileText, Film, Award, Archive, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Circle, Check, FileText, Film, Award, Archive, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { STAGES, LANGS, ACCENT, FORMATS, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES } from "@/lib/constants";
+import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 
 const ICONS = { accepted:Circle, approved:Check, scripted:FileText, produced:Film, published:Award, rejected:X, archived:Archive };
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
@@ -66,6 +67,12 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
       pt_review_cleared:localPtCleared,
     });
     setEditing(false);
+  };
+
+  const runQualityAudit = () => {
+    if (!onUpdate) return;
+    const gate = auditStoryQuality(current, stories);
+    onUpdate(current.id, qualityGatePatch(gate));
   };
 
   const st      = STAGES[current.status]||STAGES.accepted;
@@ -212,6 +219,14 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
                 </div>
               </div>
             )}
+            {gateIssues.length===0&&(
+              <div>
+                <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Quality Gate</div>
+                <div style={{fontSize:11,color:"var(--t3)",padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"0.5px solid var(--border)"}}>
+                  {current.quality_gate_status==="passed" ? "Passed with no warnings." : "Not audited yet."}
+                </div>
+              </div>
+            )}
 
             {/* Intelligence metadata */}
             <div>
@@ -304,6 +319,13 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
         {/* ── Bottom: stage strip ── */}
         <div style={{padding:"12px 20px",borderTop:"1px solid var(--border2)",display:"flex",gap:6,alignItems:"center",background:"var(--bg2)",borderRadius:"0 0 14px 14px",flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"var(--t3)",marginRight:4}}>Move to</span>
+          <button onClick={runQualityAudit} style={{
+            padding:"5px 12px",borderRadius:6,fontSize:11,fontWeight:500,
+            background:"var(--fill2)",color:"var(--t2)",border:"1px solid var(--border)",cursor:"pointer",
+            display:"flex",alignItems:"center",gap:4,
+          }}>
+            <RefreshCw size={10}/> Re-audit
+          </button>
           {Object.entries(STAGES).map(([key,s])=>{
             const SI=ICONS[key]||Circle;
             const active=current.status===key;

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Check, X, Star, Plus, Play, Pause, Trash2 } from "lucide-react";
 import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, suggestFormat } from "@/lib/constants";
 import { runPrompt } from "@/lib/ai/runner";
-import { auditStoryQuality } from "@/lib/qualityGate";
+import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null) return null;
@@ -197,11 +197,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         id: crypto.randomUUID(),
         status: "accepted",
         created_at: new Date().toISOString(),
-        quality_gate: gate,
-        quality_gate_status: gate.ok ? "passed" : "warnings",
-        quality_gate_blockers: gate.blockerCount,
-        quality_gate_warnings: gate.warningCount,
-        quality_gate_checked_at: new Date().toISOString(),
+        ...qualityGatePatch(gate),
         ...(sc ? {
           score_total:     sc.total,
           score_emotional: sc.emotional_depth,

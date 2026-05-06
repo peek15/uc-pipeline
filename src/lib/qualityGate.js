@@ -67,7 +67,16 @@ export function auditStoryQuality(story, existingStories = []) {
   };
 }
 
+export function qualityGatePatch(gate, checkedAt = new Date()) {
+  return {
+    quality_gate: gate,
+    quality_gate_status: gate.blockerCount > 0 ? "blocked" : gate.warningCount > 0 ? "warnings" : "passed",
+    quality_gate_blockers: gate.blockerCount,
+    quality_gate_warnings: gate.warningCount,
+    quality_gate_checked_at: checkedAt.toISOString(),
+  };
+}
+
 export function auditStoriesQuality(stories, existingStories = []) {
   return stories.map(story => ({ story, gate: auditStoryQuality(story, existingStories) }));
 }
-

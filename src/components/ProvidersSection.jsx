@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Loader2, Plus, X, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Loader2, Plus, X, Eye, EyeOff, RefreshCw, Download } from "lucide-react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { loadProviderConfig, saveProviderConfig, testProviderConnection } from "@/lib/providers/config-loader";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
@@ -9,6 +9,29 @@ import { getAiCalls } from "@/lib/ai/audit";
 import { formatCost } from "@/lib/ai/costs";
 
 const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
+
+function csvEscape(value) {
+  const text = value == null ? "" : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function exportCsv(filename, rows) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(","),
+    ...rows.map(row => headers.map(h => csvEscape(row[h])).join(",")),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -719,12 +742,51 @@ function AIUsage() {
     cost: row.cost,
     color: i === 0 ? "var(--success)" : "var(--t2)",
   }));
+  const exportCalls = () => exportCsv("uc-ai-calls.csv", calls.map(call => ({
+    created_at: call.created_at,
+    type: call.type,
+    provider_name: call.provider_name,
+    model_version: call.model_version,
+    tokens_input: call.tokens_input,
+    tokens_output: call.tokens_output,
+    cost_estimate: call.cost_estimate,
+    success: call.success,
+    duration_ms: call.duration_ms,
+    error_type: call.error_type,
+    error_message: call.error_message,
+    story_id: call.story_id,
+    brand_profile_id: call.brand_profile_id,
+    workspace_id: call.workspace_id,
+    user_email: call.user_email,
+  })));
+  const exportSummary = () => exportCsv("uc-ai-usage-summary.csv", [
+    ...byProvider.map(row => ({
+      section: "provider",
+      name: row.provider,
+      calls: row.calls,
+      failures: row.failed,
+      avg_latency_ms: row.durationCount ? Math.round(row.durationTotal / row.durationCount) : "",
+      cost_estimate: row.cost,
+    })),
+    ...byType.map(row => ({
+      section: "workflow",
+      name: row.type,
+      calls: row.calls,
+      failures: row.failed,
+      avg_latency_ms: "",
+      cost_estimate: row.cost,
+    })),
+  ]);
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <div style={{ fontSize: 12, color: "var(--t3)" }}>Recent AI calls and estimated Anthropic/provider spend.</div>
-        <button onClick={load} disabled={loading} style={btnSecondary}><RefreshCw size={12}/>{loading ? "Loading..." : "Refresh"}</button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button onClick={exportCalls} disabled={!calls.length} style={{ ...btnSecondary, opacity: calls.length ? 1 : 0.45 }}><Download size={12}/> Export calls</button>
+          <button onClick={exportSummary} disabled={!calls.length} style={{ ...btnSecondary, opacity: calls.length ? 1 : 0.45 }}><Download size={12}/> Export summary</button>
+          <button onClick={load} disabled={loading} style={btnSecondary}><RefreshCw size={12}/>{loading ? "Loading..." : "Refresh"}</button>
+        </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
         {[

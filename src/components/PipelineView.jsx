@@ -53,6 +53,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   const [hookType,    setHookType]    = usePersistentState("pipeline_hooktype",  "");
   const [emotAngle,   setEmotAngle]   = usePersistentState("pipeline_emotion",   "");
   const [ptStatus,    setPtStatus]    = usePersistentState("pipeline_pt",        "");
+  const [quality,     setQuality]     = usePersistentState("pipeline_quality",   "");
   const [minScore,    setMinScore]    = usePersistentState("pipeline_minscore",  0);
   const [minReach,    setMinReach]    = usePersistentState("pipeline_minreach",  0);
   const [dateFrom,    setDateFrom]    = usePersistentState("pipeline_datefrom",  "");
@@ -65,8 +66,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   const [focused,     setFocused]     = useState(null);
   const containerRef = useRef(null);
 
-  const activeFilterCount = [era, archetype, format, hookType, emotAngle, ptStatus, dateFrom, dateTo, minScore>0, minReach>0].filter(Boolean).length;
-  const clearFilters = () => { setEra(""); setArchetype(""); setFormat(""); setHookType(""); setEmotAngle(""); setPtStatus(""); setDateFrom(""); setDateTo(""); setMinScore(0); setMinReach(0); setSort("date_desc"); };
+  const activeFilterCount = [era, archetype, format, hookType, emotAngle, ptStatus, quality, dateFrom, dateTo, minScore>0, minReach>0].filter(Boolean).length;
+  const clearFilters = () => { setEra(""); setArchetype(""); setFormat(""); setHookType(""); setEmotAngle(""); setPtStatus(""); setQuality(""); setDateFrom(""); setDateTo(""); setMinScore(0); setMinReach(0); setSort("date_desc"); };
 
   const filtered = useMemo(() => {
     let list = stories.filter(s => {
@@ -92,6 +93,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       if (minReach   && (s.reach_score||0)  < minReach*20) return false;
       if (ptStatus === "cleared" && !s.pt_review_cleared) return false;
       if (ptStatus === "pending" && s.pt_review_cleared)  return false;
+      const gateStatus = s.quality_gate_status || (Number(s.quality_gate_blockers) > 0 ? "blocked" : Number(s.quality_gate_warnings) > 0 ? "warnings" : s.quality_gate ? "passed" : "missing");
+      if (quality && gateStatus !== quality) return false;
       if (dateFrom) { const d = s.created_at?.split("T")[0]; if (!d||d<dateFrom) return false; }
       if (dateTo)   { const d = s.created_at?.split("T")[0]; if (!d||d>dateTo)   return false; }
       return true;
@@ -107,7 +110,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       return 0;
     });
     return list;
-  }, [stories, stageFilter, search, era, archetype, format, hookType, emotAngle, ptStatus, minScore, minReach, dateFrom, dateTo, sort]);
+  }, [stories, stageFilter, search, era, archetype, format, hookType, emotAngle, ptStatus, quality, minScore, minReach, dateFrom, dateTo, sort]);
 
   const bySt = {};
   for (const s of filtered) { bySt[s.status] = bySt[s.status]||[]; bySt[s.status].push(s); }
@@ -212,6 +215,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
             {label:"Hook type", val:hookType,  set:setHookType,  opts:HOOK_TYPES.map(h=>({key:h.key,label:h.label}))},
             {label:"Angle",     val:emotAngle, set:setEmotAngle, opts:EMOTIONAL_ANGLES.map(a=>({key:a,label:a.charAt(0).toUpperCase()+a.slice(1)}))},
             {label:"PT status", val:ptStatus,  set:setPtStatus,  opts:[{key:"cleared",label:"Cleared"},{key:"pending",label:"Pending review"}]},
+            {label:"Quality",   val:quality,   set:setQuality,   opts:[{key:"passed",label:"Passed"},{key:"warnings",label:"Warnings"},{key:"blocked",label:"Blocked"},{key:"missing",label:"Not audited"}]},
           ].map(({label,val,set,opts})=>(
             <div key={label}>
               <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>{label}</div>

@@ -228,6 +228,195 @@ function isDistinctTemplate(candidate, existing) {
   });
 }
 
+function storyHasMetrics(story) {
+  return !!(story.metrics_views || story.metrics_completion || story.metrics_saves || story.metrics_shares || story.metrics_follows);
+}
+
+function qualityStatus(story) {
+  if (story.quality_gate_status) return story.quality_gate_status;
+  if (Number(story.quality_gate_blockers) > 0) return "blocked";
+  if (Number(story.quality_gate_warnings) > 0) return "warnings";
+  if (story.quality_gate) return "passed";
+  return "missing";
+}
+
+function statusTone(status) {
+  if (status === "active") return { label: "Active", color: "var(--success)", bg: "rgba(74,155,127,0.10)" };
+  if (status === "partial") return { label: "Partial", color: "var(--warning)", bg: "rgba(196,154,60,0.12)" };
+  if (status === "stub") return { label: "Stub", color: "var(--error)", bg: "rgba(192,102,106,0.10)" };
+  return { label: "Missing", color: "var(--t4)", bg: "var(--fill2)" };
+}
+
+function intelligenceModules(stories, settings, conflicts) {
+  const published = stories.filter(s => s.status === "published");
+  const withMetrics = stories.filter(storyHasMetrics);
+  const withScore = stories.filter(s => s.score_total != null);
+  const withPrediction = stories.filter(s => s.predicted_score != null);
+  const withGate = stories.filter(s => qualityStatus(s) !== "missing");
+  const withTemplates = stories.filter(s => s.content_template_id || s.content_type);
+  const productionArtifacts = stories.filter(s => s.visual_brief || s.visual_refs || s.audio_refs || s.assembly_brief);
+  const configuredTemplates = settings?.strategy?.content_templates || [];
+  const rules = settings?.strategy?.rules || [];
+
+  return [
+    {
+      key: "research",
+      name: "Research intelligence",
+      status: configuredTemplates.length && withScore.length ? "active" : "partial",
+      signal: `${withScore.length}/${stories.length || 0} scored`,
+      source: "Research prompts + Quality Gate",
+      detail: "Template targeting, duplicate avoidance, AI scoring, and quality screening are live.",
+      next: "Make scoring profiles template-specific for ads, product, publicity, education, and community.",
+    },
+    {
+      key: "quality",
+      name: "Quality Gate",
+      status: withGate.length ? "active" : "partial",
+      signal: `${withGate.length}/${stories.length || 0} audited`,
+      source: "stories.quality_gate",
+      detail: "Template-aware blockers and warnings are persisted and used by Pipeline, Detail, Research, and Calendar.",
+      next: "Add custom gate rules per content template and learn which warnings predict poor performance.",
+    },
+    {
+      key: "planning",
+      name: "Calendar planning",
+      status: rules.length || stories.some(s => s.scheduled_date) ? "active" : "partial",
+      signal: `${stories.filter(s => s.scheduled_date).length} scheduled`,
+      source: "Calendar audit + strategy rules",
+      detail: "Weekly audit, safe auto-fill, cadence, sequence, and format mix checks are operational.",
+      next: conflicts.length ? `${conflicts.length} rule conflict${conflicts.length === 1 ? "" : "s"} need review.` : "Replace score+reach sorting with prediction confidence once Prediction V1 exists.",
+    },
+    {
+      key: "production",
+      name: "Production agents",
+      status: productionArtifacts.length ? "active" : "partial",
+      signal: `${productionArtifacts.length} items with artifacts`,
+      source: "visual_brief, visual_refs, audio_refs, assembly_brief",
+      detail: "Brief, asset, voice, visual, and assembly agents use brand/template context and record correction feedback.",
+      next: "Summarize repeated feedback into durable agent memory instead of only recent prompt examples.",
+    },
+    {
+      key: "performance",
+      name: "Performance learning",
+      status: withMetrics.length >= 3 ? "partial" : "partial",
+      signal: `${withMetrics.length} metric rows`,
+      source: "story metric fields",
+      detail: "Insights can import Metricool CSV and compare score to completion, but learning is not closed-loop yet.",
+      next: "Add performance_snapshots and feed patterns back into Research, Calendar, and predictions.",
+    },
+    {
+      key: "prediction",
+      name: "Predictive scoring",
+      status: withPrediction.length ? "partial" : "missing",
+      signal: `${withPrediction.length} predicted`,
+      source: "stories.predicted_score",
+      detail: "Schema support exists, but there is no prediction engine calculating the field yet.",
+      next: "Build Prediction Engine V1 with score, history, gate risk, channel, template, and sample-size confidence.",
+    },
+    {
+      key: "memory",
+      name: "Durable memory",
+      status: "stub",
+      signal: "tools stubbed",
+      source: "agent_feedback + future intelligence_insights",
+      detail: "Correction rows are captured, but insight writing and memory summarization are not implemented.",
+      next: "Create intelligence_insights and implement write-insight.",
+    },
+    {
+      key: "debug",
+      name: "Debug intelligence",
+      status: "partial",
+      signal: "diagnostics live",
+      source: "Providers Diagnostics + ai_calls",
+      detail: "Provider diagnostics can export a redacted bundle and summarize schema/provider issues.",
+      next: "Add persistent debug_events and let the agent read diagnostics through scoped tools.",
+    },
+  ];
+}
+
+function IntelligenceDashboard({ stories, settings, conflicts, appName, version }) {
+  const modules = intelligenceModules(stories, settings, conflicts);
+  const active = modules.filter(m => m.status === "active").length;
+  const partial = modules.filter(m => m.status === "partial").length;
+  const stub = modules.filter(m => m.status === "stub").length;
+  const missing = modules.filter(m => m.status === "missing").length;
+  const published = stories.filter(s => s.status === "published").length;
+  const withMetrics = stories.filter(storyHasMetrics).length;
+  const withTemplates = stories.filter(s => s.content_template_id || s.content_type).length;
+  const withGate = stories.filter(s => qualityStatus(s) !== "missing").length;
+  const maturity = active >= 5 && withMetrics >= 50 ? "Stage 2" : active >= 3 ? "Stage 1.5" : "Stage 1";
+  const readiness = Math.round(((active * 1 + partial * 0.55 + stub * 0.2) / modules.length) * 100);
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:14, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, maxWidth:620 }}>
+            Intelligence is measured by active signals, durable learning, and whether recommendations feed back into the workflow. This dashboard shows what is real today and what still needs wiring.
+          </div>
+        </div>
+        <div style={{ minWidth:120, textAlign:"right" }}>
+          <div style={{ fontSize:10, color:"var(--t4)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Maturity</div>
+          <div style={{ fontSize:20, fontWeight:700, color:"var(--t1)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{maturity}</div>
+          <div style={{ fontSize:11, color:"var(--t4)" }}>{readiness}% wired</div>
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(125px,1fr))", gap:10 }}>
+        {[
+          ["Active", active],
+          ["Partial", partial],
+          ["Stubbed", stub],
+          ["Missing", missing],
+          ["Published", published],
+          ["Metrics", withMetrics],
+          ["Templated", withTemplates],
+          ["Audited", withGate],
+        ].map(([label, value]) => (
+          <div key={label} style={{ padding:"11px 13px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+            <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>{label}</div>
+            <div style={{ fontSize:18, fontWeight:650, color:"var(--t1)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ height:5, borderRadius:99, background:"var(--bg3)", overflow:"hidden" }}>
+        <div style={{ height:"100%", width:`${readiness}%`, background: readiness >= 70 ? "var(--success)" : readiness >= 45 ? "var(--warning)" : "var(--error)", borderRadius:99 }} />
+      </div>
+
+      <div style={{ display:"grid", gap:10 }}>
+        {modules.map(module => {
+          const tone = statusTone(module.status);
+          return (
+            <div key={module.key} style={{ padding:"13px 14px", borderRadius:10, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"flex-start", marginBottom:8 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:"var(--t1)" }}>{module.name}</span>
+                    <span style={{ fontSize:10, fontWeight:700, color:tone.color, background:tone.bg, border:`0.5px solid ${tone.color}`, borderRadius:99, padding:"2px 7px", textTransform:"uppercase", letterSpacing:"0.04em" }}>{tone.label}</span>
+                  </div>
+                  <div style={{ fontSize:11, color:"var(--t4)", marginTop:3 }}>{module.source}</div>
+                </div>
+                <div style={{ fontSize:12, color:"var(--t2)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", whiteSpace:"nowrap" }}>{module.signal}</div>
+              </div>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.5, marginBottom:8 }}>{module.detail}</div>
+              <div style={{ display:"flex", gap:7, alignItems:"flex-start", fontSize:12, color:"var(--t2)", lineHeight:1.45 }}>
+                <ArrowRight size={13} style={{ flexShrink:0, marginTop:2, color:"var(--t4)" }} />
+                <span>{module.next}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderTop:"0.5px solid var(--border2)", marginTop:2 }}>
+        <span style={{ fontSize:11, color:"var(--t4)" }}>{appName}</span>
+        <span style={{ fontSize:11, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)" }}>v{version}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Rule builder ──
 function RuleBuilder({ rule, onChange, onDelete, index, conflicts, totalRules }) {
   const hasConflict = conflicts.some(c => c.i===index || c.j===index);
@@ -1477,31 +1666,13 @@ ${fileText.slice(0,3000)}` : text };
 
           {/* ── Intelligence ── */}
           {section==="intelligence" && (
-            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>
-                The intelligence layer activates automatically as you publish content. No manual configuration — it learns from every video, performance snapshot, and editorial decision.
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10 }}>
-                {[
-                  { label:"Published",     value:stories.filter(s=>s.status==="published").length },
-                  { label:"With metrics",  value:stories.filter(s=>s.metrics_completion).length },
-                  { label:"Until Stage 2", value:Math.max(0,50-stories.filter(s=>s.status==="published").length) },
-                  { label:"Until Stage 3", value:Math.max(0,100-stories.filter(s=>s.status==="published").length) },
-                ].map(m=>(
-                  <div key={m.label} style={{ padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
-                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>{m.label}</div>
-                    <div style={{ fontSize:18, fontWeight:400, color:"var(--t1)", letterSpacing:0 }}>{m.value}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
-                Score weights, voice patterns, visual intelligence, and predictive scoring activate automatically as published content accumulates. No manual configuration needed — the system learns from every published video.
-              </div>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderTop:"0.5px solid var(--border2)", marginTop:4 }}>
-                <span style={{ fontSize:11, color:"var(--t4)" }}>{appName}</span>
-                <span style={{ fontSize:11, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)" }}>v{VERSION_NUM}</span>
-              </div>
-            </div>
+            <IntelligenceDashboard
+              stories={stories}
+              settings={settings}
+              conflicts={conflicts}
+              appName={appName}
+              version={VERSION_NUM}
+            />
           )}
 
           {/* ── Appearance ── */}

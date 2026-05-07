@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.18.2
+- App badge/package target: v3.18.3
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.18.3: Intelligence Phase 1 dashboard in Settings: replaces aspirational copy with live module status for Research, Quality Gate, Calendar, Production Agents, Performance, Prediction, Durable Memory, and Debug intelligence; shows signal counts, maturity, readiness, and next build steps.
 - v3.18.2: Provider Diagnostics tab: schema probes, provider health issue summary, recent AI failure summary, client/app context, copy-for-agent text, and redacted JSON debug bundle export for support/agent troubleshooting. Provider secrets must never be included in diagnostics output.
 - v3.18.1: Template-specific Quality Gate profiles: narrative, ad, publicity, product, educational, community, and generic content now use different checks for objective/audience/channel/deliverable/factual anchor/CTA/proof/news value/teaching point/participation prompt; gate output includes profile/template metadata.
 - v3.18.0: Deeper content-agnostic Create workflow: selected template workflow steps now drive the Create step list/progress/review; non-video templates can omit voice/visual/assembly steps; custom workflow steps render as notes/checkoff panels; generate-script now adapts copy/script output to the selected template.
@@ -71,6 +72,7 @@ scheduling, provider operations, quality gates, and analytics.
   - summary: `uc-ai-usage-summary.csv`
 - Cost alerts are based on `ai_calls.cost_estimate`; direct provider billing sync is provider-specific and not universally available.
 - Diagnostics runs client-side Supabase schema probes against key SaaS tables/columns, summarizes provider and AI call failures, and exports a redacted debug bundle. Keep it useful for the in-app agent, but do not add raw keys, env values, provider secret JSON, full user lists, or unnecessary story/script content.
+- Intelligence-layer audit and recommended roadmap live in `docs/intelligence-layer-audit.md`.
 
 ## SaaS Tenancy
 - Tenant helper: `src/lib/brand.js`

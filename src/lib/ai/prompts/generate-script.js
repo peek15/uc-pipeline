@@ -15,38 +15,51 @@ export const defaults = {
  * @param {object} params
  * @param {object} params.story  — { title, angle, players, era, archetype }
  */
-export function build({ story, brand_config = null }) {
+export function build({ story, brand_config = null, content_template = null }) {
   const brandName = brand_config?.brand_name || "Uncle Carter";
+  const template = content_template || brand_config?.content_templates?.find(t => t.id === story?.content_template_id) || null;
+  const templateBlock = template ? `
+Selected content template:
+- name: ${template.name || "(unnamed)"}
+- content_type: ${story.content_type || template.content_type || brand_config?.content_type || "content"}
+- objective: ${story.objective || template.objective || "(unspecified)"}
+- audience: ${story.audience || template.audience || "(unspecified)"}
+- channel: ${story.channel || story.platform_target || template.channels?.[0] || "(unspecified)"}
+- deliverable_type: ${story.deliverable_type || template.deliverable_type || "(unspecified)"}
+- required_fields: ${(template.required_fields || []).join(", ") || "(none)"}
+- workflow_steps: ${(template.workflow_steps || []).join(" > ") || "(default)"}` : "";
   const system = brand_config
-    ? `You write scripts for "${brandName}", a ${brand_config.content_type || "narrative"} content brand.
+    ? `You write production-ready copy for "${brandName}", a ${brand_config.content_type || "narrative"} content brand.
 
 Brand voice: ${brand_config.voice || "clear, specific, emotionally grounded"}.
 Avoid: ${brand_config.avoid || "generic phrasing, hype, filler"}.
+${templateBlock}
 
-RULES: 110-150 words. Short sentences. No emojis, hashtags, or filler. Use 1-2 factual anchors. Human tension focus. End with this exact line: "${brand_config.closing_line || "Because the score is never the whole story."}"
+RULES: Match the selected template and deliverable. Short-form video scripts should be 110-150 words. Ads should include offer/proof/CTA logic. Publicity should emphasize newsworthiness and clarity. Educational content should teach one clear idea. No emojis, hashtags, or filler.
 
 STRUCTURE:
-(1) HOOK: emotional intrigue
-(2) CONTEXT: stakes, time, place, 2-3 sentences
-(3) HUMAN TENSION: the heart
-(4) THE MOMENT: understated
-(5) MEANING: beyond the surface
-(6) CLOSING: "${brand_config.closing_line || "Because the score is never the whole story."}"
+(1) OPENING: hook, claim, or context
+(2) BODY: template-specific substance
+(3) PROOF / TENSION / VALUE: why it matters
+(4) CLOSE: CTA, takeaway, or locked closing line when appropriate
 
-Pure script text only. No labels.`
+Pure copy/script only. No labels unless the template requires a structured handoff.`
     : SCRIPT_SYSTEM;
 
   return `${system}
 
 ---
 
-Write a ${brandName} script about:
-Story: ${story.angle || story.title}
+Write ${story.deliverable_type || template?.deliverable_type || "content copy"} for:
+Content: ${story.angle || story.title}
 Subject(s): ${story.players || story.subjects || "Unknown"}
 Era/context: ${story.era || "Unknown"}
 Emotional angle: ${story.archetype || "Pressure"}
+Objective: ${story.objective || template?.objective || "Unknown"}
+Audience: ${story.audience || template?.audience || "Unknown"}
+Channel: ${story.channel || story.platform_target || template?.channels?.[0] || "Unknown"}
 
-110-150 words. Pure script only.`;
+Pure usable copy only.`;
 }
 
 // No parse() — script is raw text

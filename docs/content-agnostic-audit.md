@@ -1,6 +1,6 @@
 # Content-Agnostic Audit
 
-Last updated: v3.17.9
+Last updated: v3.18.0
 
 ## Current Assessment
 
@@ -39,6 +39,15 @@ The product is now partly content-agnostic at the brand, provider, language, and
 - Create shows the assigned template, required fields, and workflow steps for the selected item.
 - Brief and assembly production agents receive the assigned template context before generating handoff output.
 
+## v3.18.0 Progress
+
+- Create workflow steps are now driven by the assigned content template's `workflow_steps`.
+- Non-video templates can skip voice, visuals, and assembly by omitting those steps.
+- Copy/ad/press/outline workflow tokens map to the primary writing workspace.
+- Unknown workflow tokens render as template-specific notes/checkoff steps stored in `story.metadata.template_progress`.
+- Review/progress now reflects only the steps required by the selected template.
+- Script/copy generation now adapts output to the selected template's content type, objective, audience, channel, deliverable type, and required fields.
+
 ## Remaining Story Bias
 
 - Main table and UI still call items `stories` throughout navigation, schema, API sync, and agents.
@@ -62,6 +71,6 @@ To produce publicity and broader content types well, the app needs a content-obj
 
 ## Recommended Next Phases
 
-1. Make Create steps actually template-driven, not only template-aware, so publicity/ad flows can skip voice/video-only steps when appropriate.
-2. Add campaign calendar mode for flights and deliverable bundles.
-3. Introduce true `campaigns` / `deliverables` tables once UI semantics are stable.
+1. Add campaign calendar mode for flights and deliverable bundles.
+2. Introduce true `campaigns` / `deliverables` tables once UI semantics are stable.
+3. Add template-specific quality gate profiles.

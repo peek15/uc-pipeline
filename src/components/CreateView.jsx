@@ -14,13 +14,56 @@ import {
   AssetMatchesSection,
   AssemblySection,
   BriefSection,
-  PipelineProgress,
   ReadinessStrip,
   VisualSection,
   VoiceSection,
   matchesProductionFilter,
 } from "@/components/ProductionView";
 
+const STEP_DEFS = {
+  script: { key: "script", label: "Script", icon: FileText, mode: "write" },
+  translations: { key: "translations", label: "Translations", icon: Wand2, mode: "write" },
+  brief: { key: "brief", label: "Brief", icon: Search, mode: "produce" },
+  assets: { key: "assets", label: "Assets", icon: Library, mode: "produce" },
+  visuals: { key: "visuals", label: "Visuals", icon: ImageIcon, mode: "produce" },
+  voice: { key: "voice", label: "Voice", icon: Mic2, mode: "produce" },
+  assembly: { key: "assembly", label: "Assembly", icon: Video, mode: "produce" },
+  review: { key: "review", label: "Review", icon: PackageCheck, mode: "produce" },
+};
+
+const COPY_STEP_WORDS = new Set(["copy", "caption", "captions", "outline", "press", "email", "landing", "ad", "cta", "concept"]);
+const STEP_ALIASES = {
+  research: null,
+  ideation: null,
+  idea: null,
+  script: "script",
+  write: "script",
+  draft: "script",
+  translation: "translations",
+  translations: "translations",
+  language: "translations",
+  languages: "translations",
+  brief: "brief",
+  production_brief: "brief",
+  visual_brief: "brief",
+  asset: "assets",
+  assets: "assets",
+  library: "assets",
+  visual: "visuals",
+  visuals: "visuals",
+  image: "visuals",
+  images: "visuals",
+  voice: "voice",
+  audio: "voice",
+  vo: "voice",
+  assembly: "assembly",
+  assemble: "assembly",
+  export: "assembly",
+  handoff: "assembly",
+  review: "review",
+  qa: "review",
+  approval: "review",
+};
 
 function wc(text) {
   return (text || "").trim().split(/\s+/).filter(Boolean).length;
@@ -32,44 +75,85 @@ function getScript(story, lang, localLangs, streaming) {
   return localLangs[story.id]?.[lang] ?? getStoryScript(story, lang) ?? "";
 }
 
+function normalizeStepToken(token) {
+  const raw = String(token || "").trim();
+  const key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!key) return null;
+  if (COPY_STEP_WORDS.has(key) || [...COPY_STEP_WORDS].some(word => key.includes(word))) {
+    return { ...STEP_DEFS.script, key: "script", label: raw.replace(/\b\w/g, c => c.toUpperCase()) };
+  }
+  const alias = STEP_ALIASES[key];
+  if (alias === null) return null;
+  if (alias && STEP_DEFS[alias]) return STEP_DEFS[alias];
+  return { key, label: raw.replace(/\b\w/g, c => c.toUpperCase()), icon: FileText, mode: "produce", custom: true };
+}
+
+function stepsForStory(story, settings) {
+  const template = getContentTemplate(settings, story?.content_template_id);
+  const rawSteps = Array.isArray(template?.workflow_steps) && template.workflow_steps.length
+    ? template.workflow_steps
+    : ["script", "translations", "brief", "assets", "voice", "visuals", "assembly", "review"];
+  const seen = new Set();
+  const steps = rawSteps
+    .map(normalizeStepToken)
+    .filter(Boolean)
+    .filter(step => {
+      if (seen.has(step.key)) return false;
+      seen.add(step.key);
+      return true;
+    });
+  if (!steps.some(step => step.key === "review")) steps.push(STEP_DEFS.review);
+  return steps.length ? steps : [STEP_DEFS.script, STEP_DEFS.review];
+}
+
+function stepDone(story, step, settings) {
+  if (!story || !step) return false;
+  if (step.key === "script") return !!getStoryScript(story, "en");
+  if (step.key === "translations") return hasAllConfiguredScripts(story, settings);
+  if (step.key === "brief") return !!story.visual_brief;
+  if (step.key === "assets") return !!story.visual_refs?.selected?.length;
+  if (step.key === "visuals") return !!story.visual_refs?.selected?.length;
+  if (step.key === "voice") return !!(story.audio_refs && Object.keys(story.audio_refs || {}).length);
+  if (step.key === "assembly") return !!story.assembly_brief;
+  if (step.key === "review") return false;
+  return !!story.metadata?.template_progress?.[step.key]?.done;
+}
+
 function createProgress(story, settings) {
-  const checks = [
-    { key: "script", label: "Script", done: !!getStoryScript(story, "en") },
-    { key: "translations", label: "Langs", done: hasAllConfiguredScripts(story, settings) },
-    { key: "brief", label: "Brief", done: !!story.visual_brief },
-    { key: "assets", label: "Assets", done: !!story.visual_refs?.selected?.length },
-    { key: "voice", label: "Voice", done: !!(story.audio_refs && Object.keys(story.audio_refs || {}).length) },
-    { key: "assembly", label: "Assembly", done: !!story.assembly_brief },
-  ];
+  const checks = stepsForStory(story, settings)
+    .filter(step => step.key !== "review")
+    .map(step => ({ key: step.key, label: step.label, done: stepDone(story, step, settings) }));
   const done = checks.filter(c => c.done).length;
-  return { checks, done, total: checks.length, percent: Math.round((done / checks.length) * 100) };
+  const total = checks.length || 1;
+  return { checks, done, total, percent: Math.round((done / total) * 100) };
 }
 
 function nextAction(story, settings) {
-  if (!getStoryScript(story, "en")) return "Write script";
-  if (!hasAllConfiguredScripts(story, settings)) return "Translate";
-  if (!story.visual_brief) return "Brief";
-  if (!story.visual_refs?.selected?.length) return "Visuals";
-  if (!(story.audio_refs && Object.keys(story.audio_refs || {}).length)) return "Voice";
-  if (!story.assembly_brief) return "Assembly";
+  const next = stepsForStory(story, settings).find(step => step.key !== "review" && !stepDone(story, step, settings));
+  if (next) return next.key === "script" ? `Write ${next.label.toLowerCase()}` : next.label;
   return "Review";
 }
 
 function queueFilterMatch(story, filter, settings) {
   if (filter === "all") return true;
   const hasScript = !!getStoryScript(story, "en");
-  if (filter === "needs_script") return !hasScript;
-  if (filter === "needs_translation") return hasScript && !hasAllConfiguredScripts(story, settings);
-  if (filter === "needs_brief") return hasScript && !story.visual_brief;
-  if (filter === "needs_visuals") return matchesProductionFilter(story, "needs_assets");
-  if (filter === "needs_voice") return matchesProductionFilter(story, "needs_voice");
-  if (filter === "ready_review") return createProgress(story, settings).done >= 5;
+  const steps = stepsForStory(story, settings);
+  const hasStep = key => steps.some(step => step.key === key);
+  if (filter === "needs_script") return hasStep("script") && !hasScript;
+  if (filter === "needs_translation") return hasStep("translations") && hasScript && !hasAllConfiguredScripts(story, settings);
+  if (filter === "needs_brief") return hasStep("brief") && hasScript && !story.visual_brief;
+  if (filter === "needs_visuals") return hasStep("visuals") && matchesProductionFilter(story, "needs_assets");
+  if (filter === "needs_voice") return hasStep("voice") && matchesProductionFilter(story, "needs_voice");
+  if (filter === "ready_review") return createProgress(story, settings).done >= createProgress(story, settings).total;
   return true;
 }
 
-function stepForMode(mode, current) {
-  if (mode === "write" && !["script", "translations"].includes(current)) return "script";
-  if (mode === "produce" && ["script", "translations"].includes(current)) return "brief";
+function stepForMode(mode, current, steps = null) {
+  const available = steps?.length ? steps : [STEP_DEFS.script, STEP_DEFS.translations, STEP_DEFS.brief, STEP_DEFS.assets, STEP_DEFS.voice, STEP_DEFS.visuals, STEP_DEFS.assembly, STEP_DEFS.review];
+  const currentStep = available.find(step => step.key === current);
+  if (currentStep?.mode === mode) return current;
+  const next = available.find(step => step.mode === mode) || available[0];
+  if (next) return next.key;
   return current;
 }
 
@@ -110,9 +194,52 @@ function TemplateStrip({ story, settings }) {
   );
 }
 
-function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings }) {
+function TemplateTaskSection({ story, step, onUpdate }) {
+  const progress = story.metadata?.template_progress?.[step.key] || {};
+  const [notes, setNotes] = useState(progress.notes || "");
+  useEffect(() => {
+    setNotes(story.metadata?.template_progress?.[step.key]?.notes || "");
+  }, [story.id, step.key]);
+
+  const save = async (done) => {
+    const metadata = {
+      ...(story.metadata && typeof story.metadata === "object" ? story.metadata : {}),
+      template_progress: {
+        ...(story.metadata?.template_progress || {}),
+        [step.key]: {
+          done,
+          notes,
+          updated_at: new Date().toISOString(),
+        },
+      },
+    };
+    await onUpdate?.(story.id, { metadata });
+  };
+
+  return (
+    <Panel>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>{step.label}</div>
+          <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>Template-specific step. Track notes here and mark it ready when this deliverable has what it needs.</div>
+        </div>
+        <Pill active={!!progress.done}>{progress.done ? "ready" : "open"}</Pill>
+      </div>
+      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={5}
+        placeholder="Notes, requirements, approval comments, links, or handoff details..."
+        style={{ width: "100%", padding: "12px 14px", borderRadius: 8, background: "var(--bg2)", border: "0.5px solid var(--border)", color: "var(--t1)", fontSize: 13, lineHeight: 1.6, resize: "vertical", outline: "none", fontFamily: "inherit", marginBottom: 10 }} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => save(true)} style={buttonStyle("primary", { padding: "7px 12px" })}><Check size={12} /> Mark ready</button>
+        {progress.done && <button onClick={() => save(false)} style={buttonStyle("ghost", { padding: "7px 12px" })}>Reopen</button>}
+      </div>
+    </Panel>
+  );
+}
+
+function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings, stepLabel = "Script" }) {
   const languages = getBrandLanguages(settings);
   const secondaryLanguages = languages.filter(l => l.key !== "en");
+  const template = getContentTemplate(settings, story?.content_template_id);
   const [viewLang, setViewLang] = usePersistentState("create_script_lang", "en");
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState(null);
@@ -140,7 +267,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
     try {
       const { text: enText } = await runPromptStream({
         type: "generate-script",
-        params: { story, brand_config: brandConfigForPrompt(settings) },
+        params: { story, brand_config: brandConfigForPrompt(settings), content_template: template },
         context: { story_id: story.id },
         onChunk: (live) => setStreaming(prev => ({ ...prev, [story.id]: live })),
       });
@@ -214,7 +341,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>Script workspace</div>
-          <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>Generate the English script first, then keep translations attached to the same story record.</div>
+          <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>Generate the primary {stepLabel.toLowerCase()} first, then keep translations attached to the same content record.</div>
         </div>
         <Pill active={!!getStoryScript(story, "en")}>{getStoryScript(story, "en") ? `v${story.script_version || 1} · ${wc(getStoryScript(story, "en"))}w` : "no script"}</Pill>
       </div>
@@ -240,13 +367,13 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
         </div>
       ) : (
         <div style={{ padding: "36px 18px", borderRadius: 8, background: "var(--bg2)", border: "0.5px solid var(--border)", textAlign: "center", color: "var(--t4)", fontSize: 12, marginBottom: 12 }}>
-          This content item is ready for its first script pass.
+          This content item is ready for its first {stepLabel.toLowerCase()} pass.
         </div>
       )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button onClick={() => generate(true)} disabled={isBusy} style={buttonStyle("primary", { padding: "7px 12px" })}>
-          <Sparkles size={12} /> {story.script ? "Rewrite + translate" : "Generate script"}
+          <Sparkles size={12} /> {story.script ? `Rewrite ${stepLabel.toLowerCase()} + translate` : `Generate ${stepLabel.toLowerCase()}`}
         </button>
         {getStoryScript(story, "en") && available.length < languages.length && (
           <button onClick={translateMissing} disabled={isBusy} style={buttonStyle("secondary", { padding: "7px 12px" })}>
@@ -299,17 +426,13 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
 
   const filteredQueue = useMemo(() => queue.filter(story => queueFilterMatch(story, queueFilter, settings)), [queue, queueFilter, settings]);
   const selected = queue.find(story => story.id === selectedId) || filteredQueue[0] || queue[0] || null;
+  const selectedSteps = useMemo(() => stepsForStory(selected, settings), [selected, settings]);
+  const selectedProgress = useMemo(() => createProgress(selected, settings), [selected, settings]);
 
-  const steps = [
-    { key: "script", label: "Script", icon: FileText, done: !!getStoryScript(selected, "en"), mode: "write" },
-    { key: "translations", label: "Translations", icon: Wand2, done: selected ? hasAllConfiguredScripts(selected, settings) : false, mode: "write" },
-    { key: "brief", label: "Brief", icon: Search, done: !!selected?.visual_brief, mode: "produce" },
-    { key: "assets", label: "Assets", icon: Library, done: !!selected?.visual_refs?.selected?.length, mode: "produce" },
-    { key: "voice", label: "Voice", icon: Mic2, done: !!(selected?.audio_refs && Object.keys(selected.audio_refs || {}).length), mode: "produce" },
-    { key: "visuals", label: "Visuals", icon: ImageIcon, done: !!selected?.visual_refs?.selected?.length, mode: "produce" },
-    { key: "assembly", label: "Assembly", icon: Video, done: !!selected?.assembly_brief, mode: "produce" },
-    { key: "review", label: "Review", icon: PackageCheck, done: selected ? createProgress(selected, settings).done >= 5 : false, mode: "produce" },
-  ];
+  const steps = useMemo(() => selectedSteps.map(step => ({
+    ...step,
+    done: step.key === "review" ? selectedProgress.done >= selectedProgress.total : stepDone(selected, step, settings),
+  })), [selectedSteps, selected, settings, selectedProgress]);
 
   useEffect(() => {
     if (!selectedId && queue.length) setSelectedId(queue[0].id);
@@ -317,8 +440,12 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
   }, [queue, selectedId, setSelectedId]);
 
   useEffect(() => {
-    setActiveStep(current => stepForMode(mode, current));
-  }, [mode, setActiveStep]);
+    setActiveStep(current => stepForMode(mode, current, steps));
+  }, [mode, setActiveStep, steps]);
+
+  useEffect(() => {
+    if (steps.length && !steps.some(step => step.key === activeStep)) setActiveStep(steps[0].key);
+  }, [activeStep, steps, setActiveStep]);
 
   useEffect(() => {
     const current = steps.find(step => step.key === activeStep);
@@ -371,8 +498,8 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
       <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} brandProfileId={brandProfileId} workspaceId={workspaceId} />
       <PageHeader
         title="Create"
-        description="One selected content item moves through script, translations, production assets, assembly, and review."
-        meta={selected ? `${createProgress(selected, settings).done}/${createProgress(selected, settings).total} complete` : `${queue.length} items`}
+        description="One selected content item moves through the workflow defined by its template."
+        meta={selected ? `${selectedProgress.done}/${selectedProgress.total} complete` : `${queue.length} items`}
         action={
           <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
             <Library size={12} /> Asset library
@@ -452,7 +579,9 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     </div>
                     <Pill active>{nextAction(selected, settings)}</Pill>
                   </div>
-                  <PipelineProgress story={selected} />
+                  <div style={{ height: 4, borderRadius: 999, background: "var(--bg3)", overflow: "hidden", margin: "12px 0" }}>
+                    <div style={{ width: `${selectedProgress.percent}%`, height: "100%", background: selectedProgress.done >= selectedProgress.total ? "var(--success)" : "var(--t2)" }} />
+                  </div>
                   <TemplateStrip story={selected} settings={settings} />
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 6 }}>
                     {steps.map(step => {
@@ -478,21 +607,23 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                   </div>
                 </div>
 
-                {["brief", "assets", "voice", "visuals", "assembly", "review"].includes(activeStep) && <ReadinessStrip story={selected} />}
-                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} />}
+                {["brief", "assets", "voice", "visuals", "assembly"].includes(activeStep) && <ReadinessStrip story={selected} />}
+                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} stepLabel={steps.find(step => step.key === "script")?.label || "Script"} />}
                 {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} />}
                 {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
                 {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
                 {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} languages={getBrandLanguages(settings)} onSaved={saveProductionUpdate} />}
                 {activeStep === "visuals" && <VisualSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
                 {activeStep === "assembly" && <AssemblySection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
+                {steps.find(step => step.key === activeStep)?.custom && (
+                  <TemplateTaskSection story={selected} step={steps.find(step => step.key === activeStep)} onUpdate={onUpdate} />
+                )}
                 {activeStep === "review" && (
                   <div style={{ display: "grid", gap: 12 }}>
-                    <ReadinessStrip story={selected} />
                     <Panel style={{ background: "var(--card)" }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>Create review</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>Template review</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
-                        {createProgress(selected, settings).checks.map(check => (
+                        {selectedProgress.checks.map(check => (
                           <div key={check.key} style={{ padding: "10px 12px", borderRadius: 8, background: check.done ? "var(--success-bg)" : "var(--fill2)", border: "0.5px solid var(--border)" }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: check.done ? "var(--success)" : "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{check.label}</div>
                             <div style={{ fontSize: 12, fontWeight: 600, color: check.done ? "var(--success)" : "var(--t3)" }}>{check.done ? "Ready" : "Open"}</div>
@@ -500,7 +631,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                         ))}
                       </div>
                       <div style={{ marginTop: 12, fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>
-                        Review is now the end of the same Create path: script, language pack, brief, assets, voice, visuals, and assembly should all resolve here before scheduling.
+                        Review is now based on the selected template workflow, so non-video deliverables only need the steps that template asks for.
                       </div>
                     </Panel>
                   </div>

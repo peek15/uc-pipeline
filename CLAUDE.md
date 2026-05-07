@@ -1,14 +1,14 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.17.6
+- App badge/package target: v3.17.7
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
 
 ## Product
 Next.js 14 SaaS-ready content pipeline web app. The default seeded workspace
-is Uncle Carter, but active product work should be brand-agnostic. The app manages story research, approvals, scripts, production assets,
+is Uncle Carter, but active product work should be brand-agnostic. The app manages content research, approvals, scripts, production assets,
 scheduling, provider operations, quality gates, and analytics.
 
 ## Stack
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.7: Content-agnostic metadata foundation: `stories` rows now support content type, objective, audience, channel, campaign, and deliverable fields; Pipeline is labeled Content with new filters/search; Detail and CSV import/export preserve those fields.
 - v3.17.6: Programme color correction and content-agnostic audit: story queue left bars now use programme/format colors across Create, Produce, and Calendar; added `docs/content-agnostic-audit.md`.
 - v3.17.5: Phase 5 workspace/brand selector foundation: active tenant persists in UI storage, sidebar brand selector lists profiles in the workspace, new brand creation clones current settings into a fresh brand profile, and story/settings reloads follow the selected brand.
 - v3.17.4: Seed-preserving cleanup: app now prefers `brand_profiles.settings` JSONB while reading legacy `brief_doc`, Settings saves both formats safely, schema seeds/migrates Uncle Carter settings so no re-onboarding is required, and legacy Write/Settings components were cleaned to use configured language/script helpers.
@@ -70,7 +71,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Active tenant shape: `{ workspace_id, brand_profile_id }`.
 - Active tenant is persisted under `uc_ui_active_tenant`; the sidebar brand selector updates it.
 - Default fallback IDs remain `00000000-0000-0000-0000-000000000001` for the existing Uncle Carter workspace.
-- Story DB helpers in `src/lib/db.js` now accept tenant context and inject/scope `workspace_id` + `brand_profile_id`.
+- Story DB helpers in `src/lib/db.js` now accept tenant context and inject/scope `workspace_id` + `brand_profile_id`; they also default missing `content_type` to `narrative`.
 - `supabase-schema.sql` includes Phase 1 workspace tables, `workspace_members`, `is_workspace_member()`, tenant indexes, and transitional RLS policies.
 - The default workspace is intentionally migration-compatible; generated future workspaces should require membership policies only.
 - The default Uncle Carter brand profile is inserted/upgraded into the newer `brand_profiles.settings` JSONB shape; do not force existing users through onboarding again.
@@ -96,6 +97,7 @@ scheduling, provider operations, quality gates, and analytics.
 - App chrome, CSV import/export, detail readiness, and story list readiness should use `getBrandName()`, `subjectText()`, `getBrandLanguages()`, and `getStoryScript()` instead of hardcoded UC/player/FR-ES-PT assumptions.
 - Story/card left bars are operational programme indicators and should use programme/format color, not emotional archetype color.
 - Content-agnostic audit lives in `docs/content-agnostic-audit.md`.
+- Content rows can now carry `content_type`, `objective`, `audience`, `channel`, `campaign_id`, `campaign_name`, and `deliverable_type`. Keep new UI copy content-first, while preserving table/agent compatibility until a deeper migration is planned.
 
 ## UI System
 - Shared operational primitives live in `src/components/OperationalUI.jsx`.

@@ -9,7 +9,7 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 import AssetLibraryModal from "@/components/AssetLibraryModal";
-import { brandConfigForPrompt, getBrandLanguages, getBrandProgrammeMap, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getBrandLanguages, getBrandProgrammeMap, getContentTypeLabel, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
 import {
   AssetMatchesSection,
   AssemblySection,
@@ -208,7 +208,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
         </div>
       ) : (
         <div style={{ padding: "36px 18px", borderRadius: 8, background: "var(--bg2)", border: "0.5px solid var(--border)", textAlign: "center", color: "var(--t4)", fontSize: 12, marginBottom: 12 }}>
-          This story is ready for its first script pass.
+          This content item is ready for its first script pass.
         </div>
       )}
 
@@ -339,8 +339,8 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
       <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} brandProfileId={brandProfileId} workspaceId={workspaceId} />
       <PageHeader
         title="Create"
-        description="One selected story moves through script, translations, production assets, assembly, and review."
-        meta={selected ? `${createProgress(selected, settings).done}/${createProgress(selected, settings).total} complete` : `${queue.length} stories`}
+        description="One selected content item moves through script, translations, production assets, assembly, and review."
+        meta={selected ? `${createProgress(selected, settings).done}/${createProgress(selected, settings).total} complete` : `${queue.length} items`}
         action={
           <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
             <Library size={12} /> Asset library
@@ -351,7 +351,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
       {queue.length === 0 ? (
         <div style={{ textAlign: "center", padding: "80px 0", color: "var(--t4)" }}>
           <FileText size={32} style={{ margin: "0 auto 12px", display: "block", opacity: 0.25 }} />
-          <div style={{ fontSize: 13 }}>Approve stories to start creating.</div>
+          <div style={{ fontSize: 13 }}>Approve content to start creating.</div>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
@@ -385,7 +385,8 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     }}>
                     <div style={{ fontSize: 13, fontWeight: isSelected ? 700 : 600, color: "var(--t1)", lineHeight: 1.3, marginBottom: 5 }}>{story.title || "(untitled)"}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--t3)", fontSize: 11, marginBottom: 8, flexWrap: "wrap" }}>
-                      <span>{story.archetype || "story"}</span>
+                      <span>{getContentTypeLabel(story, settings)}</span>
+                      {story.archetype && <><span style={{ color: "var(--t4)" }}>·</span><span>{story.archetype}</span></>}
                       {story.era && <><span style={{ color: "var(--t4)" }}>·</span><span>{story.era}</span></>}
                       <span style={{ color: "var(--t4)" }}>·</span>
                       <span>{nextAction(story, settings)}</span>
@@ -399,7 +400,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                   </button>
                 );
               }) : (
-                <div style={{ padding: "28px 8px", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>No stories match this filter.</div>
+                <div style={{ padding: "28px 8px", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>No content matches this filter.</div>
               )}
             </div>
           </Panel>
@@ -412,7 +413,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 17, fontWeight: 700, color: "var(--t1)", lineHeight: 1.25 }}>{selected.title}</div>
                       <div style={{ display: "flex", gap: 9, marginTop: 6, fontSize: 11, color: "var(--t3)", fontFamily: "var(--font-mono)", flexWrap: "wrap" }}>
-                        <span>{selected.format || "standard"}</span><span>·</span><span>{selected.archetype || "—"}</span>
+                        <span>{getContentTypeLabel(selected, settings)}</span><span>·</span><span>{selected.format || "standard"}</span><span>·</span><span>{selected.archetype || "—"}</span>
                         {selected.reach_score != null && <><span>·</span><span>reach {selected.reach_score}</span></>}
                         {selected.status && <><span>·</span><span>{selected.status}</span></>}
                       </div>
@@ -439,8 +440,8 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     })}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 10, color: "var(--t4)", fontSize: 10, flexWrap: "wrap" }}>
-                    <span>Same story, same workspace. Step through the whole creation chain without changing tabs.</span>
-                    <span style={{ fontFamily: "var(--font-mono)" }}>{renderCombo(SHORTCUTS.createModePrev.combo)} / {renderCombo(SHORTCUTS.createModeNext.combo)} steps · {renderCombo(SHORTCUTS.productionUp.combo)} / {renderCombo(SHORTCUTS.productionDown.combo)} stories</span>
+                    <span>Same content item, same workspace. Step through the whole creation chain without changing tabs.</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>{renderCombo(SHORTCUTS.createModePrev.combo)} / {renderCombo(SHORTCUTS.createModeNext.combo)} steps · {renderCombo(SHORTCUTS.productionUp.combo)} / {renderCombo(SHORTCUTS.productionDown.combo)} items</span>
                   </div>
                 </div>
 

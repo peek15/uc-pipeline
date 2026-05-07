@@ -159,6 +159,13 @@ ALTER TABLE stories
   ADD COLUMN IF NOT EXISTS score_hook INT,
   ADD COLUMN IF NOT EXISTS pt_review_cleared BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS subject_tags TEXT[],
+  ADD COLUMN IF NOT EXISTS content_type TEXT DEFAULT 'narrative',
+  ADD COLUMN IF NOT EXISTS objective TEXT,
+  ADD COLUMN IF NOT EXISTS audience TEXT,
+  ADD COLUMN IF NOT EXISTS channel TEXT,
+  ADD COLUMN IF NOT EXISTS campaign_id UUID,
+  ADD COLUMN IF NOT EXISTS campaign_name TEXT,
+  ADD COLUMN IF NOT EXISTS deliverable_type TEXT,
   ADD COLUMN IF NOT EXISTS platform_target TEXT,
   ADD COLUMN IF NOT EXISTS production_status TEXT,
   ADD COLUMN IF NOT EXISTS scripts JSONB DEFAULT '{}'::jsonb,
@@ -203,6 +210,8 @@ CREATE INDEX IF NOT EXISTS idx_stories_status ON stories (status);
 CREATE INDEX IF NOT EXISTS idx_stories_scheduled ON stories (scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_stories_created ON stories (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_stories_brand ON stories (brand_profile_id);
+CREATE INDEX IF NOT EXISTS idx_stories_content_type ON stories (content_type);
+CREATE INDEX IF NOT EXISTS idx_stories_campaign ON stories (campaign_id);
 CREATE INDEX IF NOT EXISTS idx_stories_quality_gate ON stories (quality_gate_status);
 CREATE INDEX IF NOT EXISTS idx_stories_scripts_gin ON stories USING GIN (scripts);
 

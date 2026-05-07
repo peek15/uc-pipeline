@@ -1,4 +1,4 @@
-import { ARCHETYPES, ERAS, FORMATS, LANGS, RESEARCH_ANGLES, SCRIPT_SYSTEM, TEAMS } from "@/lib/constants";
+import { ARCHETYPES, CONTENT_TYPE_MAP, ERAS, FORMATS, LANGS, RESEARCH_ANGLES, SCRIPT_SYSTEM, TEAMS } from "@/lib/constants";
 
 export function getBrandName(settings) {
   return settings?.brand?.name || "Uncle Carter";
@@ -18,6 +18,27 @@ export function getBrandAvoid(settings) {
 
 export function getBrandContentType(settings) {
   return settings?.brand?.content_type || "narrative";
+}
+
+export function getContentType(story, settings = null) {
+  return story?.content_type || story?.metadata?.content_type || getBrandContentType(settings);
+}
+
+export function getContentTypeLabel(story, settings = null) {
+  const key = getContentType(story, settings);
+  return CONTENT_TYPE_MAP[key]?.label || String(key || "Content").replace(/_/g, " ");
+}
+
+export function contentObjective(story) {
+  return story?.objective || story?.metadata?.objective || "";
+}
+
+export function contentAudience(story) {
+  return story?.audience || story?.metadata?.audience || "";
+}
+
+export function contentChannel(story) {
+  return story?.channel || story?.platform_target || story?.metadata?.channel || "";
 }
 
 export function getBrandProgrammes(settings) {

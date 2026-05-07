@@ -31,7 +31,12 @@ export async function upsertStory(story, tenant) {
   const t = normalizeTenant(tenant || story);
   const { data, error } = await supabase
     .from("stories")
-    .upsert({ ...story, workspace_id: story.workspace_id || t.workspace_id, brand_profile_id: story.brand_profile_id || t.brand_profile_id }, { onConflict: "id" })
+    .upsert({
+      ...story,
+      content_type: story.content_type || story.metadata?.content_type || "narrative",
+      workspace_id: story.workspace_id || t.workspace_id,
+      brand_profile_id: story.brand_profile_id || t.brand_profile_id,
+    }, { onConflict: "id" })
     .select()
     .single();
   if (error) throw error;
@@ -51,6 +56,7 @@ export async function bulkUpsertStories(stories, tenant) {
   const t = normalizeTenant(tenant);
   const rows = (stories || []).map(story => ({
     ...story,
+    content_type: story.content_type || story.metadata?.content_type || "narrative",
     workspace_id: story.workspace_id || t.workspace_id,
     brand_profile_id: story.brand_profile_id || t.brand_profile_id,
   }));

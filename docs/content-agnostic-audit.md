@@ -1,6 +1,6 @@
 # Content-Agnostic Audit
 
-Last updated: v3.17.6
+Last updated: v3.17.7
 
 ## Current Assessment
 
@@ -15,6 +15,14 @@ The product is now partly content-agnostic at the brand, provider, language, and
 - Provider settings, provider health, AI usage, cost alerts, and secure provider secrets are brand-scoped.
 - Quality Gate can use brand-specific factual-anchor terms.
 - App chrome, CSV export/import, Airtable sync, Detail, and main queues use generic subject/language helpers.
+
+## v3.17.7 Progress
+
+- Added row-level content metadata: `content_type`, `objective`, `audience`, `channel`, `campaign_id`, `campaign_name`, and `deliverable_type`.
+- Added shared content type/channel constants and helpers so UI can reason about narrative, ad, publicity, product, educational, and community content.
+- Pipeline is now labeled Content and can filter/search by content type, channel, objective, audience, campaign, and deliverable.
+- Detail modal can edit the new content metadata without changing the existing story table name.
+- CSV import/export now preserves content type, programme, objective, audience, channel, campaign, and deliverable fields.
 
 ## Remaining Story Bias
 
@@ -39,10 +47,8 @@ To produce publicity and broader content types well, the app needs a content-obj
 
 ## Recommended Next Phases
 
-1. Rename user-facing `Stories` language to `Content` where safe, while keeping database compatibility.
-2. Add `content_type`, `objective`, `audience`, `channel`, and `campaign_id` fields to the schema.
-3. Add content templates in Settings: Narrative story, Ad concept, Product post, Educational explainer, Press/publicity asset.
-4. Make Research become Ideation, with prompts selected by content template.
-5. Make Create steps template-driven so publicity/ad flows do not require narrative-only assets.
-6. Add campaign calendar mode for flights and deliverable bundles.
-
+1. Add content templates in Settings: Narrative story, Ad concept, Product post, Educational explainer, Press/publicity asset.
+2. Make Research become Ideation, with prompts selected by content template.
+3. Make Create steps template-driven so publicity/ad flows do not require narrative-only assets.
+4. Add campaign calendar mode for flights and deliverable bundles.
+5. Introduce true `campaigns` / `deliverables` tables once UI semantics are stable.

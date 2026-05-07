@@ -2,10 +2,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { Search, ArrowRight, FileText, Eye, ChevronRight, ChevronDown, SlidersHorizontal, X, Check, Trash2, RefreshCw } from "lucide-react";
-import { STAGES, ERAS, ARCHETYPES, ACCENT, FORMATS, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES } from "@/lib/constants";
+import { STAGES, ERAS, ARCHETYPES, ACCENT, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES, CONTENT_TYPES, CHANNELS } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import { PageHeader, Pill, buttonStyle } from "@/components/OperationalUI";
-import { getBrandLanguages, getBrandProgrammes, getStoryScript, subjectText } from "@/lib/brandConfig";
+import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
 
 const SORT_OPTS = [
   { key: "date_desc",      label: "Newest first" },
@@ -70,6 +70,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   const [era,         setEra]         = usePersistentState("pipeline_era",       "");
   const [archetype,   setArchetype]   = usePersistentState("pipeline_archetype", "");
   const [format,      setFormat]      = usePersistentState("pipeline_format",    "");
+  const [contentType, setContentType] = usePersistentState("pipeline_content_type", "");
+  const [channel,     setChannel]     = usePersistentState("pipeline_channel", "");
   const [hookType,    setHookType]    = usePersistentState("pipeline_hooktype",  "");
   const [emotAngle,   setEmotAngle]   = usePersistentState("pipeline_emotion",   "");
   const [ptStatus,    setPtStatus]    = usePersistentState("pipeline_pt",        "");
@@ -90,8 +92,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   const programmeMap = useMemo(() => Object.fromEntries(programmes.map(p => [p.key, p])), [programmes]);
   const languageKeys = useMemo(() => getBrandLanguages(settings).map(l => l.key), [settings]);
 
-  const activeFilterCount = [era, archetype, format, hookType, emotAngle, languageKeys.includes("pt") && ptStatus, quality, dateFrom, dateTo, minScore>0, minReach>0].filter(Boolean).length;
-  const clearFilters = () => { setEra(""); setArchetype(""); setFormat(""); setHookType(""); setEmotAngle(""); setPtStatus(""); setQuality(""); setDateFrom(""); setDateTo(""); setMinScore(0); setMinReach(0); setSort("date_desc"); };
+  const activeFilterCount = [contentType, channel, era, archetype, format, hookType, emotAngle, languageKeys.includes("pt") && ptStatus, quality, dateFrom, dateTo, minScore>0, minReach>0].filter(Boolean).length;
+  const clearFilters = () => { setContentType(""); setChannel(""); setEra(""); setArchetype(""); setFormat(""); setHookType(""); setEmotAngle(""); setPtStatus(""); setQuality(""); setDateFrom(""); setDateTo(""); setMinScore(0); setMinReach(0); setSort("date_desc"); };
 
   const filtered = useMemo(() => {
     let list = stories.filter(s => {
@@ -103,11 +105,15 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         const subjects = subjectText(s);
         const searchFields = [
           s.title, subjects, s.archetype, s.era, s.angle, s.hook,
-          s.format, s.hook_type, s.emotional_angle,
+          s.format, s.hook_type, s.emotional_angle, s.content_type,
+          contentObjective(s), contentAudience(s), contentChannel(s),
+          s.campaign_name, s.deliverable_type,
           ...(s.subject_tags||[])
         ].map(f=>(f||"").toLowerCase());
         if (!searchFields.some(f => f.includes(q))) return false;
       }
+      if (contentType && (s.content_type || s.metadata?.content_type || "narrative") !== contentType) return false;
+      if (channel && contentChannel(s) !== channel) return false;
       if (era        && s.era            !== era)        return false;
       if (archetype  && s.archetype      !== archetype)  return false;
       if (format     && s.format         !== format)     return false;
@@ -134,7 +140,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       return 0;
     });
     return list;
-  }, [stories, stageFilter, search, era, archetype, format, hookType, emotAngle, ptStatus, quality, minScore, minReach, dateFrom, dateTo, sort, settings, languageKeys]);
+  }, [stories, stageFilter, search, contentType, channel, era, archetype, format, hookType, emotAngle, ptStatus, quality, minScore, minReach, dateFrom, dateTo, sort, settings, languageKeys]);
 
   const bySt = {};
   for (const s of filtered) { bySt[s.status] = bySt[s.status]||[]; bySt[s.status].push(s); }
@@ -219,8 +225,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   return (
     <div ref={containerRef} className="animate-fade-in" tabIndex={-1} style={{outline:"none"}}>
       <PageHeader
-        title="Stories"
-        description="Review, filter, audit, and move stories through the editorial pipeline."
+        title="Content"
+        description="Review, filter, audit, and move content through the production pipeline."
         meta={`${filtered.length} visible · ${stories.length} total`}
       />
 
@@ -228,7 +234,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:8,marginBottom:12,alignItems:"center"}}>
         <div style={{position:"relative"}}>
           <Search size={13} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--t3)",pointerEvents:"none"}} />
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title, subjects, angle, hook, era, format..."
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title, subjects, objective, audience, campaign..."
             style={{width:"100%",padding:"8px 12px 8px 32px",borderRadius:8,background:"var(--fill2)",border:"1px solid var(--border-in)",color:"var(--t1)",fontSize:13,outline:"none"}} />
         </div>
         <select value={sort} onChange={e=>setSort(e.target.value)} style={sel}>
@@ -253,6 +259,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       {showFilters && (
         <div className="animate-fade-in" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:8,padding:"14px 16px",borderRadius:10,background:"var(--bg2)",border:"1px solid var(--border)",marginBottom:16}}>
           {[
+            {label:"Content type", val:contentType, set:setContentType, opts:CONTENT_TYPES.map(t=>({key:t.key,label:t.label}))},
+            {label:"Channel",    val:channel,    set:setChannel,    opts:CHANNELS.map(c=>({key:c,label:c}))},
             {label:"Era",       val:era,       set:setEra,       opts:ERAS.map(e=>({key:e,label:e}))},
             {label:"Archetype", val:archetype, set:setArchetype, opts:ARCHETYPES.map(a=>({key:a,label:a}))},
             {label:"Format",    val:format,    set:setFormat,    opts:programmes.map(f=>({key:f.key,label:f.label}))},
@@ -327,13 +335,13 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>{[...selected].forEach(id=>onStageChange(id,"approved"));setSelected(new Set());}} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--bg)",color:"var(--t1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><Check size={12}/> Approve</button>
             <button onClick={()=>{onBulkReject([...selected]);setSelected(new Set());}} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"var(--bg)",border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><X size={12}/> Reject</button>
-            <button onClick={()=>{ const ids=[...selected]; if (window.confirm(`Delete ${ids.length} ${ids.length===1?"story":"stories"}? This cannot be undone.`)) { onBulkDelete(ids); setSelected(new Set()); } }} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"var(--bg)",border:"0.5px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><Trash2 size={12}/> Delete</button>
+            <button onClick={()=>{ const ids=[...selected]; if (window.confirm(`Delete ${ids.length} ${ids.length===1?"content item":"content items"}? This cannot be undone.`)) { onBulkDelete(ids); setSelected(new Set()); } }} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"var(--bg)",border:"0.5px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><Trash2 size={12}/> Delete</button>
             <button onClick={()=>setSelected(new Set())} style={{padding:"6px 10px",borderRadius:7,fontSize:12,background:"transparent",color:"rgba(255,255,255,0.5)",border:"none",cursor:"pointer"}}><X size={14}/></button>
           </div>
         </div>
       )}
 
-      {/* Story groups */}
+      {/* Content groups */}
       {(stageFilter==="all"?stageOrder:[stageFilter]).map(stKey=>{
         const items = bySt[stKey]||[];
         if (!items.length&&stageFilter==="all") return null;
@@ -352,7 +360,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
               )}
             </div>
 
-            {!items.length&&<div style={{padding:"24px 0",textAlign:"center",color:"var(--t4)",fontSize:12}}>No stories</div>}
+            {!items.length&&<div style={{padding:"24px 0",textAlign:"center",color:"var(--t4)",fontSize:12}}>No content</div>}
 
             <div style={{display:"flex",flexDirection:"column",gap:"var(--card-gap, 2px)"}}>
               {items.map(s=>{
@@ -360,6 +368,9 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 const isExpanded = expanded.has(s.id);
                 const isFocused  = focused===s.id;
                 const subjects   = subjectText(s);
+                const objective  = contentObjective(s);
+                const audience   = contentAudience(s);
+                const displayChannel = contentChannel(s);
                 const dateStr    = s.created_at?new Date(s.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"";
                 const hasScore   = s.score_total!=null;
                 const ac         = ACCENT[s.archetype]||"var(--border)";
@@ -400,6 +411,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                             <span style={{width:6,height:6,borderRadius:"50%",background:ac,display:"inline-block",flexShrink:0}}/>
                             <span style={{color:ac,fontWeight:500}}>{s.archetype}</span>
                           </span>
+                          <span style={{color:"var(--t4)"}}>·</span><span>{getContentTypeLabel(s, settings)}</span>
+                          {displayChannel&&<><span style={{color:"var(--t4)"}}>·</span><span>{displayChannel}</span></>}
                           {s.era&&<><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
                           {subjects&&<><span style={{color:"var(--t4)"}}>·</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{subjects}</span></>}
                           {getStoryScript(s, "en")&&<><span style={{color:"var(--t4)"}}>·</span><FileText size={11} color="var(--t3)"/></>}
@@ -407,9 +420,9 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                           {gateStatus!=="missing"&&<><span style={{color:"var(--t4)"}}>·</span><span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:3,background:gateBlockers?"var(--error-bg)":gateWarnings?"var(--warning-bg)":"var(--success-bg)",color:gateBlockers?"var(--error)":gateWarnings?"var(--warning)":"var(--success)",border:`0.5px solid ${gateBlockers?"var(--error-border)":gateWarnings?"rgba(196,154,60,0.30)":"rgba(74,155,127,0.24)"}`}}>Gate {gateBlockers ? `${gateBlockers} blocker` : gateWarnings ? `${gateWarnings} warning${gateWarnings===1?"":"s"}` : gateScore != null ? gateScore : "passed"}</span></>}
                         </div>
                         {/* Angle preview */}
-                        {s.angle&&!isExpanded&&(
+                        {(objective || s.angle)&&!isExpanded&&(
                           <div style={{fontSize:12,color:"var(--t3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",opacity:0.7,marginTop:1}}>
-                            {s.angle}
+                            {objective || s.angle}
                           </div>
                         )}
                       </div>
@@ -444,6 +457,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                     {isExpanded&&(
                       <div className="animate-fade-in" style={{padding:"0 12px 14px 46px",borderTop:"1px solid var(--border2)"}}>
                         {s.angle&&<div style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,marginTop:10,marginBottom:8}}>{s.angle}</div>}
+                        {objective&&<div style={{fontSize:12,color:"var(--t3)",lineHeight:1.6,marginBottom:8}}><strong style={{color:"var(--t2)"}}>Objective:</strong> {objective}</div>}
+                        {audience&&<div style={{fontSize:12,color:"var(--t3)",lineHeight:1.6,marginBottom:8}}><strong style={{color:"var(--t2)"}}>Audience:</strong> {audience}</div>}
                         {s.hook&&<div style={{fontSize:13,color:"var(--t3)",fontStyle:"italic",paddingLeft:12,borderLeft:"2px solid var(--border)",lineHeight:1.5,marginBottom:10}}>"{s.hook}"</div>}
                         {subjects&&<div style={{fontSize:12,color:"var(--t3)",marginBottom:10,lineHeight:1.6,whiteSpace:"normal"}}>{subjects}</div>}
 
@@ -496,7 +511,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       {filtered.length===0&&(
         <div style={{textAlign:"center",padding:"80px 0",color:"var(--t4)"}}>
           <Search size={32} style={{margin:"0 auto 12px",display:"block",opacity:0.25}}/>
-          <div style={{fontSize:13}}>No stories match your filters</div>
+          <div style={{fontSize:13}}>No content matches your filters</div>
           {activeFilterCount>0&&<button onClick={clearFilters} style={{marginTop:10,fontSize:12,color:"var(--t2)",background:"transparent",border:"none",cursor:"pointer",textDecoration:"underline"}}>Clear filters</button>}
         </div>
       )}

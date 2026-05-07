@@ -19,12 +19,12 @@ import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
-import { brandConfigForPrompt, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
+import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.17.6";
+const VERSION = "3.17.7";
 
 const TABS = [
-  { key: "pipeline",   label: "Stories",  Icon: Layers },
+  { key: "pipeline",   label: "Content",  Icon: Layers },
   { key: "research",   label: "Research", Icon: Search },
   { key: "create",     label: "Create",   Icon: Wrench },
   { key: "calendar",   label: "Schedule", Icon: Clock },
@@ -131,7 +131,7 @@ export default function Home() {
     if (saved) {
       setStories(p => [...saved, ...p]);
       for (const s of saved) syncToAirtable(s).catch(() => {});
-      toast(`${saved.length} ${saved.length === 1 ? "story" : "stories"} added to Pipeline`);
+      toast(`${saved.length} ${saved.length === 1 ? "content item" : "content items"} added to Pipeline`);
     }
   }, [activeTenant]);
 
@@ -156,7 +156,7 @@ export default function Home() {
     if (saved) {
       const ids = new Set(saved.map(s => s.id));
       setStories(p => p.map(s => ids.has(s.id) ? saved.find(x => x.id === s.id) : s));
-      toast(`${saved.length} stories approved`);
+      toast(`${saved.length} content items approved`);
     }
   }, [stories, activeTenant]);
 
@@ -164,19 +164,19 @@ export default function Home() {
     const prev = ids.map(id => ({ id, status: storiesRef.current.find(s=>s.id===id)?.status }));
     setUndoStack(u => [...u.slice(-9), { type:"bulkStage", prev }]);
     await Promise.all(ids.map(id => updateStory(id, { status: "rejected" })));
-    toast(`${ids.length} ${ids.length===1?"story":"stories"} rejected`);
+    toast(`${ids.length} ${ids.length===1?"content item":"content items"} rejected`);
   }, [updateStory]);
 
   const bulkDelete = useCallback(async (ids) => {
     await Promise.all(ids.map(id => dbDelete(id, activeTenant)));
     setStories(p => p.filter(s => !ids.includes(s.id)));
-    toast(`${ids.length} ${ids.length===1?"story":"stories"} deleted`, "error");
+    toast(`${ids.length} ${ids.length===1?"content item":"content items"} deleted`, "error");
   }, [activeTenant]);
 
   const handleDelete = useCallback(async (id) => {
     await dbDelete(id, activeTenant);
     setStories(p => p.filter(s => s.id !== id));
-    toast("Story deleted", "error");
+    toast("Content item deleted", "error");
   }, [activeTenant]);
 
   const handleUndo = useCallback(async () => {
@@ -252,7 +252,7 @@ export default function Home() {
         const smartCount2 = Math.min(30, Math.ceil(gap2 * 1.2) || 8);
         setResearchPrefill({ format: fmt, count: smartCount2 });
         setTab("research");
-        toast(`↗ Low on ${fmt.replace("_"," ")} stories — researching more`);
+        toast(`↗ Low on ${fmt.replace("_"," ")} content — researching more`);
         return;
       }
     }
@@ -334,10 +334,11 @@ export default function Home() {
 
   const exportCSV = () => {
     const languages = getBrandLanguages(appSettings);
-    const hdr = ["Title","Status","Archetype","Era","Subjects","Angle","Hook",...languages.map(l => `Script ${l.key.toUpperCase()}`),"Score","Views","Completion%","Saves"];
+    const hdr = ["Title","Status","Content Type","Programme","Objective","Audience","Channel","Campaign","Deliverable","Archetype","Era","Subjects","Angle","Hook",...languages.map(l => `Script ${l.key.toUpperCase()}`),"Score","Views","Completion%","Saves"];
     const esc = v => `"${(v||"").toString().replace(/"/g,'""')}"`;
     const rows = stories.map(s => [
-      esc(s.title), s.status, esc(s.archetype), esc(s.era), esc(subjectText(s)), esc(s.angle), esc(s.hook),
+      esc(s.title), s.status, s.content_type || "narrative", esc(s.format), esc(contentObjective(s)), esc(contentAudience(s)), esc(contentChannel(s)), esc(s.campaign_name), esc(s.deliverable_type),
+      esc(s.archetype), esc(s.era), esc(subjectText(s)), esc(s.angle), esc(s.hook),
       ...languages.map(l => esc(getStoryScript(s, l.key))),
       s.score_total, s.metrics_views, s.metrics_completion, s.metrics_saves,
     ]);
@@ -381,6 +382,14 @@ export default function Home() {
           id: crypto.randomUUID(),
           title,
           status: p[findIdx("Status")] || "accepted",
+          content_type: p[findIdx("Content Type", "Content type", "Type")] || "narrative",
+          format: p[findIdx("Programme", "Program", "Format")] || "",
+          objective: p[findIdx("Objective", "Goal")] || "",
+          audience: p[findIdx("Audience", "Target Audience")] || "",
+          channel: p[findIdx("Channel", "Platform", "Platform Target")] || "",
+          platform_target: p[findIdx("Channel", "Platform", "Platform Target")] || "",
+          campaign_name: p[findIdx("Campaign", "Campaign Name")] || "",
+          deliverable_type: p[findIdx("Deliverable", "Deliverable Type", "Asset Type")] || "",
           archetype: p[findIdx("Archetype")] || "",
           era: p[findIdx("Era")] || "",
           players: p[findIdx("Subjects", "Players", "Player(s)")] || "",

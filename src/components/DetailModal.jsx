@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import { X, Circle, Check, FileText, Film, Award, Archive, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import { STAGES, ACCENT, FORMATS, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES } from "@/lib/constants";
+import { STAGES, ACCENT, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES, CONTENT_TYPES, CHANNELS } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
-import { getBrandLanguages, getStoryScript, subjectText } from "@/lib/brandConfig";
+import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentType, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
 
 const ICONS = { accepted:Circle, approved:Check, scripted:FileText, produced:Film, published:Award, rejected:X, archived:Archive };
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
@@ -40,9 +40,16 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const current = stories.find(s=>s.id===currentId) || story;
   const idx     = stories.findIndex(s=>s.id===currentId);
   const languages = getBrandLanguages(settings);
+  const programmes = getBrandProgrammes(settings);
   const hasPortuguese = languages.some(l => l.key === "pt") && !!getStoryScript(current, "pt");
 
   const [localFormat,    setLocalFormat]    = useState(current.format||"");
+  const [localContentType, setLocalContentType] = useState(getContentType(current, settings));
+  const [localObjective, setLocalObjective] = useState(contentObjective(current));
+  const [localAudience, setLocalAudience] = useState(contentAudience(current));
+  const [localChannel, setLocalChannel] = useState(contentChannel(current));
+  const [localCampaign, setLocalCampaign] = useState(current.campaign_name || "");
+  const [localDeliverable, setLocalDeliverable] = useState(current.deliverable_type || "");
   const [localHookType,  setLocalHookType]  = useState(current.hook_type||"");
   const [localAngle,     setLocalAngle]     = useState(current.emotional_angle||"");
   const [localReach,     setLocalReach]     = useState(current.reach_score??50);
@@ -51,6 +58,12 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   // Reset local state when navigating
   useEffect(() => {
     setLocalFormat(current.format||"");
+    setLocalContentType(getContentType(current, settings));
+    setLocalObjective(contentObjective(current));
+    setLocalAudience(contentAudience(current));
+    setLocalChannel(contentChannel(current));
+    setLocalCampaign(current.campaign_name || "");
+    setLocalDeliverable(current.deliverable_type || "");
     setLocalHookType(current.hook_type||"");
     setLocalAngle(current.emotional_angle||"");
     setLocalReach(current.reach_score??50);
@@ -72,6 +85,13 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const saveEdits = () => {
     if (onUpdate) onUpdate(current.id, {
       format:           localFormat||null,
+      content_type:     localContentType||"narrative",
+      objective:        localObjective||null,
+      audience:         localAudience||null,
+      channel:          localChannel||null,
+      platform_target:  localChannel||current.platform_target||null,
+      campaign_name:    localCampaign||null,
+      deliverable_type: localDeliverable||null,
       hook_type:        localHookType||null,
       emotional_angle:  localAngle||null,
       reach_score:      localReach!==null ? parseInt(localReach) : null,
@@ -89,8 +109,11 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const st      = STAGES[current.status]||STAGES.accepted;
   const Icon    = ICONS[current.status]||Circle;
   const ac      = ACCENT[current.archetype]||"var(--border)";
-  const fmt     = FORMAT_MAP[current.format];
+  const fmt     = programmes.find(p => p.key === current.format) || FORMAT_MAP[current.format];
   const subjects = subjectText(current);
+  const objective = contentObjective(current);
+  const audience = contentAudience(current);
+  const channel = contentChannel(current);
   const readiness = getReadiness(current, settings);
   const rColor  = readiness.done===readiness.total?"#4A9B7F":readiness.done>=Math.ceil(readiness.total * 0.65)?"#C49A3C":"var(--t3)";
   const gate = current.quality_gate && typeof current.quality_gate === "object" ? current.quality_gate : null;
@@ -130,6 +153,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
               <Icon size={10}/>{st.label}
             </span>
             {fmt&&<span style={{fontSize:11,fontWeight:600,padding:"3px 9px",borderRadius:99,background:`${fmt.color}15`,color:fmt.color,border:`1px solid ${fmt.color}30`}}>{fmt.label}</span>}
+            <span style={{fontSize:11,fontWeight:600,padding:"3px 9px",borderRadius:99,background:"var(--fill2)",color:"var(--t2)",border:"1px solid var(--border)"}}>{getContentTypeLabel(current, settings)}</span>
             <button onClick={onClose} style={{width:28,height:28,borderRadius:6,border:"1px solid var(--border)",background:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",marginLeft:4}}>
               <X size={13} color="var(--t3)"/>
             </button>
@@ -156,6 +180,15 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
             {subjects&&<div style={{fontSize:13,color:"var(--t3)",marginBottom:14,lineHeight:1.5}}>{subjects}</div>}
 
             {current.statline&&<div style={{padding:"7px 10px",borderRadius:6,background:"var(--fill2)",border:"1px solid var(--border)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:12,color:"var(--t2)",marginBottom:12}}>{current.statline}</div>}
+
+            {(objective || audience || channel || current.campaign_name)&&(
+              <div style={{display:"grid",gap:5,padding:"9px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border)",fontSize:12,color:"var(--t3)",marginBottom:12,lineHeight:1.45}}>
+                {objective&&<div><strong style={{color:"var(--t2)"}}>Objective:</strong> {objective}</div>}
+                {audience&&<div><strong style={{color:"var(--t2)"}}>Audience:</strong> {audience}</div>}
+                {channel&&<div><strong style={{color:"var(--t2)"}}>Channel:</strong> {channel}</div>}
+                {current.campaign_name&&<div><strong style={{color:"var(--t2)"}}>Campaign:</strong> {current.campaign_name}</div>}
+              </div>
+            )}
 
             {current.angle&&<p style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,marginBottom:12}}>{current.angle}</p>}
             {current.hook&&(
@@ -254,16 +287,81 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
               </div>
 
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {/* Content type */}
+                <div style={{padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)"}}>
+                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Content type</div>
+                  {editing?(
+                    <select value={localContentType} onChange={e=>setLocalContentType(e.target.value)} style={{...sel,padding:"3px 6px",fontSize:11}}>
+                      {CONTENT_TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
+                    </select>
+                  ):(
+                    <div style={{fontSize:12,fontWeight:500,color:"var(--t1)"}}>{getContentTypeLabel(current, settings)}</div>
+                  )}
+                </div>
+
                 {/* Format */}
                 <div style={{padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)"}}>
-                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Format</div>
+                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Programme</div>
                   {editing?(
                     <select value={localFormat} onChange={e=>setLocalFormat(e.target.value)} style={{...sel,padding:"3px 6px",fontSize:11}}>
                       <option value="">—</option>
-                      {FORMATS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
+                      {programmes.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
                     </select>
                   ):(
                     <div style={{fontSize:12,fontWeight:500,color:fmt?fmt.color:"var(--t4)"}}>{fmt?fmt.label:"Not set"}</div>
+                  )}
+                </div>
+
+                {/* Objective */}
+                <div style={{padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)",gridColumn:"1 / -1"}}>
+                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Objective</div>
+                  {editing?(
+                    <input value={localObjective} onChange={e=>setLocalObjective(e.target.value)} placeholder="Awareness, conversion, launch support..." style={{...sel,padding:"5px 7px",fontSize:11}}/>
+                  ):(
+                    <div style={{fontSize:12,fontWeight:500,color:objective?"var(--t1)":"var(--t4)"}}>{objective||"Not set"}</div>
+                  )}
+                </div>
+
+                {/* Audience */}
+                <div style={{padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)"}}>
+                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Audience</div>
+                  {editing?(
+                    <input value={localAudience} onChange={e=>setLocalAudience(e.target.value)} placeholder="Target audience" style={{...sel,padding:"5px 7px",fontSize:11}}/>
+                  ):(
+                    <div style={{fontSize:12,fontWeight:500,color:audience?"var(--t1)":"var(--t4)"}}>{audience||"Not set"}</div>
+                  )}
+                </div>
+
+                {/* Channel */}
+                <div style={{padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)"}}>
+                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Channel</div>
+                  {editing?(
+                    <select value={localChannel} onChange={e=>setLocalChannel(e.target.value)} style={{...sel,padding:"3px 6px",fontSize:11}}>
+                      <option value="">—</option>
+                      {CHANNELS.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                  ):(
+                    <div style={{fontSize:12,fontWeight:500,color:channel?"var(--t1)":"var(--t4)"}}>{channel||"Not set"}</div>
+                  )}
+                </div>
+
+                {/* Campaign */}
+                <div style={{padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)"}}>
+                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Campaign</div>
+                  {editing?(
+                    <input value={localCampaign} onChange={e=>setLocalCampaign(e.target.value)} placeholder="Campaign name" style={{...sel,padding:"5px 7px",fontSize:11}}/>
+                  ):(
+                    <div style={{fontSize:12,fontWeight:500,color:current.campaign_name?"var(--t1)":"var(--t4)"}}>{current.campaign_name||"Not set"}</div>
+                  )}
+                </div>
+
+                {/* Deliverable */}
+                <div style={{padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)"}}>
+                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Deliverable</div>
+                  {editing?(
+                    <input value={localDeliverable} onChange={e=>setLocalDeliverable(e.target.value)} placeholder="Video, carousel, press note..." style={{...sel,padding:"5px 7px",fontSize:11}}/>
+                  ):(
+                    <div style={{fontSize:12,fontWeight:500,color:current.deliverable_type?"var(--t1)":"var(--t4)"}}>{current.deliverable_type||"Not set"}</div>
                   )}
                 </div>
 

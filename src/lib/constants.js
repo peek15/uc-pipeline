@@ -33,6 +33,33 @@ export const FORMATS = [
 
 export const FORMAT_MAP = Object.fromEntries(FORMATS.map(f => [f.key, f]));
 
+// ─── Content Types / Distribution ───
+export const CONTENT_TYPES = [
+  { key: "narrative",   label: "Narrative",   desc: "Story-led editorial or documentary content." },
+  { key: "ad",          label: "Ad",          desc: "Paid or conversion-led creative concept." },
+  { key: "publicity",   label: "Publicity",   desc: "PR, announcement, launch, or awareness asset." },
+  { key: "product_post",label: "Product post",desc: "Product, offer, feature, or service-led content." },
+  { key: "educational", label: "Educational", desc: "Explainer, tutorial, framework, or thought-leadership asset." },
+  { key: "community",   label: "Community",   desc: "Audience participation, social proof, or retention content." },
+];
+
+export const CONTENT_TYPE_MAP = Object.fromEntries(CONTENT_TYPES.map(t => [t.key, t]));
+
+export const CHANNELS = [
+  "TikTok",
+  "Instagram Reels",
+  "Instagram Feed",
+  "YouTube Shorts",
+  "YouTube",
+  "LinkedIn",
+  "X/Twitter",
+  "Newsletter",
+  "Landing page",
+  "Paid social",
+  "Press",
+  "Email",
+];
+
 // Auto-suggest format based on era
 export function suggestFormat(era) {
   if (!era) return "standard";

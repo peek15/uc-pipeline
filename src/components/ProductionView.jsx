@@ -895,7 +895,7 @@ export default function ProductionView({ stories, onUpdate, embedded = false, br
     return (
       <div style={{ padding: "48px 24px", textAlign: "center", borderRadius: 12, background: "var(--bg2)", border: "0.5px solid var(--border)" }}>
         <Layers size={32} style={{ color: "var(--t4)", margin: "0 auto 12px" }} />
-        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--t1)", marginBottom: 4 }}>No stories in production yet</div>
+        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--t1)", marginBottom: 4 }}>No content in production yet</div>
         <div style={{ fontSize: 12, color: "var(--t3)" }}>Approve a script in the Script tab to send it here.</div>
       </div>
     );
@@ -908,7 +908,7 @@ export default function ProductionView({ stories, onUpdate, embedded = false, br
       {!embedded && (
         <PageHeader
           title="Produce"
-          description="Pick a story, check its production readiness, then run the agents for brief, assets, voice, visuals, and assembly."
+          description="Pick a content item, check its production readiness, then run the agents for brief, assets, voice, visuals, and assembly."
           meta={`${queue.length} in flight`}
           action={
             <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
@@ -952,7 +952,7 @@ export default function ProductionView({ stories, onUpdate, embedded = false, br
               </button>
             );
           }) : (
-            <div style={{ padding: "28px 8px", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>No stories match this production filter.</div>
+            <div style={{ padding: "28px 8px", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>No content matches this production filter.</div>
           )}
         </div>
 
@@ -992,7 +992,7 @@ export default function ProductionView({ stories, onUpdate, embedded = false, br
                   <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--card)", border:"0.5px solid var(--border)" }}>
                     <div style={{ fontSize:13, fontWeight:700, color:"var(--t1)", marginBottom:6 }}>Production review</div>
                     <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.5 }}>
-                      Use this pass to confirm the story has its approved brief, selected visuals, voice references, and assembly notes before export.
+                      Use this pass to confirm the content item has its approved brief, selected visuals, voice references, and assembly notes before export.
                     </div>
                   </div>
                 </div>

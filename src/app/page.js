@@ -21,7 +21,7 @@ import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.16.1";
+const VERSION = "3.16.2";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -566,7 +566,7 @@ export default function Home() {
 
             {/* All views mounted always — CSS visibility preserves state */}
             <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
-              <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} setActiveTab={setTab} />
+              <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} />
             </div>
             <div style={{ display: tab==="research"   ? "block" : "none" }}>
               <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} />

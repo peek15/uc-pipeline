@@ -5,6 +5,7 @@ import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Za
 import { LANGS, ACCENT } from "@/lib/constants";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
+import { PageHeader, Panel } from "@/components/OperationalUI";
 
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
 
@@ -237,17 +238,29 @@ export default function ScriptView({ stories, onUpdate }) {
   const STEPS = autoTranslate ? ["EN","FR","ES","PT"] : ["EN"];
 
   if (!ready.length) return (
-    <div style={{ textAlign:"center", padding:"80px 0", color:"var(--t4)" }} className="animate-fade-in">
-      <FileText size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }} />
-      <div style={{ fontSize:13 }}>Approve stories to start scripting</div>
+    <div className="animate-fade-in">
+      <PageHeader
+        title="Write"
+        description="Generate scripts, translations, and voice packs for approved stories."
+        meta="0 ready"
+      />
+      <div style={{ textAlign:"center", padding:"80px 0", color:"var(--t4)" }}>
+        <FileText size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }} />
+        <div style={{ fontSize:13 }}>Approve stories to start scripting</div>
+      </div>
     </div>
   );
 
   return (
     <div className="animate-fade-in">
+      <PageHeader
+        title="Write"
+        description="Generate English scripts, translate into target languages, and export voice packs."
+        meta={`${ready.length} ready · ${unscripted.length} unscripted`}
+      />
 
       {/* Options + batch bar */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:12 }}>
+      <Panel style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, padding:"10px 14px", flexWrap:"wrap", gap:10 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:12, color:"var(--t2)" }}>Auto-translate</span>
           <button onClick={() => setAutoTranslate(a=>!a)} style={{ width:36, height:20, borderRadius:10, border:"none", cursor:"pointer", background: autoTranslate ? "var(--t1)" : "var(--t4)", position:"relative", transition:"background 0.2s" }}>
@@ -272,7 +285,7 @@ export default function ScriptView({ stories, onUpdate }) {
             <Layers size={12} /> Generate all ({unscripted.length})
           </button>
         )}
-      </div>
+      </Panel>
 
       {/* ── Filter bar ── */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:8, marginBottom:12, alignItems:"center" }}>

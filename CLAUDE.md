@@ -1,7 +1,7 @@
 # Uncle Carter Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.16.4
+- App badge/package target: v3.16.5
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.16.5: Phase 1.5 UI convergence: shared page headers/buttons/panels across Stories, Write, Insights, and Providers.
 - v3.16.4: Phase 1 UI audit upgrades: shared operational UI primitives, Calendar planner board, Produce queue filters/readiness strip.
 - v3.16.3: Provider cost alerts in AI Usage using rolling ai_calls cost estimates and persisted local budgets.
 - v3.16.2: Quality Gate V2 deeper checks, gate score, info issues, and Pipeline re-audit visible stories.
@@ -52,6 +53,10 @@ scheduling, provider operations, quality gates, and analytics.
   - raw calls: `uc-ai-calls.csv`
   - summary: `uc-ai-usage-summary.csv`
 - Cost alerts are based on `ai_calls.cost_estimate`; direct provider billing sync is provider-specific and not universally available.
+
+## UI System
+- Shared operational primitives live in `src/components/OperationalUI.jsx`.
+- Use these for new tab-level work before hand-rolling local headers, panels, stat cards, pills, or button styles.
 
 ## Agent Panel
 - Component: `src/components/AgentPanel.jsx`

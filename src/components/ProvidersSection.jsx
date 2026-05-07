@@ -7,6 +7,7 @@ import { loadProviderConfig, saveProviderConfig, testProviderConnection } from "
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 import { getAiCalls } from "@/lib/ai/audit";
 import { formatCost } from "@/lib/ai/costs";
+import { PageHeader, buttonStyle } from "@/components/OperationalUI";
 
 const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 
@@ -1023,11 +1024,11 @@ export default function ProvidersSection() {
 
   return (
     <div>
-      <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--t1)", margin: "0 0 6px" }}>Providers</h2>
-      <p style={{ fontSize: 12, color: "var(--t3)", margin: "0 0 18px", lineHeight: 1.5, maxWidth: 600 }}>
-        External services for voice, atmospheric visuals, licensed visuals, and storage. Credentials are
-        stored server-side and never exposed to your browser. Test buttons fire real API pings.
-      </p>
+      <PageHeader
+        title="Providers"
+        description="External services for language models, voice, visuals, licensed images, and storage. Credentials are stored server-side and never exposed to your browser."
+        meta={loading ? "loading" : `${Object.values(configs).filter(Boolean).length} configured`}
+      />
 
       <div style={{ display: "flex", gap: 4, marginBottom: 18, flexWrap: "wrap" }}>
         {[
@@ -1036,13 +1037,11 @@ export default function ProvidersSection() {
           ["health", "Health"],
           ["usage", "AI Usage"],
         ].map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)} style={{
-            padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: tab === key ? 600 : 400,
-            background: tab === key ? "var(--t1)" : "transparent",
-            color: tab === key ? "var(--bg)" : "var(--t3)",
+          <button key={key} onClick={() => setTab(key)} style={buttonStyle(tab === key ? "primary" : "ghost", {
+            padding: "6px 14px",
+            fontWeight: tab === key ? 600 : 400,
             border: tab === key ? "0.5px solid var(--t1)" : "0.5px solid transparent",
-            cursor: "pointer",
-          }}>{label}</button>
+          })}>{label}</button>
         ))}
       </div>
 

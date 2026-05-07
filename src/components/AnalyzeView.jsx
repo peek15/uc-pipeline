@@ -3,6 +3,7 @@ import { useState, useMemo } from "react";
 import { TrendingUp, Eye, Bookmark, Share2, Upload, BarChart3, Zap, CheckCircle, Clock, UserPlus } from "lucide-react";
 import { STAGES, FORMATS, FORMAT_MAP, ACCENT } from "@/lib/constants";
 import { supabase } from "@/lib/db";
+import { PageHeader, Panel, StatCard, buttonStyle } from "@/components/OperationalUI";
 
 // ── Intelligence stage tracker ──
 function IntelligenceStage({ count }) {
@@ -16,7 +17,7 @@ function IntelligenceStage({ count }) {
   const next   = stages.find(s => count < s.threshold);
 
   return (
-    <div style={{ padding:"16px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:20 }}>
+    <Panel style={{ marginBottom:20 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
         <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Intelligence Layer</span>
         <span style={{ fontSize:11, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t2)" }}>Stage {active} active</span>
@@ -46,7 +47,7 @@ function IntelligenceStage({ count }) {
           );
         })}
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -272,15 +273,25 @@ export default function AnalyzeView({ stories, onUpdate }) {
   ];
 
   const tabStyle = (k) => ({
-    padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight: activeTab===k?600:400,
-    background: activeTab===k?"var(--t1)":"transparent",
-    color:      activeTab===k?"var(--bg)":"var(--t3)",
-    border: activeTab===k?"1px solid var(--t1)":"1px solid transparent",
-    cursor:"pointer",
+    ...buttonStyle(activeTab===k ? "primary" : "ghost", {
+      padding:"6px 14px",
+      fontWeight: activeTab===k?600:400,
+      border: activeTab===k?"1px solid var(--t1)":"1px solid transparent",
+    }),
   });
 
   return (
     <div className="animate-fade-in">
+      <PageHeader
+        title="Insights"
+        description="Track published performance, import Metricool data, and watch the intelligence layer mature as volume grows."
+        meta={`${publishedCt} published`}
+        action={
+          <button onClick={importCSV} disabled={importing} style={buttonStyle("secondary", { padding:"6px 14px" })}>
+            <Upload size={13}/> Import Metricool CSV
+          </button>
+        }
+      />
 
       {/* Intelligence stage */}
       <IntelligenceStage count={publishedCt} />
@@ -288,13 +299,6 @@ export default function AnalyzeView({ stories, onUpdate }) {
       {/* Tab nav */}
       <div style={{ display:"flex", gap:4, marginBottom:20, flexWrap:"wrap" }}>
         {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={tabStyle(t.key)}>{t.label}</button>)}
-        <button onClick={importCSV} disabled={importing} style={{
-          marginLeft:"auto", padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:500,
-          background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer",
-          display:"flex", alignItems:"center", gap:6,
-        }}>
-          <Upload size={13}/> Import Metricool CSV
-        </button>
       </div>
 
       {csvStatus && <div style={{ padding:"8px 12px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)", fontSize:12, color:"var(--t2)", marginBottom:14 }}>{csvStatus}</div>}
@@ -310,12 +314,7 @@ export default function AnalyzeView({ stories, onUpdate }) {
               { label:"Avg completion", value: published.filter(s=>s.metrics_completion).length ? (published.filter(s=>s.metrics_completion).reduce((a,s)=>a+parseFloat(s.metrics_completion),0)/published.filter(s=>s.metrics_completion).length).toFixed(1) : "—", suffix:"%" },
               { label:"Avg score",    value: published.filter(s=>s.score_total).length ? Math.round(published.filter(s=>s.score_total).reduce((a,s)=>a+s.score_total,0)/published.filter(s=>s.score_total).length) : "—", suffix:"/100" },
             ].map(m=>(
-              <div key={m.label} style={{ padding:"12px 14px", borderRadius:9, background:"var(--bg2)", border:"1px solid var(--border)" }}>
-                <div style={{ fontSize:10, color:"var(--t3)", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.06em" }}>{m.label}</div>
-                <div style={{ fontSize:22, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t1)", letterSpacing:0 }}>
-                  {m.value}<span style={{ fontSize:12, color:"var(--t3)", fontWeight:400 }}>{m.suffix}</span>
-                </div>
-              </div>
+              <StatCard key={m.label} label={m.label} value={m.value} suffix={m.suffix} />
             ))}
           </div>
 
@@ -327,14 +326,14 @@ export default function AnalyzeView({ stories, onUpdate }) {
             </div>
           ) : (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-              <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)" }}>
+              <Panel>
                 <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>By Format</div>
                 <BarChart data={byFormat} valueKey="avg" labelKey="label"/>
-              </div>
-              <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)" }}>
+              </Panel>
+              <Panel>
                 <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>By Era</div>
                 <BarChart data={byEra} valueKey="avg" labelKey="label"/>
-              </div>
+              </Panel>
             </div>
           )}
         </div>
@@ -351,10 +350,10 @@ export default function AnalyzeView({ stories, onUpdate }) {
             { label:"Format",    data:byFormat    },
             { label:"Era",       data:byEra       },
           ].map(({ label, data }) => (
-            <div key={label} style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)" }}>
+            <Panel key={label}>
               <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>{label} · avg completion rate</div>
               {data.length ? <BarChart data={data} valueKey="avg" labelKey="label"/> : <div style={{ fontSize:12, color:"var(--t4)" }}>No data yet</div>}
-            </div>
+            </Panel>
           ))}
         </div>
       )}

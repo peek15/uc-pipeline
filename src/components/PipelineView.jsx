@@ -4,6 +4,7 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import { Search, ArrowRight, FileText, Eye, ChevronRight, ChevronDown, SlidersHorizontal, X, Check, Trash2, RefreshCw } from "lucide-react";
 import { STAGES, ERAS, ARCHETYPES, ACCENT, FORMATS, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
+import { PageHeader, Pill, buttonStyle } from "@/components/OperationalUI";
 
 const SORT_OPTS = [
   { key: "date_desc",      label: "Newest first" },
@@ -204,6 +205,11 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
   return (
     <div ref={containerRef} className="animate-fade-in" tabIndex={-1} style={{outline:"none"}}>
+      <PageHeader
+        title="Stories"
+        description="Review, filter, audit, and move stories through the editorial pipeline."
+        meta={`${filtered.length} visible · ${stories.length} total`}
+      />
 
       {/* Controls */}
       <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:8,marginBottom:12,alignItems:"center"}}>
@@ -215,23 +221,19 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         <select value={sort} onChange={e=>setSort(e.target.value)} style={sel}>
           {SORT_OPTS.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
-        <button onClick={reAuditVisible} disabled={auditing || !filtered.length} style={{
-          height:34,padding:"0 12px",borderRadius:8,fontSize:12,fontWeight:500,
-          background:"var(--fill2)", color:auditing || !filtered.length ? "var(--t4)" : "var(--t2)",
-          border:"1px solid var(--border)",cursor:auditing || !filtered.length ? "not-allowed" : "pointer",display:"flex",alignItems:"center",gap:6,
-        }}>
+        <button onClick={reAuditVisible} disabled={auditing || !filtered.length} style={buttonStyle("secondary", {
+          height:34,padding:"0 12px", color:auditing || !filtered.length ? "var(--t4)" : "var(--t2)",
+          cursor:auditing || !filtered.length ? "not-allowed" : "pointer",
+        })}>
           <RefreshCw size={13} className={auditing ? "spin" : ""}/> {auditing ? "Auditing..." : "Re-audit visible"}
         </button>
-        <button onClick={()=>setShowFilters(f=>!f)} style={{
-          height:34,padding:"0 14px",borderRadius:8,fontSize:12,fontWeight:500,
-          background:showFilters||activeFilterCount>0?"var(--t1)":"var(--fill2)",
-          color:showFilters||activeFilterCount>0?"var(--bg)":"var(--t2)",
-          border:"1px solid var(--border)",cursor:"pointer",display:"flex",alignItems:"center",gap:6,
-        }}>
+        <button onClick={()=>setShowFilters(f=>!f)} style={buttonStyle(showFilters||activeFilterCount>0 ? "primary" : "secondary", {
+          height:34,padding:"0 14px",
+        })}>
           <SlidersHorizontal size={13}/> Filters
           {activeFilterCount>0&&<span style={{width:16,height:16,borderRadius:"50%",background:"var(--bg)",color:"var(--t1)",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{activeFilterCount}</span>}
         </button>
-        {activeFilterCount>0&&<button onClick={clearFilters} style={{height:34,padding:"0 10px",borderRadius:8,fontSize:12,color:"var(--t3)",background:"transparent",border:"1px solid var(--border)",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}><X size={12}/> Clear</button>}
+        {activeFilterCount>0&&<button onClick={clearFilters} style={buttonStyle("ghost", { height:34,padding:"0 10px" })}><X size={12}/> Clear</button>}
       </div>
 
       {/* Filter panel */}
@@ -296,14 +298,10 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         {allFilters.map(f=>{
           const ct = f.key==="all"?stories.filter(s=>!["rejected","archived"].includes(s.status)).length:stories.filter(s=>s.status===f.key).length;
           return (
-            <button key={f.key} onClick={()=>setStageFilter(f.key)} style={{
-              padding:"6px 12px",borderRadius:7,fontSize:12,fontWeight:stageFilter===f.key?600:400,
-              background:stageFilter===f.key?"var(--t1)":"transparent",
-              color:stageFilter===f.key?"var(--bg)":"var(--t3)",
-              border:stageFilter===f.key?"1px solid var(--t1)":"1px solid transparent",
-              cursor:"pointer",transition:"all 0.12s",
-            }}>
-              {f.label}{ct>0?` · ${ct}`:""}
+            <button key={f.key} onClick={()=>setStageFilter(f.key)} style={{ background:"transparent", border:"none", padding:0, cursor:"pointer" }}>
+              <Pill active={stageFilter===f.key} style={{ fontSize:12, fontWeight:stageFilter===f.key?600:500, padding:"6px 12px", borderRadius:7 }}>
+                {f.label}{ct>0?` · ${ct}`:""}
+              </Pill>
             </button>
           );
         })}

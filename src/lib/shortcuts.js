@@ -151,7 +151,7 @@ export const SHORTCUTS = {
   scriptCollapse:  { combo: { key: "ArrowLeft" },        description: "Collapse story",                              group: "Script" },
   scriptToggle:    { combo: { key: " " },                description: "Toggle expand",                               group: "Script" },
   scriptGenerate:  { combo: { alt: true, key: "g" },     description: "Generate script for focused story",           group: "Script" },
-  scriptTranslate: { combo: { alt: true, key: "t" },     description: "Translate to FR/ES/PT",                       group: "Script" },
+  scriptTranslate: { combo: { alt: true, key: "t" },     description: "Translate configured languages",              group: "Script" },
   scriptCopy:      { combo: { mod: true, key: "c" },     description: "Copy current language script (when expanded)", group: "Script" },
 
   // Production

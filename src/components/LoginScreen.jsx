@@ -1,15 +1,17 @@
 "use client";
 
 export default function LoginScreen({ onSignIn, loading, error }) {
+  const appName = process.env.NEXT_PUBLIC_APP_NAME || "Content Pipeline";
+  const orgName = process.env.NEXT_PUBLIC_ORG_NAME || "Peek Media";
   return (
     <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
       <div style={{ width:"100%", maxWidth:360 }}>
 
         {/* Brand */}
         <div style={{ marginBottom:40 }}>
-          <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>Peek Media</div>
+          <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>{orgName}</div>
           <h1 className="font-display" style={{ fontSize:32, fontWeight:700, letterSpacing:0, color:"var(--t1)", lineHeight:1.1, marginBottom:8 }}>
-            Uncle Carter<br />Pipeline
+            {appName}
           </h1>
           <p style={{ fontSize:14, color:"var(--t3)", lineHeight:1.5 }}>
             Content production hub — research, script, schedule, analyze.

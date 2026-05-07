@@ -201,7 +201,7 @@ function UploadForm({ onUploaded, brandProfileId, workspaceId }) {
 
       <div>
         <label style={s.label}>Name</label>
-        <input value={meta.name} onChange={e => set("name", e.target.value)} style={s.input} placeholder="e.g. Uncle Carter outro v1" />
+        <input value={meta.name} onChange={e => set("name", e.target.value)} style={s.input} placeholder="e.g. Brand outro v1" />
       </div>
 
       <div>

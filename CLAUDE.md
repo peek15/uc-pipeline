@@ -1,14 +1,14 @@
-# Uncle Carter Pipeline — AI Agent Context
+# Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.17.2
+- App badge/package target: v3.17.3
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
 
 ## Product
-Next.js 14 web app for Peek Studios' Uncle Carter NBA storytelling pipeline.
-The app manages NBA story research, approvals, scripts, production assets,
+Next.js 14 SaaS-ready content pipeline web app. The default seeded workspace
+is Uncle Carter, but active product work should be brand-agnostic. The app manages story research, approvals, scripts, production assets,
 scheduling, provider operations, quality gates, and analytics.
 
 ## Stack
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.3: SaaS Phase 4 brand-facing hardening: dynamic app chrome, generic login/metadata copy, configured-language CSV import/export, dynamic story/detail readiness, generic Airtable subject/script fields, and settings workspace copy cleanup.
 - v3.17.2: SaaS Phase 3 brand-agnostic workflow layer: scripts JSONB adapter, configured-language Create/Produce/Calendar readiness, brand-aware quality gate terms, agent prompt subject language, and generic pipeline agent context.
 - v3.17.1: SaaS Phase 2 brand-config engine: brand taxonomy helper, brand-aware Research prompt/options, brand-aware script/scoring/translation/reach prompts, taxonomy/prompt defaults in settings.
 - v3.17.0: SaaS Phase 1 tenant foundation: workspace tables/RLS scaffold, tenant-scoped story reads/writes, tenant-scoped settings/provider/assets/AI usage wiring.
@@ -86,6 +87,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Reach/script/scoring/translation prompts should prefer `brand_config` over UC defaults.
 - Production voice and assembly agents now read legacy script columns plus `stories.scripts`.
 - Calendar language readiness and Production Alert translation warnings use configured brand languages.
+- App chrome, CSV import/export, detail readiness, and story list readiness should use `getBrandName()`, `subjectText()`, `getBrandLanguages()`, and `getStoryScript()` instead of hardcoded UC/player/FR-ES-PT assumptions.
 
 ## UI System
 - Shared operational primitives live in `src/components/OperationalUI.jsx`.

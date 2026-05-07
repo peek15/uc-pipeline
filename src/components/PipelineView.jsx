@@ -5,6 +5,7 @@ import { Search, ArrowRight, FileText, Eye, ChevronRight, ChevronDown, SlidersHo
 import { STAGES, ERAS, ARCHETYPES, ACCENT, FORMATS, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import { PageHeader, Pill, buttonStyle } from "@/components/OperationalUI";
+import { getBrandLanguages, getBrandProgrammes, getStoryScript, subjectText } from "@/lib/brandConfig";
 
 const SORT_OPTS = [
   { key: "date_desc",      label: "Newest first" },
@@ -27,8 +28,17 @@ function ScoreDots({ score }) {
   );
 }
 
-function getReadiness(s) {
-  return [!!s.script, !!s.script_fr, !!s.script_es, !!s.script_pt, !!s.hook, s.score_total!=null, !!s.scheduled_date, ["produced","published"].includes(s.status)].filter(Boolean).length;
+function getReadiness(s, settings) {
+  const languages = getBrandLanguages(settings);
+  const checks = [
+    ...languages.map(l => !!getStoryScript(s, l.key)),
+    !!s.hook,
+    !!s.format,
+    s.score_total != null,
+    !!s.scheduled_date,
+    ["produced","published"].includes(s.status),
+  ];
+  return { done: checks.filter(Boolean).length, total: checks.length };
 }
 
 function ScoreBar({ score, label, max=25 }) {
@@ -52,7 +62,7 @@ function getGateStatus(s) {
   return "missing";
 }
 
-export default function PipelineView({ stories, onSelect, onStageChange, onBulkAction, onBulkReject, onBulkDelete, onUpdate, setActiveTab }) {
+export default function PipelineView({ stories, onSelect, onStageChange, onBulkAction, onBulkReject, onBulkDelete, onUpdate, setActiveTab, settings = null }) {
   // Filter state
   const [stageFilter, setStageFilter] = usePersistentState("pipeline_stage",     "all");
   const [search,      setSearch]      = usePersistentState("pipeline_search",    "");
@@ -76,8 +86,11 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   const [focused,     setFocused]     = useState(null);
   const [auditing,    setAuditing]    = useState(false);
   const containerRef = useRef(null);
+  const programmes = useMemo(() => getBrandProgrammes(settings), [settings]);
+  const programmeMap = useMemo(() => Object.fromEntries(programmes.map(p => [p.key, p])), [programmes]);
+  const languageKeys = useMemo(() => getBrandLanguages(settings).map(l => l.key), [settings]);
 
-  const activeFilterCount = [era, archetype, format, hookType, emotAngle, ptStatus, quality, dateFrom, dateTo, minScore>0, minReach>0].filter(Boolean).length;
+  const activeFilterCount = [era, archetype, format, hookType, emotAngle, languageKeys.includes("pt") && ptStatus, quality, dateFrom, dateTo, minScore>0, minReach>0].filter(Boolean).length;
   const clearFilters = () => { setEra(""); setArchetype(""); setFormat(""); setHookType(""); setEmotAngle(""); setPtStatus(""); setQuality(""); setDateFrom(""); setDateTo(""); setMinScore(0); setMinReach(0); setSort("date_desc"); };
 
   const filtered = useMemo(() => {
@@ -87,9 +100,9 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       if (s.status === "archived" && stageFilter !== "archived") return false;
       if (search) {
         const q = search.toLowerCase();
-        const players = Array.isArray(s.players) ? s.players.join(" ") : (s.players||"");
+        const subjects = subjectText(s);
         const searchFields = [
-          s.title, players, s.archetype, s.era, s.angle, s.hook,
+          s.title, subjects, s.archetype, s.era, s.angle, s.hook,
           s.format, s.hook_type, s.emotional_angle,
           ...(s.subject_tags||[])
         ].map(f=>(f||"").toLowerCase());
@@ -102,8 +115,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       if (emotAngle  && s.emotional_angle!== emotAngle)  return false;
       if (minScore   && (s.score_total||0)  < minScore*20) return false;
       if (minReach   && (s.reach_score||0)  < minReach*20) return false;
-      if (ptStatus === "cleared" && !s.pt_review_cleared) return false;
-      if (ptStatus === "pending" && s.pt_review_cleared)  return false;
+      if (ptStatus === "cleared" && languageKeys.includes("pt") && !s.pt_review_cleared) return false;
+      if (ptStatus === "pending" && languageKeys.includes("pt") && s.pt_review_cleared)  return false;
       const gateStatus = getGateStatus(s);
       if (quality && gateStatus !== quality) return false;
       if (dateFrom) { const d = s.created_at?.split("T")[0]; if (!d||d<dateFrom) return false; }
@@ -116,12 +129,12 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       if (sort==="score_desc")     return (b.score_total||0)-(a.score_total||0);
       if (sort==="score_asc")      return (a.score_total||0)-(b.score_total||0);
       if (sort==="reach_desc")     return (b.reach_score||0)-(a.reach_score||0);
-      if (sort==="readiness_desc") return getReadiness(b)-getReadiness(a);
+      if (sort==="readiness_desc") return getReadiness(b, settings).done-getReadiness(a, settings).done;
       if (sort==="title_asc")      return (a.title||"").localeCompare(b.title||"");
       return 0;
     });
     return list;
-  }, [stories, stageFilter, search, era, archetype, format, hookType, emotAngle, ptStatus, quality, minScore, minReach, dateFrom, dateTo, sort]);
+  }, [stories, stageFilter, search, era, archetype, format, hookType, emotAngle, ptStatus, quality, minScore, minReach, dateFrom, dateTo, sort, settings, languageKeys]);
 
   const bySt = {};
   for (const s of filtered) { bySt[s.status] = bySt[s.status]||[]; bySt[s.status].push(s); }
@@ -195,7 +208,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
     setAuditing(true);
     try {
       for (const story of filtered) {
-        const gate = auditStoryQuality(story, stories);
+        const gate = auditStoryQuality(story, stories, settings);
         await onUpdate(story.id, qualityGatePatch(gate));
       }
     } finally {
@@ -215,7 +228,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:8,marginBottom:12,alignItems:"center"}}>
         <div style={{position:"relative"}}>
           <Search size={13} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--t3)",pointerEvents:"none"}} />
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title, players, angle, hook, era, format..."
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title, subjects, angle, hook, era, format..."
             style={{width:"100%",padding:"8px 12px 8px 32px",borderRadius:8,background:"var(--fill2)",border:"1px solid var(--border-in)",color:"var(--t1)",fontSize:13,outline:"none"}} />
         </div>
         <select value={sort} onChange={e=>setSort(e.target.value)} style={sel}>
@@ -242,10 +255,10 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
           {[
             {label:"Era",       val:era,       set:setEra,       opts:ERAS.map(e=>({key:e,label:e}))},
             {label:"Archetype", val:archetype, set:setArchetype, opts:ARCHETYPES.map(a=>({key:a,label:a}))},
-            {label:"Format",    val:format,    set:setFormat,    opts:FORMATS.map(f=>({key:f.key,label:f.label}))},
+            {label:"Format",    val:format,    set:setFormat,    opts:programmes.map(f=>({key:f.key,label:f.label}))},
             {label:"Hook type", val:hookType,  set:setHookType,  opts:HOOK_TYPES.map(h=>({key:h.key,label:h.label}))},
             {label:"Angle",     val:emotAngle, set:setEmotAngle, opts:EMOTIONAL_ANGLES.map(a=>({key:a,label:a.charAt(0).toUpperCase()+a.slice(1)}))},
-            {label:"PT status", val:ptStatus,  set:setPtStatus,  opts:[{key:"cleared",label:"Cleared"},{key:"pending",label:"Pending review"}]},
+            ...(languageKeys.includes("pt") ? [{label:"PT status", val:ptStatus,  set:setPtStatus,  opts:[{key:"cleared",label:"Cleared"},{key:"pending",label:"Pending review"}]}] : []),
             {label:"Quality",   val:quality,   set:setQuality,   opts:[{key:"passed",label:"Passed"},{key:"warnings",label:"Warnings"},{key:"blocked",label:"Blocked"},{key:"missing",label:"Not audited"}]},
           ].map(({label,val,set,opts})=>(
             <div key={label}>
@@ -346,13 +359,13 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 const isSelected = selected.has(s.id);
                 const isExpanded = expanded.has(s.id);
                 const isFocused  = focused===s.id;
-                const players    = Array.isArray(s.players)?s.players.join(", "):(s.players||"");
+                const subjects   = subjectText(s);
                 const dateStr    = s.created_at?new Date(s.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"";
                 const hasScore   = s.score_total!=null;
                 const ac         = ACCENT[s.archetype]||"var(--border)";
-                const fmt        = FORMAT_MAP[s.format];
-                const readiness  = getReadiness(s);
-                const rColor     = readiness===8?"var(--success)":readiness>=5?"var(--warning)":"var(--t4)";
+                const fmt        = programmeMap[s.format] || FORMAT_MAP[s.format];
+                const readiness  = getReadiness(s, settings);
+                const rColor     = readiness.done===readiness.total?"var(--success)":readiness.done>=Math.ceil(readiness.total * 0.65)?"var(--warning)":"var(--t4)";
                 const gateStatus = getGateStatus(s);
                 const gateWarnings = Number(s.quality_gate_warnings) || 0;
                 const gateBlockers = Number(s.quality_gate_blockers) || 0;
@@ -388,8 +401,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                             <span style={{color:ac,fontWeight:500}}>{s.archetype}</span>
                           </span>
                           {s.era&&<><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
-                          {players&&<><span style={{color:"var(--t4)"}}>·</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{players}</span></>}
-                          {s.script&&<><span style={{color:"var(--t4)"}}>·</span><FileText size={11} color="var(--t3)"/></>}
+                          {subjects&&<><span style={{color:"var(--t4)"}}>·</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{subjects}</span></>}
+                          {getStoryScript(s, "en")&&<><span style={{color:"var(--t4)"}}>·</span><FileText size={11} color="var(--t3)"/></>}
                           {s.metrics_views&&<><span style={{color:"var(--t4)"}}>·</span><Eye size={11}/><span>{parseInt(s.metrics_views)>1000?`${(parseInt(s.metrics_views)/1000).toFixed(1)}k`:s.metrics_views}</span></>}
                           {gateStatus!=="missing"&&<><span style={{color:"var(--t4)"}}>·</span><span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:3,background:gateBlockers?"var(--error-bg)":gateWarnings?"var(--warning-bg)":"var(--success-bg)",color:gateBlockers?"var(--error)":gateWarnings?"var(--warning)":"var(--success)",border:`0.5px solid ${gateBlockers?"var(--error-border)":gateWarnings?"rgba(196,154,60,0.30)":"rgba(74,155,127,0.24)"}`}}>Gate {gateBlockers ? `${gateBlockers} blocker` : gateWarnings ? `${gateWarnings} warning${gateWarnings===1?"":"s"}` : gateScore != null ? gateScore : "passed"}</span></>}
                         </div>
@@ -404,7 +417,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                       {/* Score + readiness + date */}
                       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <span style={{fontSize:9,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:rColor,padding:"1px 4px",borderRadius:3,background:readiness===8?"rgba(74,155,127,0.1)":"transparent"}}>{readiness}/8</span>
+                          <span style={{fontSize:9,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:rColor,padding:"1px 4px",borderRadius:3,background:readiness.done===readiness.total?"rgba(74,155,127,0.1)":"transparent"}}>{readiness.done}/{readiness.total}</span>
                           {hasScore&&<span style={{fontSize:11,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)"}}>{s.score_total}</span>}
                           {!hasScore&&s.obscurity>0&&<ScoreDots score={s.obscurity}/>}
                         </div>
@@ -427,12 +440,12 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                       )}
                     </div>
 
-                    {/* Expanded view — angle, hook, players, scores only. No script. */}
+                    {/* Expanded view — angle, hook, subjects, scores only. No script. */}
                     {isExpanded&&(
                       <div className="animate-fade-in" style={{padding:"0 12px 14px 46px",borderTop:"1px solid var(--border2)"}}>
                         {s.angle&&<div style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,marginTop:10,marginBottom:8}}>{s.angle}</div>}
                         {s.hook&&<div style={{fontSize:13,color:"var(--t3)",fontStyle:"italic",paddingLeft:12,borderLeft:"2px solid var(--border)",lineHeight:1.5,marginBottom:10}}>"{s.hook}"</div>}
-                        {players&&<div style={{fontSize:12,color:"var(--t3)",marginBottom:10,lineHeight:1.6,whiteSpace:"normal"}}>{players}</div>}
+                        {subjects&&<div style={{fontSize:12,color:"var(--t3)",marginBottom:10,lineHeight:1.6,whiteSpace:"normal"}}>{subjects}</div>}
 
                         {hasScore&&(
                           <div style={{padding:"10px 12px",borderRadius:7,background:"var(--bg2)",border:"1px solid var(--border2)",marginBottom:10}}>

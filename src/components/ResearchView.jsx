@@ -4,7 +4,7 @@ import { Search, Check, X, Star, Plus, Play, Pause, Trash2 } from "lucide-react"
 import { suggestFormat } from "@/lib/constants";
 import { runPrompt } from "@/lib/ai/runner";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
-import { brandConfigForPrompt, getBrandTaxonomy } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getBrandTaxonomy, subjectText } from "@/lib/brandConfig";
 
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null) return null;
@@ -399,7 +399,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                         )}
                       </div>
                       <div style={{ fontSize:15, fontWeight:600, color:"var(--t1)", letterSpacing:0, lineHeight:1.3, marginBottom:4 }}>{s.title}</div>
-                      {s.players&&<div style={{ fontSize:12, color:"var(--t3)", marginBottom:8 }}>{Array.isArray(s.players)?s.players.join(", "):s.players}</div>}
+                      {subjectText(s)&&<div style={{ fontSize:12, color:"var(--t3)", marginBottom:8 }}>{subjectText(s)}</div>}
                     </div>
                     <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft:12 }}>
                       {sc!=null&&(

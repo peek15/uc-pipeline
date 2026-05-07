@@ -1,14 +1,23 @@
 "use client";
 import { useState, useEffect } from "react";
 import { X, Circle, Check, FileText, Film, Award, Archive, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import { STAGES, LANGS, ACCENT, FORMATS, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES } from "@/lib/constants";
+import { STAGES, ACCENT, FORMATS, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
+import { getBrandLanguages, getStoryScript, subjectText } from "@/lib/brandConfig";
 
 const ICONS = { accepted:Circle, approved:Check, scripted:FileText, produced:Film, published:Award, rejected:X, archived:Archive };
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
 
-function getReadiness(s) {
-  return [!!s.script,!!s.script_fr,!!s.script_es,!!s.script_pt,!!s.hook,!!s.format,s.score_total!=null,!!s.scheduled_date].filter(Boolean).length;
+function getReadiness(s, settings) {
+  const languages = getBrandLanguages(settings);
+  const checks = [
+    ...languages.map(l => !!getStoryScript(s, l.key)),
+    !!s.hook,
+    !!s.format,
+    s.score_total != null,
+    !!s.scheduled_date,
+  ];
+  return { done: checks.filter(Boolean).length, total: checks.length };
 }
 
 function ScoreRow({ label, value, max=100, muted=false }) {
@@ -24,12 +33,14 @@ function ScoreRow({ label, value, max=100, muted=false }) {
   );
 }
 
-export default function DetailModal({ story, stories=[], onClose, onDelete, onStageChange, onUpdate }) {
+export default function DetailModal({ story, stories=[], onClose, onDelete, onStageChange, onUpdate, settings = null }) {
   const [currentId, setCurrentId] = useState(story.id);
   const [editing,   setEditing]   = useState(false);
 
   const current = stories.find(s=>s.id===currentId) || story;
   const idx     = stories.findIndex(s=>s.id===currentId);
+  const languages = getBrandLanguages(settings);
+  const hasPortuguese = languages.some(l => l.key === "pt") && !!getStoryScript(current, "pt");
 
   const [localFormat,    setLocalFormat]    = useState(current.format||"");
   const [localHookType,  setLocalHookType]  = useState(current.hook_type||"");
@@ -71,7 +82,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
 
   const runQualityAudit = () => {
     if (!onUpdate) return;
-    const gate = auditStoryQuality(current, stories);
+    const gate = auditStoryQuality(current, stories, settings);
     onUpdate(current.id, qualityGatePatch(gate));
   };
 
@@ -79,9 +90,9 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const Icon    = ICONS[current.status]||Circle;
   const ac      = ACCENT[current.archetype]||"var(--border)";
   const fmt     = FORMAT_MAP[current.format];
-  const players = Array.isArray(current.players)?current.players.join(", "):(current.players||"");
-  const readiness = getReadiness(current);
-  const rColor  = readiness===8?"#4A9B7F":readiness>=5?"#C49A3C":"var(--t3)";
+  const subjects = subjectText(current);
+  const readiness = getReadiness(current, settings);
+  const rColor  = readiness.done===readiness.total?"#4A9B7F":readiness.done>=Math.ceil(readiness.total * 0.65)?"#C49A3C":"var(--t3)";
   const gate = current.quality_gate && typeof current.quality_gate === "object" ? current.quality_gate : null;
   const gateIssues = Array.isArray(gate?.issues) ? gate.issues : [];
   const gateWarnings = Number(current.quality_gate_warnings ?? gate?.warningCount) || 0;
@@ -141,8 +152,8 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
 
             <h2 style={{fontSize:19,fontWeight:600,letterSpacing:0,lineHeight:1.25,color:"var(--t1)",marginBottom:8}}>{current.title}</h2>
 
-            {/* Players — full, no truncation */}
-            {players&&<div style={{fontSize:13,color:"var(--t3)",marginBottom:14,lineHeight:1.5}}>{players}</div>}
+            {/* Subjects — full, no truncation */}
+            {subjects&&<div style={{fontSize:13,color:"var(--t3)",marginBottom:14,lineHeight:1.5}}>{subjects}</div>}
 
             {current.statline&&<div style={{padding:"7px 10px",borderRadius:6,background:"var(--fill2)",border:"1px solid var(--border)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:12,color:"var(--t2)",marginBottom:12}}>{current.statline}</div>}
 
@@ -153,10 +164,10 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
               </div>
             )}
 
-            {current.script&&(
+            {getStoryScript(current, "en")&&(
               <div style={{borderRadius:7,padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",maxHeight:180,overflowY:"auto"}}>
-                <div style={{fontSize:10,color:"var(--t4)",marginBottom:6,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>v{current.script_version||1} · {wc(current.script)} words</div>
-                <div className="type-script" style={{fontSize:13,color:"var(--t2)",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{current.script}</div>
+                <div style={{fontSize:10,color:"var(--t4)",marginBottom:6,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>v{current.script_version||1} · {wc(getStoryScript(current, "en"))} words</div>
+                <div className="type-script" style={{fontSize:13,color:"var(--t2)",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{getStoryScript(current, "en")}</div>
               </div>
             )}
           </div>
@@ -184,17 +195,17 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Readiness</div>
-                <span style={{fontSize:12,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:rColor}}>{readiness}/8</span>
+                <span style={{fontSize:12,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:rColor}}>{readiness.done}/{readiness.total}</span>
               </div>
               <div style={{height:3,borderRadius:2,background:"var(--bg3)",overflow:"hidden",marginBottom:10}}>
-                <div style={{height:"100%",width:`${(readiness/8)*100}%`,background:rColor,borderRadius:2}}/>
+                <div style={{height:"100%",width:`${(readiness.done/readiness.total)*100}%`,background:rColor,borderRadius:2}}/>
               </div>
               {/* Lang badges */}
               <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                {LANGS.filter(l=>l.key==="en"?current.script:current[`script_${l.key}`]).map(l=>(
+                {languages.filter(l=>getStoryScript(current, l.key)).map(l=>(
                   <span key={l.key} style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,background:"var(--fill2)",color:"var(--t2)",border:"1px solid var(--border)"}}>{l.label}</span>
                 ))}
-                {current.script_pt&&(
+                {hasPortuguese&&(
                   <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:4,background:current.pt_review_cleared?"rgba(74,155,127,0.1)":"rgba(196,154,60,0.1)",color:current.pt_review_cleared?"#4A9B7F":"#C49A3C",border:`1px solid ${current.pt_review_cleared?"rgba(74,155,127,0.2)":"rgba(196,154,60,0.2)"}`}}>
                     PT {current.pt_review_cleared?"✓":"⚠"}
                   </span>
@@ -297,7 +308,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
               </div>
 
               {/* PT flag */}
-              {current.script_pt&&(
+              {hasPortuguese&&(
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)",marginTop:8}}>
                   <div>
                     <div style={{fontSize:12,fontWeight:500,color:"var(--t1)"}}>PT reviewed</div>

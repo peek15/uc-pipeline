@@ -19,9 +19,9 @@ import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, tenantStorageKey } from "@/lib/brand";
-import { brandConfigForPrompt, getBrandLanguages, getStoryScript, storyScriptPatch } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.17.2";
+const VERSION = "3.17.3";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -317,11 +317,17 @@ export default function Home() {
   }, [handleUndo, handleProductionShortcut]);
 
   const exportCSV = () => {
-    const hdr = ["Title","Status","Archetype","Era","Players","Angle","Hook","Script","Script FR","Script ES","Script PT","Score","Views","Completion%","Saves"];
+    const languages = getBrandLanguages(appSettings);
+    const hdr = ["Title","Status","Archetype","Era","Subjects","Angle","Hook",...languages.map(l => `Script ${l.key.toUpperCase()}`),"Score","Views","Completion%","Saves"];
     const esc = v => `"${(v||"").toString().replace(/"/g,'""')}"`;
-    const rows = stories.map(s => [esc(s.title),s.status,esc(s.archetype),esc(s.era),esc(s.players),esc(s.angle),esc(s.hook),esc(s.script),esc(s.script_fr),esc(s.script_es),esc(s.script_pt),s.score_total,s.metrics_views,s.metrics_completion,s.metrics_saves]);
+    const rows = stories.map(s => [
+      esc(s.title), s.status, esc(s.archetype), esc(s.era), esc(subjectText(s)), esc(s.angle), esc(s.hook),
+      ...languages.map(l => esc(getStoryScript(s, l.key))),
+      s.score_total, s.metrics_views, s.metrics_completion, s.metrics_saves,
+    ]);
     const blob = new Blob([[hdr.join(","),...rows.map(r=>r.join(","))].join("\n")],{type:"text/csv"});
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `UC_pipeline_${new Date().toISOString().split("T")[0]}.csv`; a.click();
+    const slug = getBrandName(appSettings).replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "pipeline";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${slug}_pipeline_${new Date().toISOString().split("T")[0]}.csv`; a.click();
   };
 
   const parseCSVLine = (line) => {
@@ -348,30 +354,34 @@ export default function Home() {
       const lines = text.split(/\r?\n/).filter(l=>l.trim());
       const header = parseCSVLine(lines.shift() || "").map(h=>h.toLowerCase());
       const idx = (name) => header.indexOf(name.toLowerCase());
+      const findIdx = (...names) => names.map(idx).find(i => i >= 0) ?? -1;
+      const languages = getBrandLanguages(appSettings);
       const existing = new Set(stories.map(s=>s.title?.toLowerCase())); const n = [];
       for (const line of lines) {
         const p = parseCSVLine(line);
-        const title = p[idx("Title")] || p[0];
+        const title = p[findIdx("Title")] || p[0];
         if (!title || existing.has(title.toLowerCase())) continue;
-        n.push({
+        const base = {
           id: crypto.randomUUID(),
           title,
-          status: p[idx("Status")] || "accepted",
-          archetype: p[idx("Archetype")] || "",
-          era: p[idx("Era")] || "",
-          players: p[idx("Players")] || "",
-          angle: p[idx("Angle")] || "",
-          hook: p[idx("Hook")] || "",
-          script: p[idx("Script")] || "",
-          script_fr: p[idx("Script FR")] || "",
-          script_es: p[idx("Script ES")] || "",
-          script_pt: p[idx("Script PT")] || "",
-          score_total: parseInt(p[idx("Score")]) || null,
-          metrics_views: parseInt(p[idx("Views")]) || null,
-          metrics_completion: parseFloat(p[idx("Completion%")]) || null,
-          metrics_saves: parseInt(p[idx("Saves")]) || null,
+          status: p[findIdx("Status")] || "accepted",
+          archetype: p[findIdx("Archetype")] || "",
+          era: p[findIdx("Era")] || "",
+          players: p[findIdx("Subjects", "Players", "Player(s)")] || "",
+          angle: p[findIdx("Angle")] || "",
+          hook: p[findIdx("Hook")] || "",
+          score_total: parseInt(p[findIdx("Score")]) || null,
+          metrics_views: parseInt(p[findIdx("Views")]) || null,
+          metrics_completion: parseFloat(p[findIdx("Completion%")]) || null,
+          metrics_saves: parseInt(p[findIdx("Saves")]) || null,
           created_at: new Date().toISOString(),
-        });
+        };
+        let storyWithScripts = base;
+        for (const lang of languages) {
+          const value = p[findIdx(`Script ${lang.key.toUpperCase()}`, lang.key === "en" ? "Script" : "")] || "";
+          if (value) storyWithScripts = { ...storyWithScripts, ...storyScriptPatch(lang.key, value, storyWithScripts) };
+        }
+        n.push(storyWithScripts);
       }
       if (n.length>0) await addStories(n);
     }; input.click();
@@ -380,6 +390,7 @@ export default function Home() {
   const counts   = {};
   for (const s of stories) counts[s.status] = (counts[s.status]||0)+1;
   const bankSize = stories.filter(s=>["approved","scripted","produced"].includes(s.status)).length;
+  const brandName = getBrandName(appSettings);
 
   const Spinner = () => (
     <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -416,7 +427,7 @@ export default function Home() {
           {sidebarOpen
             ? <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)" }}>Uncle Carter</span>
+                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{brandName}</span>
                   <span style={{ fontSize:9, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
                 </div>
               </div>
@@ -575,7 +586,7 @@ export default function Home() {
 
             {/* All views mounted always — CSS visibility preserves state */}
             <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
-              <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} />
+              <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} />
             </div>
             <div style={{ display: tab==="research"   ? "block" : "none" }}>
               <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} />
@@ -607,7 +618,7 @@ export default function Home() {
       />
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
-      {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
+      {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} settings={appSettings} />}
       <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", tenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={tenant} />
       <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
       <ToastContainer />

@@ -1098,7 +1098,7 @@ export default function ProvidersSection({ tenant }) {
           </ProviderCard>
 
           <ProviderCard id="licensed" title="Visual — licensed"
-            description="Real photos with cleared rights. Used for player faces, real moments."
+            description="Real photos with cleared rights. Used for real people, places, products, and moments."
             status={status(configs.visual_licensed)}>
             <ProviderForm brandId={brandProfileId} providerType="visual_licensed"
               providers={LICENSED_PROVIDERS} initial={configs.visual_licensed} onSaved={reload}

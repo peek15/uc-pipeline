@@ -9,6 +9,7 @@ import ProvidersSection from "@/components/ProvidersSection";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
 import { normalizeTenant, tenantStorageKey } from "@/lib/brand";
+import { getAppName, getBrandLanguages } from "@/lib/brandConfig";
 
 const DEFAULT_SETTINGS = {
   brand: {
@@ -368,6 +369,8 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [stratContext,  setStratContext]  = useState("");
   const [progAudit,     setProgAudit]     = useState(null);
   const [progRunning,   setProgRunning]   = useState(false);
+  const appName = getAppName(settings);
+  const languageSummary = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join(" → ");
 
   useEffect(() => { if (initialSettings) setSettings(mergeSettings(initialSettings)); }, [initialSettings]);
 
@@ -849,7 +852,7 @@ ${fileText.slice(0,3000)}` : text };
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                 <div>
                   <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>Brand name</div>
-                  <input value={settings.brand.name||""} onChange={e=>upd("brand.name",e.target.value)} style={inputStyle} placeholder="Uncle Carter"/>
+                  <input value={settings.brand.name||""} onChange={e=>upd("brand.name",e.target.value)} style={inputStyle} placeholder="Brand name"/>
                 </div>
                 <div>
                   <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>Content type</div>
@@ -949,7 +952,7 @@ ${fileText.slice(0,3000)}` : text };
                 <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:12 }}>Content defaults</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
                   {[
-                    { key:"auto_translate", label:"Auto-translate after script generation", hint:"EN → FR/ES/PT automatically" },
+                    { key:"auto_translate", label:"Auto-translate after script generation", hint:`${languageSummary} automatically` },
                     { key:"auto_score",     label:"Auto-score stories on research",         hint:"AI scores every result" },
                   ].map(({key,label,hint})=>(
                     <div key={key} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>
@@ -1329,7 +1332,7 @@ ${fileText.slice(0,3000)}` : text };
                 Score weights, voice patterns, visual intelligence, and predictive scoring activate automatically as published content accumulates. No manual configuration needed — the system learns from every published video.
               </div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderTop:"0.5px solid var(--border2)", marginTop:4 }}>
-                <span style={{ fontSize:11, color:"var(--t4)" }}>Uncle Carter Pipeline</span>
+                <span style={{ fontSize:11, color:"var(--t4)" }}>{appName}</span>
                 <span style={{ fontSize:11, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)" }}>v{VERSION_NUM}</span>
               </div>
             </div>
@@ -1391,9 +1394,9 @@ ${fileText.slice(0,3000)}` : text };
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
                 {[
-                  { label:"Workspace", value:"Uncle Carter Pipeline", editable:false },
+                  { label:"Workspace", value:appName, editable:false },
                   { label:"Workspace ID",   value:WORKSPACE_ID, editable:false, mono:true },
-                  { label:"Plan",           value:"Peek Studios — Internal", editable:false },
+                  { label:"Plan",           value:"Internal", editable:false },
                 ].map(({label,value,editable,mono})=>(
                   <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>
                     <span style={{ fontSize:13, color:"var(--t3)" }}>{label}</span>

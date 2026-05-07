@@ -4,6 +4,10 @@ export function getBrandName(settings) {
   return settings?.brand?.name || "Uncle Carter";
 }
 
+export function getAppName(settings) {
+  return `${getBrandName(settings)} Pipeline`;
+}
+
 export function getBrandVoice(settings) {
   return settings?.brand?.voice || "Calm, warm, slightly mischievous. Never reactive. Never loud.";
 }
@@ -134,4 +138,8 @@ export function subjectText(story) {
   if (!story) return "";
   if (Array.isArray(story.players)) return story.players.join(", ");
   return String(story.players || story.subjects || story.subject || "").trim();
+}
+
+export function subjectLabel(settings) {
+  return settings?.taxonomy?.subject_label || "Subjects";
 }

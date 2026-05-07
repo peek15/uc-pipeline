@@ -29,7 +29,7 @@ export async function POST(request) {
 
     const fields = {
       Title: story.title || "",
-      "Player(s)": story.players || "",
+      "Subject(s)": Array.isArray(story.players) ? story.players.join(", ") : (story.players || story.subjects || ""),
       Era: story.era || "",
       Archetype: story.archetype || "",
       "Obscurity Score": story.obscurity || 3,
@@ -38,10 +38,18 @@ export async function POST(request) {
       Status: story.status || "accepted",
     };
 
-    if (story.script) fields["Script"] = story.script;
-    if (story.script_fr) fields["Script FR"] = story.script_fr;
-    if (story.script_es) fields["Script ES"] = story.script_es;
-    if (story.script_pt) fields["Script PT"] = story.script_pt;
+    const scripts = story.scripts && typeof story.scripts === "object" ? story.scripts : {};
+    if (story.script || scripts.en) fields["Script"] = story.script || scripts.en;
+    const scriptEntries = {
+      ...scripts,
+      ...(story.script_fr ? { fr: story.script_fr } : {}),
+      ...(story.script_es ? { es: story.script_es } : {}),
+      ...(story.script_pt ? { pt: story.script_pt } : {}),
+    };
+    for (const [lang, text] of Object.entries(scriptEntries)) {
+      if (lang === "en" || !text) continue;
+      fields[`Script ${String(lang).toUpperCase()}`] = text;
+    }
     if (story.scheduled_date) fields["Publish Date"] = story.scheduled_date;
     if (story.metrics_views) fields["Views"] = parseInt(story.metrics_views) || 0;
     if (story.metrics_completion) fields["Completion Rate"] = parseFloat(story.metrics_completion) || 0;

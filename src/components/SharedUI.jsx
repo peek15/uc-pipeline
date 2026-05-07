@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { X, Undo2 } from "lucide-react";
+import { getBrandLanguages, getStoryScript, hasAllConfiguredScripts } from "@/lib/brandConfig";
 
 // ─── TOAST SYSTEM ───
 let toastListeners = [];
@@ -107,12 +108,12 @@ export function EmptyState({ icon: Icon, title, description, action, actionLabel
 }
 
 // ─── ONBOARDING CHECKLIST ───
-export function OnboardingChecklist({ stories }) {
+export function OnboardingChecklist({ stories, settings = null }) {
   const steps = [
     { label: "Find your first stories", done: stories.length > 0, tab: "research" },
     { label: "Approve 3 stories", done: stories.filter(s => s.status !== "accepted" && s.status !== "rejected").length >= 3 },
-    { label: "Generate a script", done: stories.some(s => s.script) },
-    { label: "Translate to all languages", done: stories.some(s => s.script_fr && s.script_es && s.script_pt) },
+    { label: "Generate a script", done: stories.some(s => getStoryScript(s, "en")) },
+    { label: "Translate to configured languages", done: stories.some(s => hasAllConfiguredScripts(s, settings)) },
     { label: "Schedule an episode", done: stories.some(s => s.scheduled_date) },
     { label: "Log your first metrics", done: stories.some(s => s.metrics_views) },
   ];
@@ -161,12 +162,9 @@ export function StoryScore({ score }) {
 }
 
 // ─── READINESS CHECKLIST (inline) ───
-export function ReadinessIndicator({ story }) {
+export function ReadinessIndicator({ story, settings = null }) {
   const checks = [
-    { key: "script", done: !!story.script },
-    { key: "FR", done: !!story.script_fr },
-    { key: "ES", done: !!story.script_es },
-    { key: "PT", done: !!story.script_pt },
+    ...getBrandLanguages(settings).map(lang => ({ key: lang.key.toUpperCase(), done: !!getStoryScript(story, lang.key) })),
     { key: "date", done: !!story.scheduled_date },
   ];
   const done = checks.filter(c => c.done).length;

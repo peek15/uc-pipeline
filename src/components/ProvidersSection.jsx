@@ -634,6 +634,118 @@ function DailyCostChart({ calls }) {
   );
 }
 
+function callsSince(calls, days) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return calls.filter(call => {
+    const t = call.created_at ? new Date(call.created_at).getTime() : 0;
+    return t >= cutoff;
+  });
+}
+
+function sumCallCost(calls) {
+  return calls.reduce((sum, call) => sum + (Number(call.cost_estimate) || 0), 0);
+}
+
+function groupProviderSpend(calls) {
+  return Object.values(calls.reduce((acc, call) => {
+    const key = call.provider_name || "unknown";
+    acc[key] = acc[key] || { provider: key, calls: 0, cost: 0, failed: 0, durationTotal: 0, durationCount: 0 };
+    acc[key].calls += 1;
+    acc[key].cost += Number(call.cost_estimate) || 0;
+    if (!call.success) acc[key].failed += 1;
+    if (call.duration_ms != null) {
+      acc[key].durationTotal += Number(call.duration_ms) || 0;
+      acc[key].durationCount += 1;
+    }
+    return acc;
+  }, {})).sort((a, b) => b.cost - a.cost || b.calls - a.calls);
+}
+
+function CostAlertRow({ label, cost, budget, note }) {
+  const enabled = Number(budget) > 0;
+  const ratio = enabled ? cost / Number(budget) : 0;
+  const state = !enabled ? "off" : ratio >= 1 ? "over" : ratio >= 0.8 ? "near" : "ok";
+  const color = state === "over" ? "var(--error)" : state === "near" ? "var(--warning)" : state === "ok" ? "var(--success)" : "var(--t4)";
+  const status = state === "over" ? "Over budget" : state === "near" ? "Near limit" : state === "ok" ? "Healthy" : "Disabled";
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", padding: "10px 0", borderTop: "0.5px solid var(--border2)" }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7, flexWrap: "wrap" }}>
+          {state === "ok" ? <CheckCircle2 size={13} color={color} /> : <AlertCircle size={13} color={color} />}
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)" }}>{label}</span>
+          <span style={{ fontSize: 10, color, fontWeight: 600 }}>{status}</span>
+        </div>
+        <div style={{ height: 5, borderRadius: 999, background: "var(--fill2)", overflow: "hidden" }}>
+          <div style={{ width: `${Math.min(100, Math.round(ratio * 100))}%`, height: "100%", background: color }} />
+        </div>
+        {note && <div style={{ fontSize: 11, color: "var(--t4)", marginTop: 6 }}>{note}</div>}
+      </div>
+      <div style={{ textAlign: "right", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{formatCost(cost)}</div>
+        <div style={{ fontSize: 10, color: "var(--t4)" }}>{enabled ? `of ${formatCost(Number(budget))}` : "no limit"}</div>
+      </div>
+    </div>
+  );
+}
+
+function CostAlerts({ settings, onChange, cost7, cost30, byProvider30 }) {
+  const updateNumber = (key, value) => {
+    const parsed = Number(value);
+    onChange({ ...settings, [key]: Number.isFinite(parsed) ? Math.max(0, parsed) : 0 });
+  };
+  const providerLimit = Number(settings.providerThirtyDayBudget) || 0;
+  const watchedProviders = providerLimit > 0
+    ? byProvider30.filter(row => row.cost >= providerLimit * 0.8).slice(0, 4)
+    : [];
+
+  return (
+    <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 220, flex: "1 1 260px" }}>
+          <div style={{ ...labelStyle, marginBottom: 5 }}>Cost alerts</div>
+          <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.45 }}>
+            Based on logged cost estimates in ai_calls. Live provider billing can be added only for providers that expose a usable billing API.
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(86px, 1fr))", gap: 8, flex: "1 1 290px", maxWidth: 380 }}>
+          {[
+            ["7d budget", "sevenDayBudget"],
+            ["30d budget", "thirtyDayBudget"],
+            ["Provider 30d", "providerThirtyDayBudget"],
+          ].map(([label, key]) => (
+            <label key={key} style={{ minWidth: 0 }}>
+              <div style={{ ...labelStyle, marginBottom: 4 }}>{label}</div>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={settings[key] ?? 0}
+                onChange={(e) => updateNumber(key, e.target.value)}
+                style={{ ...inputStyle, padding: "6px 8px", textAlign: "right", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+      <CostAlertRow label="Rolling 7-day spend" cost={cost7} budget={settings.sevenDayBudget} note="Good for catching runaway tests, script retries, or accidental batch jobs." />
+      <CostAlertRow label="Rolling 30-day spend" cost={cost30} budget={settings.thirtyDayBudget} note="Your broader monthly guardrail across all logged AI/provider calls." />
+      {watchedProviders.length ? (
+        <div style={{ marginTop: 8, paddingTop: 10, borderTop: "0.5px solid var(--border2)" }}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>Provider alerts</div>
+          {watchedProviders.map(row => (
+            <CostAlertRow key={row.provider} label={`${row.provider} · 30 days`} cost={row.cost} budget={settings.providerThirtyDayBudget} note={`${row.calls} calls logged`} />
+          ))}
+        </div>
+      ) : (
+        <div style={{ marginTop: 8, paddingTop: 10, borderTop: "0.5px solid var(--border2)", fontSize: 11, color: "var(--t4)" }}>
+          No provider is near the per-provider 30-day limit.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProviderHealth({ configs, onReload }) {
   const [testing, setTesting] = useState(null);
   const [testingAll, setTestingAll] = useState(false);
@@ -714,6 +826,11 @@ function ProviderHealth({ configs, onReload }) {
 function AIUsage() {
   const [calls, setCalls] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [alertSettings, setAlertSettings] = usePersistentState("providers_cost_alerts", {
+    sevenDayBudget: 10,
+    thirtyDayBudget: 40,
+    providerThirtyDayBudget: 20,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -737,26 +854,14 @@ function AIUsage() {
     return acc;
   }, { calls: 0, failed: 0, totalCost: 0, tokensIn: 0, tokensOut: 0, byType: {} });
   const byType = Object.values(summary.byType).sort((a, b) => b.cost - a.cost || b.calls - a.calls);
-  const byProvider = Object.values(calls.reduce((acc, call) => {
-    const key = call.provider_name || "unknown";
-    acc[key] = acc[key] || { provider: key, calls: 0, cost: 0, failed: 0, durationTotal: 0, durationCount: 0 };
-    acc[key].calls += 1;
-    acc[key].cost += Number(call.cost_estimate) || 0;
-    if (!call.success) acc[key].failed += 1;
-    if (call.duration_ms != null) {
-      acc[key].durationTotal += Number(call.duration_ms) || 0;
-      acc[key].durationCount += 1;
-    }
-    return acc;
-  }, {})).sort((a, b) => b.cost - a.cost || b.calls - a.calls);
+  const byProvider = groupProviderSpend(calls);
   const failures = calls.filter(c => !c.success).slice(0, 6);
-  const costSince = (days) => {
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    return calls.reduce((sum, call) => {
-      const t = call.created_at ? new Date(call.created_at).getTime() : 0;
-      return t >= cutoff ? sum + (Number(call.cost_estimate) || 0) : sum;
-    }, 0);
-  };
+  const calls7 = callsSince(calls, 7);
+  const calls30 = callsSince(calls, 30);
+  const costToday = sumCallCost(callsSince(calls, 1));
+  const cost7 = sumCallCost(calls7);
+  const cost30 = sumCallCost(calls30);
+  const byProvider30 = groupProviderSpend(calls30);
   const workflowChart = byType.slice(0, 7).map((row, i) => ({
     label: row.type,
     cost: row.cost,
@@ -815,9 +920,9 @@ function AIUsage() {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 }}>
         {[
-          ["Today", loading ? "..." : formatCost(costSince(1))],
-          ["7 days", loading ? "..." : formatCost(costSince(7))],
-          ["30 days", loading ? "..." : formatCost(costSince(30))],
+          ["Today", loading ? "..." : formatCost(costToday)],
+          ["7 days", loading ? "..." : formatCost(cost7)],
+          ["30 days", loading ? "..." : formatCost(cost30)],
           ["Loaded total", loading ? "..." : formatCost(summary.totalCost)],
           ["Recent calls", loading ? "..." : summary.calls],
           ["Input tokens", loading ? "..." : summary.tokensIn.toLocaleString()],
@@ -829,6 +934,7 @@ function AIUsage() {
           </div>
         ))}
       </div>
+      <CostAlerts settings={alertSettings} onChange={setAlertSettings} cost7={cost7} cost30={cost30} byProvider30={byProvider30} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
         <DailyCostChart calls={calls} />
         <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>

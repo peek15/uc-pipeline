@@ -1,75 +1,465 @@
 "use client";
 
-import { useEffect } from "react";
-import ScriptView from "@/components/ScriptView";
-import ProductionView from "@/components/ProductionView";
-import { PageHeader, Panel, buttonStyle } from "@/components/OperationalUI";
+import { useEffect, useMemo, useState } from "react";
+import { Check, Copy, Download, FileText, Image as ImageIcon, Library, Mic2, PackageCheck, RefreshCw, Search, Sparkles, Video, Wand2 } from "lucide-react";
+import { ACCENT, LANGS, hasAllLaunchLanguages, isInProductionQueue } from "@/lib/constants";
+import { runPrompt, runPromptStream } from "@/lib/ai/runner";
+import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
+import { usePersistentState } from "@/lib/usePersistentState";
 import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/shortcuts";
+import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
+import AssetLibraryModal from "@/components/AssetLibraryModal";
+import {
+  AssetMatchesSection,
+  AssemblySection,
+  BriefSection,
+  PipelineProgress,
+  ReadinessStrip,
+  VisualSection,
+  VoiceSection,
+  matchesProductionFilter,
+} from "@/components/ProductionView";
+
+const BRAND_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
+
+function wc(text) {
+  return (text || "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+function getScript(story, lang, localLangs, streaming) {
+  if (!story) return "";
+  if (lang === "en") return streaming[story.id] !== undefined ? streaming[story.id] : story.script || "";
+  return localLangs[story.id]?.[lang] ?? story[`script_${lang}`] ?? "";
+}
+
+function createProgress(story) {
+  const checks = [
+    { key: "script", label: "Script", done: !!story.script },
+    { key: "translations", label: "Langs", done: hasAllLaunchLanguages(story) },
+    { key: "brief", label: "Brief", done: !!story.visual_brief },
+    { key: "assets", label: "Assets", done: !!story.visual_refs?.selected?.length },
+    { key: "voice", label: "Voice", done: !!(story.audio_refs && Object.keys(story.audio_refs || {}).length) },
+    { key: "assembly", label: "Assembly", done: !!story.assembly_brief },
+  ];
+  const done = checks.filter(c => c.done).length;
+  return { checks, done, total: checks.length, percent: Math.round((done / checks.length) * 100) };
+}
+
+function nextAction(story) {
+  if (!story.script) return "Write script";
+  if (!hasAllLaunchLanguages(story)) return "Translate";
+  if (!story.visual_brief) return "Brief";
+  if (!story.visual_refs?.selected?.length) return "Visuals";
+  if (!(story.audio_refs && Object.keys(story.audio_refs || {}).length)) return "Voice";
+  if (!story.assembly_brief) return "Assembly";
+  return "Review";
+}
+
+function queueFilterMatch(story, filter) {
+  if (filter === "all") return true;
+  if (filter === "needs_script") return !story.script;
+  if (filter === "needs_translation") return !!story.script && !hasAllLaunchLanguages(story);
+  if (filter === "needs_brief") return !!story.script && !story.visual_brief;
+  if (filter === "needs_visuals") return matchesProductionFilter(story, "needs_assets");
+  if (filter === "needs_voice") return matchesProductionFilter(story, "needs_voice");
+  if (filter === "ready_review") return createProgress(story).done >= 5;
+  return true;
+}
+
+function stepForMode(mode, current) {
+  if (mode === "write" && !["script", "translations"].includes(current)) return "script";
+  if (mode === "produce" && ["script", "translations"].includes(current)) return "brief";
+  return current;
+}
+
+function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming }) {
+  const [viewLang, setViewLang] = usePersistentState("create_script_lang", "en");
+  const [loading, setLoading] = useState(null);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setError(null);
+    if (!getScript(story, viewLang, localLangs, streaming)) setViewLang("en");
+  }, [story.id]);
+
+  const translateLang = async (lang, scriptText) => {
+    const { text } = await runPrompt({
+      type: "translate-script",
+      params: { script: scriptText, lang_key: lang },
+      context: { story_id: story.id },
+      parse: false,
+    });
+    return text;
+  };
+
+  const generate = async (withTranslate = true) => {
+    setLoading(`en-${story.id}`);
+    setError(null);
+    setStreaming(prev => ({ ...prev, [story.id]: "" }));
+    try {
+      const { text: enText } = await runPromptStream({
+        type: "generate-script",
+        params: { story },
+        context: { story_id: story.id },
+        onChunk: (live) => setStreaming(prev => ({ ...prev, [story.id]: live })),
+      });
+      setStreaming(prev => { const next = { ...prev }; delete next[story.id]; return next; });
+      await onUpdate(story.id, { script: enText, script_version: (story.script_version || 0) + 1, status: "scripted" });
+
+      if (withTranslate) {
+        const nextLangs = {};
+        for (const lang of ["fr", "es", "pt"]) {
+          setLoading(`${lang}-${story.id}`);
+          const translated = await translateLang(lang, enText);
+          nextLangs[lang] = translated;
+          setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id] || {}), [lang]: translated } }));
+          await onUpdate(story.id, { [`script_${lang}`]: translated });
+        }
+      }
+    } catch (err) {
+      setError(err?.message || String(err));
+      setStreaming(prev => { const next = { ...prev }; delete next[story.id]; return next; });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const translateMissing = async () => {
+    const script = story.script || getScript(story, "en", localLangs, streaming);
+    if (!script) return;
+    setError(null);
+    try {
+      for (const lang of ["fr", "es", "pt"]) {
+        if (getScript(story, lang, localLangs, streaming)) continue;
+        setLoading(`${lang}-${story.id}`);
+        const translated = await translateLang(lang, script);
+        setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id] || {}), [lang]: translated } }));
+        await onUpdate(story.id, { [`script_${lang}`]: translated });
+      }
+    } catch (err) {
+      setError(err?.message || String(err));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const exportVoicePack = async () => {
+    const slug = (story.title || "story").slice(0, 30).replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+    const { default: JSZip } = await import("jszip");
+    const zip = new JSZip();
+    LANGS.forEach(lang => {
+      const text = getScript(story, lang.key, localLangs, streaming);
+      if (text) zip.file(`UC-${slug}_${lang.key}.txt`, text);
+    });
+    const blob = await zip.generateAsync({ type: "blob" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `UC-${slug}-voice-pack.zip`;
+    a.click();
+  };
+
+  const scriptText = getScript(story, viewLang, localLangs, streaming);
+  const available = LANGS.filter(lang => getScript(story, lang.key, localLangs, streaming));
+  const isStreaming = story.id in streaming;
+  const isBusy = !!loading;
+
+  return (
+    <Panel>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>Script workspace</div>
+          <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>Generate the English script first, then keep translations attached to the same story record.</div>
+        </div>
+        <Pill active={!!story.script}>{story.script ? `v${story.script_version || 1} · ${wc(story.script)}w` : "no script"}</Pill>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+        {LANGS.map(lang => {
+          const has = !!getScript(story, lang.key, localLangs, streaming);
+          const busy = loading === `${lang.key}-${story.id}`;
+          return (
+            <button key={lang.key} onClick={() => has && setViewLang(lang.key)} disabled={!has}
+              style={buttonStyle(viewLang === lang.key && has ? "primary" : "ghost", { padding: "5px 10px", opacity: has ? 1 : 0.45 })}>
+              {busy ? <RefreshCw size={11} className="spin" /> : has ? <Check size={11} /> : null}
+              {lang.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {scriptText ? (
+        <div style={{ position: "relative", padding: "16px 18px", borderRadius: 8, background: "var(--bg2)", border: "0.5px solid var(--border)", maxHeight: 360, overflowY: "auto", marginBottom: 12 }}>
+          {isStreaming && <span style={{ position: "absolute", top: 12, right: 14, width: 7, height: 7, borderRadius: "50%", background: "var(--t1)", animation: "pulse 1s ease infinite" }} />}
+          <div className="type-script" style={{ fontSize: 14, lineHeight: 1.85, color: "var(--t2)", whiteSpace: "pre-wrap" }}>{scriptText}</div>
+        </div>
+      ) : (
+        <div style={{ padding: "36px 18px", borderRadius: 8, background: "var(--bg2)", border: "0.5px solid var(--border)", textAlign: "center", color: "var(--t4)", fontSize: 12, marginBottom: 12 }}>
+          This story is ready for its first script pass.
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => generate(true)} disabled={isBusy} style={buttonStyle("primary", { padding: "7px 12px" })}>
+          <Sparkles size={12} /> {story.script ? "Rewrite + translate" : "Generate script"}
+        </button>
+        {story.script && available.length < 4 && (
+          <button onClick={translateMissing} disabled={isBusy} style={buttonStyle("secondary", { padding: "7px 12px" })}>
+            <Wand2 size={12} /> Translate missing
+          </button>
+        )}
+        {scriptText && (
+          <button onClick={async () => { await navigator.clipboard.writeText(scriptText); setCopied(true); setTimeout(() => setCopied(false), 1600); }} style={buttonStyle("ghost", { padding: "7px 12px" })}>
+            <Copy size={12} /> {copied ? "Copied" : `Copy ${viewLang.toUpperCase()}`}
+          </button>
+        )}
+        {available.length > 0 && (
+          <button onClick={exportVoicePack} style={buttonStyle("ghost", { padding: "7px 12px" })}>
+            <Download size={12} /> Voice pack
+          </button>
+        )}
+      </div>
+      {error && <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 7, color: "var(--error)", background: "var(--error-bg)", border: "0.5px solid var(--error-border)", fontSize: 11 }}>{error}</div>}
+    </Panel>
+  );
+}
+
+function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming }) {
+  return (
+    <ScriptWorkspace
+      story={story}
+      onUpdate={onUpdate}
+      localLangs={localLangs}
+      setLocalLangs={setLocalLangs}
+      streaming={streaming}
+      setStreaming={setStreaming}
+    />
+  );
+}
 
 export default function CreateView({ stories, onUpdate, mode, onModeChange }) {
-  const ready = stories.filter(s => ["approved", "scripted", "produced"].includes(s.status));
-  const queue = stories.filter(s =>
-    ["scripted", "produced"].includes(s.status) ||
-    ["briefing", "visuals", "voice", "assembly", "ready"].includes(s.production_status)
-  );
+  const [selectedId, setSelectedId] = usePersistentState("create_selected_story", null);
+  const [activeStep, setActiveStep] = usePersistentState("create_active_step", stepForMode(mode, "script"));
+  const [queueFilter, setQueueFilter] = usePersistentState("create_queue_filter", "all");
+  const [localLangs, setLocalLangs] = useState({});
+  const [streaming, setStreaming] = useState({});
+  const [showLibrary, setShowLibrary] = useState(false);
 
-  const modes = [
-    { key: "write", label: "Write", meta: `${ready.length} ready`, description: "Scripts, translations, voice packs" },
-    { key: "produce", label: "Produce", meta: `${queue.length} in flight`, description: "Briefs, assets, voice, visuals, assembly" },
+  const queue = useMemo(() => (stories || []).filter(story =>
+    ["approved", "scripted", "produced"].includes(story.status) || isInProductionQueue(story)
+  ), [stories]);
+
+  const filteredQueue = useMemo(() => queue.filter(story => queueFilterMatch(story, queueFilter)), [queue, queueFilter]);
+  const selected = queue.find(story => story.id === selectedId) || filteredQueue[0] || queue[0] || null;
+
+  const steps = [
+    { key: "script", label: "Script", icon: FileText, done: !!selected?.script, mode: "write" },
+    { key: "translations", label: "Translations", icon: Wand2, done: selected ? hasAllLaunchLanguages(selected) : false, mode: "write" },
+    { key: "brief", label: "Brief", icon: Search, done: !!selected?.visual_brief, mode: "produce" },
+    { key: "assets", label: "Assets", icon: Library, done: !!selected?.visual_refs?.selected?.length, mode: "produce" },
+    { key: "voice", label: "Voice", icon: Mic2, done: !!(selected?.audio_refs && Object.keys(selected.audio_refs || {}).length), mode: "produce" },
+    { key: "visuals", label: "Visuals", icon: ImageIcon, done: !!selected?.visual_refs?.selected?.length, mode: "produce" },
+    { key: "assembly", label: "Assembly", icon: Video, done: !!selected?.assembly_brief, mode: "produce" },
+    { key: "review", label: "Review", icon: PackageCheck, done: selected ? createProgress(selected).done >= 5 : false, mode: "produce" },
   ];
-  const activeIndex = Math.max(0, modes.findIndex(m => m.key === mode));
+
+  useEffect(() => {
+    if (!selectedId && queue.length) setSelectedId(queue[0].id);
+    if (selectedId && !queue.find(story => story.id === selectedId) && queue.length) setSelectedId(queue[0].id);
+  }, [queue, selectedId, setSelectedId]);
+
+  useEffect(() => {
+    setActiveStep(current => stepForMode(mode, current));
+  }, [mode, setActiveStep]);
+
+  useEffect(() => {
+    const current = steps.find(step => step.key === activeStep);
+    if (current?.mode && current.mode !== mode) onModeChange?.(current.mode);
+  }, [activeStep, mode, onModeChange, steps]);
 
   useEffect(() => {
     const handler = (e) => {
       if (shouldIgnoreFromInput()) return;
-      if (!matches(e, SHORTCUTS.createModePrev.combo) && !matches(e, SHORTCUTS.createModeNext.combo)) return;
-      e.preventDefault();
-      const nextIndex = matches(e, SHORTCUTS.createModeNext.combo)
-        ? Math.min(activeIndex + 1, modes.length - 1)
-        : Math.max(activeIndex - 1, 0);
-      onModeChange(modes[nextIndex].key);
+      if (!selected) return;
+
+      if (matches(e, SHORTCUTS.createModePrev.combo) || matches(e, SHORTCUTS.createModeNext.combo)) {
+        e.preventDefault();
+        const idx = Math.max(0, steps.findIndex(step => step.key === activeStep));
+        const next = matches(e, SHORTCUTS.createModeNext.combo)
+          ? Math.min(idx + 1, steps.length - 1)
+          : Math.max(idx - 1, 0);
+        setActiveStep(steps[next].key);
+        return;
+      }
+
+      if (matches(e, SHORTCUTS.productionDown.combo) || matches(e, SHORTCUTS.productionUp.combo)) {
+        e.preventDefault();
+        const idx = filteredQueue.findIndex(story => story.id === selected.id);
+        const safe = idx === -1 ? 0 : idx;
+        const next = e.key === "ArrowDown"
+          ? Math.min(safe + 1, filteredQueue.length - 1)
+          : Math.max(safe - 1, 0);
+        if (filteredQueue[next]) setSelectedId(filteredQueue[next].id);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeIndex, modes, onModeChange]);
+  }, [activeStep, filteredQueue, selected, setActiveStep, setSelectedId, steps]);
+
+  const filterOptions = [
+    { key: "all", label: "All", count: queue.length },
+    { key: "needs_script", label: "Needs script", count: queue.filter(story => queueFilterMatch(story, "needs_script")).length },
+    { key: "needs_translation", label: "Needs translation", count: queue.filter(story => queueFilterMatch(story, "needs_translation")).length },
+    { key: "needs_brief", label: "Needs brief", count: queue.filter(story => queueFilterMatch(story, "needs_brief")).length },
+    { key: "needs_visuals", label: "Needs visuals", count: queue.filter(story => queueFilterMatch(story, "needs_visuals")).length },
+    { key: "needs_voice", label: "Needs voice", count: queue.filter(story => queueFilterMatch(story, "needs_voice")).length },
+    { key: "ready_review", label: "Ready review", count: queue.filter(story => queueFilterMatch(story, "ready_review")).length },
+  ];
+
+  const saveProductionUpdate = (updates) => selected && onUpdate?.(selected.id, updates || {});
 
   return (
     <div className="animate-fade-in">
+      <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} />
       <PageHeader
         title="Create"
-        description="Write scripts, translate voice packs, and produce assets from one creation workspace."
-        meta={mode === "write" ? modes[0].meta : modes[1].meta}
+        description="One selected story moves through script, translations, production assets, assembly, and review."
+        meta={selected ? `${createProgress(selected).done}/${createProgress(selected).total} complete` : `${queue.length} stories`}
+        action={
+          <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
+            <Library size={12} /> Asset library
+          </button>
+        }
       />
 
-      <Panel style={{ marginBottom:16, padding:"8px" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(210px, 1fr))", gap:8 }}>
-        {modes.map(m => (
-          <button key={m.key} onClick={() => onModeChange(m.key)} style={buttonStyle(mode === m.key ? "primary" : "ghost", {
-            padding:"10px 12px",
-            justifyContent:"space-between",
-            border: mode === m.key ? "0.5px solid var(--t1)" : "0.5px solid var(--border)",
-            textAlign:"left",
-          })}>
-            <span>
-              <span style={{ display:"block", fontSize:13, fontWeight:700 }}>{m.label}</span>
-              <span style={{ display:"block", fontSize:11, opacity:0.72, marginTop:2 }}>{m.description}</span>
-            </span>
-            <span style={{ fontSize:10, opacity:0.7, fontFamily:"var(--font-mono)" }}>{m.meta}</span>
-          </button>
-        ))}
+      {queue.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "80px 0", color: "var(--t4)" }}>
+          <FileText size={32} style={{ margin: "0 auto 12px", display: "block", opacity: 0.25 }} />
+          <div style={{ fontSize: 13 }}>Approve stories to start creating.</div>
         </div>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, marginTop:8, padding:"0 2px", fontSize:10, color:"var(--t4)", flexWrap:"wrap" }}>
-          <span>Move fluidly between scripting and production without leaving Create.</span>
-          <span style={{ fontFamily:"var(--font-mono)" }}>{renderCombo(SHORTCUTS.createModePrev.combo)} / {renderCombo(SHORTCUTS.createModeNext.combo)}</span>
-        </div>
-      </Panel>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+          <Panel style={{ padding: 8, position: "sticky", top: 16 }}>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+              {filterOptions.map(option => (
+                <button key={option.key} onClick={() => setQueueFilter(option.key)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>
+                  <Pill active={queueFilter === option.key}>{option.label} · {option.count}</Pill>
+                </button>
+              ))}
+            </div>
 
-      <div style={{ display: mode === "write" ? "block" : "none" }}>
-        <ScriptView stories={stories} onUpdate={onUpdate} embedded />
-      </div>
-      <div style={{ display: mode === "produce" ? "block" : "none" }}>
-        <ProductionView stories={stories} onUpdate={onUpdate} embedded />
-      </div>
+            <div style={{ display: "grid", gap: 5 }}>
+              {filteredQueue.length ? filteredQueue.map(story => {
+                const isSelected = selected?.id === story.id;
+                const progress = createProgress(story);
+                const ac = ACCENT[story.archetype] || "var(--border)";
+                return (
+                  <button key={story.id} onClick={() => setSelectedId(story.id)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      border: "1px solid transparent",
+                      borderLeft: `3px solid ${ac}`,
+                      background: isSelected ? "var(--bg)" : "transparent",
+                      boxShadow: isSelected ? "var(--shadow-sm)" : "none",
+                      cursor: "pointer",
+                    }}>
+                    <div style={{ fontSize: 13, fontWeight: isSelected ? 700 : 600, color: "var(--t1)", lineHeight: 1.3, marginBottom: 5 }}>{story.title || "(untitled)"}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--t3)", fontSize: 11, marginBottom: 8, flexWrap: "wrap" }}>
+                      <span>{story.archetype || "story"}</span>
+                      {story.era && <><span style={{ color: "var(--t4)" }}>·</span><span>{story.era}</span></>}
+                      <span style={{ color: "var(--t4)" }}>·</span>
+                      <span>{nextAction(story)}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, height: 4, borderRadius: 999, overflow: "hidden", background: "var(--bg3)" }}>
+                        <div style={{ width: `${progress.percent}%`, height: "100%", background: progress.done >= 5 ? "var(--success)" : "var(--t2)" }} />
+                      </div>
+                      <span style={{ fontSize: 10, color: progress.done >= 5 ? "var(--success)" : "var(--t3)", fontFamily: "var(--font-mono)" }}>{progress.done}/{progress.total}</span>
+                    </div>
+                  </button>
+                );
+              }) : (
+                <div style={{ padding: "28px 8px", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>No stories match this filter.</div>
+              )}
+            </div>
+          </Panel>
+
+          <div style={{ minWidth: 0 }}>
+            {selected && (
+              <Panel style={{ padding: "18px 20px" }}>
+                <div style={{ paddingBottom: 14, borderBottom: "0.5px solid var(--border)", marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: "var(--t1)", lineHeight: 1.25 }}>{selected.title}</div>
+                      <div style={{ display: "flex", gap: 9, marginTop: 6, fontSize: 11, color: "var(--t3)", fontFamily: "var(--font-mono)", flexWrap: "wrap" }}>
+                        <span>{selected.format || "standard"}</span><span>·</span><span>{selected.archetype || "—"}</span>
+                        {selected.reach_score != null && <><span>·</span><span>reach {selected.reach_score}</span></>}
+                        {selected.status && <><span>·</span><span>{selected.status}</span></>}
+                      </div>
+                    </div>
+                    <Pill active>{nextAction(selected)}</Pill>
+                  </div>
+                  <PipelineProgress story={selected} />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 6 }}>
+                    {steps.map(step => {
+                      const Icon = step.icon;
+                      const active = activeStep === step.key;
+                      return (
+                        <button key={step.key} onClick={() => setActiveStep(step.key)}
+                          style={buttonStyle(active ? "primary" : "ghost", {
+                            justifyContent: "flex-start",
+                            padding: "7px 10px",
+                            border: active ? "0.5px solid var(--t1)" : "0.5px solid var(--border)",
+                          })}>
+                          <Icon size={12} />
+                          <span>{step.label}</span>
+                          {step.done && <Check size={11} style={{ marginLeft: "auto" }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 10, color: "var(--t4)", fontSize: 10, flexWrap: "wrap" }}>
+                    <span>Same story, same workspace. Step through the whole creation chain without changing tabs.</span>
+                    <span style={{ fontFamily: "var(--font-mono)" }}>{renderCombo(SHORTCUTS.createModePrev.combo)} / {renderCombo(SHORTCUTS.createModeNext.combo)} steps · {renderCombo(SHORTCUTS.productionUp.combo)} / {renderCombo(SHORTCUTS.productionDown.combo)} stories</span>
+                  </div>
+                </div>
+
+                {["brief", "assets", "voice", "visuals", "assembly", "review"].includes(activeStep) && <ReadinessStrip story={selected} />}
+                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} />}
+                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} />}
+                {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={BRAND_PROFILE_ID} onSaved={saveProductionUpdate} />}
+                {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={BRAND_PROFILE_ID} />}
+                {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={BRAND_PROFILE_ID} onSaved={saveProductionUpdate} />}
+                {activeStep === "visuals" && <VisualSection story={selected} brand_profile_id={BRAND_PROFILE_ID} onSaved={saveProductionUpdate} />}
+                {activeStep === "assembly" && <AssemblySection story={selected} brand_profile_id={BRAND_PROFILE_ID} onSaved={saveProductionUpdate} />}
+                {activeStep === "review" && (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    <ReadinessStrip story={selected} />
+                    <Panel style={{ background: "var(--card)" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>Create review</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+                        {createProgress(selected).checks.map(check => (
+                          <div key={check.key} style={{ padding: "10px 12px", borderRadius: 8, background: check.done ? "var(--success-bg)" : "var(--fill2)", border: "0.5px solid var(--border)" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: check.done ? "var(--success)" : "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{check.label}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: check.done ? "var(--success)" : "var(--t3)" }}>{check.done ? "Ready" : "Open"}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 12, fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>
+                        Review is now the end of the same Create path: script, language pack, brief, assets, voice, visuals, and assembly should all resolve here before scheduling.
+                      </div>
+                    </Panel>
+                  </div>
+                )}
+              </Panel>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

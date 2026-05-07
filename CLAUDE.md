@@ -1,7 +1,7 @@
 # Uncle Carter Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.16.8
+- App badge/package target: v3.16.9
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.16.9: Create V2 unified workflow: shared story queue, persistent selected-story workspace, Script-to-Review step tabs, and smoother Write/Produce transition.
 - v3.16.8: Create mode switcher harmonized; Shift+Option/Alt+Arrow switches Write/Produce inside Create.
 - v3.16.7: Create tab merges Write and Produce modes; Calendar auto-fill shortcut remapped to Option/Alt+P.
 - v3.16.6: Phase 2 UI interactions: Calendar drag/drop scheduling, auto-fill plan preview, and Produce agent-step tabs.
@@ -63,9 +64,11 @@ scheduling, provider operations, quality gates, and analytics.
 
 ## Create
 - Component: `src/components/CreateView.jsx`
-- Top-level Create tab contains Write and Produce modes.
-- Create mode shortcut: Shift+Option/Alt+Left/Right.
-- `[[nav:script]]` opens Create → Write; `[[nav:production]]` opens Create → Produce for backward compatibility.
+- Create V2 uses one shared left queue and one selected-story workspace.
+- Steps: Script, Translations, Brief, Assets, Voice, Visuals, Assembly, Review.
+- Shift+Option/Alt+Left/Right moves across Create steps.
+- Option/Alt+Up/Down moves between queued stories.
+- `[[nav:script]]` opens Create near writing; `[[nav:production]]` opens Create near production for backward compatibility.
 
 ## Agent Panel
 - Component: `src/components/AgentPanel.jsx`

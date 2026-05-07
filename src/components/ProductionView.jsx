@@ -55,7 +55,7 @@ function ProgressDots({ story }) {
   return <span style={{ display: "inline-flex", gap: 3 }}>{dot(hasBrief)}{dot(hasVisuals)}{dot(hasAudio)}{dot(hasAssembly)}</span>;
 }
 
-function productionReadiness(story) {
+export function productionReadiness(story) {
   const checks = [
     { key: "brief", label: "Brief", done: !!story.visual_brief },
     { key: "assets", label: "Assets", done: !!story.visual_refs?.selected?.length },
@@ -67,7 +67,7 @@ function productionReadiness(story) {
   return { checks, done, total: checks.length, percent: Math.round((done / checks.length) * 100) };
 }
 
-function matchesProductionFilter(story, filter) {
+export function matchesProductionFilter(story, filter) {
   if (filter === "all") return true;
   if (filter === "needs_brief") return !story.visual_brief;
   if (filter === "needs_assets") return !story.visual_refs?.selected?.length;
@@ -77,7 +77,7 @@ function matchesProductionFilter(story, filter) {
   return true;
 }
 
-function ReadinessStrip({ story }) {
+export function ReadinessStrip({ story }) {
   const readiness = productionReadiness(story);
   const color = readiness.done === readiness.total ? "var(--success)" : readiness.done >= 3 ? "var(--warning)" : "var(--t3)";
   return (
@@ -166,7 +166,7 @@ function StreamPreview({ text }) {
 }
 
 // PipelineProgress — horizontal stage tracker at top of detail panel.
-function PipelineProgress({ story }) {
+export function PipelineProgress({ story }) {
   const [live, setLive] = useState({});
 
   useEffect(() => {
@@ -219,7 +219,7 @@ function PipelineProgress({ story }) {
 
 // ─── Brief section ───────────────────────────────────────
 
-function BriefSection({ story, brand_profile_id, onSaved }) {
+export function BriefSection({ story, brand_profile_id, onSaved }) {
   const [draft, setDraft]       = useState(story.visual_brief || null);
   const [original, setOriginal] = useState(story.visual_brief || null);
   const [running, setRunning]   = useState(false);
@@ -336,7 +336,7 @@ function BriefSection({ story, brand_profile_id, onSaved }) {
 
 const ALL_VOICE_LANGS = ["en", "fr", "es", "pt"];
 
-function VoiceSection({ story, brand_profile_id, onSaved }) {
+export function VoiceSection({ story, brand_profile_id, onSaved }) {
   const [running, setRunning]       = useState(null);
   const [audioRefs, setAudioRefs]   = useState(story.audio_refs || {});
   const [langStatus, setLangStatus] = useState({});
@@ -480,7 +480,7 @@ function VoiceSection({ story, brand_profile_id, onSaved }) {
 
 // ─── Visual section ─────────────────────────────────────
 
-function VisualSection({ story, brand_profile_id, onSaved }) {
+export function VisualSection({ story, brand_profile_id, onSaved }) {
   const [running, setRunning] = useState(false);
   const [result, setResult]   = useState(null);
   const [allAssets, setAllAssets] = useState([]);
@@ -643,7 +643,7 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
 
 // ─── Assembly section ────────────────────────────────────
 
-function AssemblySection({ story, brand_profile_id, onSaved }) {
+export function AssemblySection({ story, brand_profile_id, onSaved }) {
   const [data, setData]           = useState(story.assembly_brief || null);
   const [running, setRunning]     = useState(false);
   const [streamText, setStreamText] = useState("");
@@ -784,7 +784,7 @@ function AssemblySection({ story, brand_profile_id, onSaved }) {
 
 // ─── Asset library matches (unchanged) ──────────────────
 
-function AssetMatchesSection({ story, brand_profile_id }) {
+export function AssetMatchesSection({ story, brand_profile_id }) {
   const [matches, setMatches] = useState(null);
   const [gaps, setGaps] = useState(null);
   const [confidence, setConf] = useState(null);

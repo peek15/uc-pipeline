@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
-import { X, ChevronLeft, ChevronRight, Plus, Circle, RefreshCw } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Plus, Circle, RefreshCw, ShieldCheck, AlertCircle } from "lucide-react";
 import { STAGES, ACCENT, ARCHETYPES, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 
@@ -62,6 +62,88 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+function gateStatus(story) {
+  if (story.quality_gate_status) return story.quality_gate_status;
+  if (Number(story.quality_gate_blockers) > 0) return "blocked";
+  if (Number(story.quality_gate_warnings) > 0) return "warnings";
+  if (story.quality_gate) return "passed";
+  return "missing";
+}
+
+function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
+  const scoreColor = audit.score >= 85 ? "var(--success)" : audit.score >= 65 ? "var(--warning)" : "var(--error)";
+  const issueRows = [
+    { key:"missing", label:"Open slots", value:audit.missingSlots, tone:audit.missingSlots ? "var(--warning)" : "var(--success)" },
+    { key:"quality", label:"Quality flags", value:audit.qualityFlags.length, tone:audit.qualityFlags.length ? "var(--error)" : "var(--success)" },
+    { key:"script", label:"Need scripts", value:audit.needsScript.length, tone:audit.needsScript.length ? "var(--warning)" : "var(--success)" },
+    { key:"sequence", label:"Sequence issues", value:audit.sequenceIssues.length, tone:audit.sequenceIssues.length ? "var(--warning)" : "var(--success)" },
+  ];
+
+  return (
+    <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"0.5px solid var(--border)", marginBottom:16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom:12, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+          <div style={{ width:28, height:28, borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <ShieldCheck size={14} color={scoreColor}/>
+          </div>
+          <div>
+            <div style={{ fontSize:12, fontWeight:700, color:"var(--t1)" }}>Weekly planner audit</div>
+            <div style={{ fontSize:11, color:"var(--t3)" }}>{audit.scheduledCount}/{audit.cadence} target slots · {audit.safeReadyCount} safe ready stories</div>
+          </div>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+          <span style={{ fontSize:18, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:scoreColor }}>{audit.score}</span>
+          <button onClick={onSafeFill} disabled={!audit.missingSlots || !audit.safeReadyCount} style={{
+            padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:600,
+            background:audit.missingSlots&&audit.safeReadyCount?"var(--t1)":"var(--fill2)",
+            color:audit.missingSlots&&audit.safeReadyCount?"var(--bg)":"var(--t3)",
+            border:"0.5px solid var(--border)", cursor:audit.missingSlots&&audit.safeReadyCount?"pointer":"not-allowed",
+          }}>Auto-fill safe</button>
+          <button onClick={onAutoFill} disabled={!audit.missingSlots} style={{
+            padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500,
+            background:"var(--fill2)", color:audit.missingSlots?"var(--t2)":"var(--t4)",
+            border:"0.5px solid var(--border)", cursor:audit.missingSlots?"pointer":"not-allowed",
+          }}>Auto-fill week</button>
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:8, marginBottom:12 }}>
+        {issueRows.map(row => (
+          <div key={row.key} style={{ padding:"9px 10px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>{row.label}</div>
+            <div style={{ fontSize:17, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:row.tone }}>{row.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {(audit.formatGaps.length || audit.qualityFlags.length || audit.sequenceIssues.length) ? (
+        <div style={{ display:"grid", gap:6 }}>
+          {audit.formatGaps.slice(0,3).map(gap => (
+            <div key={gap.format} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"var(--t3)" }}>
+              <AlertCircle size={12} color="var(--warning)"/>
+              <span>{gap.label} is under target this week: {gap.actual}/{gap.target}.</span>
+            </div>
+          ))}
+          {audit.qualityFlags.slice(0,3).map(item => (
+            <div key={item.id} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"var(--t3)" }}>
+              <AlertCircle size={12} color={item.status==="blocked"?"var(--error)":"var(--warning)"}/>
+              <span>{item.title} · {item.status === "missing" ? "not audited" : item.status}.</span>
+            </div>
+          ))}
+          {audit.sequenceIssues.slice(0,2).map(item => (
+            <div key={item.key} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"var(--t3)" }}>
+              <AlertCircle size={12} color="var(--warning)"/>
+              <span>{item.message}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize:11, color:"var(--success)" }}>Week looks balanced against current cadence, quality, and sequence rules.</div>
+      )}
     </div>
   );
 }
@@ -134,8 +216,71 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
     }).sort((a,b)=>b.score-a.score).map(x=>x.s);
   };
 
+  const weekAudit = useMemo(() => {
+    const scheduled = days.flatMap(d => getForDay(d));
+    const futureScheduled = days.filter(d => !isPast(d)).flatMap(d => getForDay(d));
+    const missingSlots = Math.max(0, cadence - scheduled.length);
+
+    const targets = {};
+    for (const [key, pct] of Object.entries(formatMix)) {
+      if (key !== "special_edition") targets[key] = Math.round((pct/100) * cadence);
+    }
+
+    const fmtCounts = {};
+    for (const s of scheduled) {
+      const key = s.format || "standard";
+      fmtCounts[key] = (fmtCounts[key] || 0) + 1;
+    }
+    const formatGaps = Object.entries(targets)
+      .map(([format, target]) => ({
+        format,
+        label: FORMAT_MAP[format]?.label || format,
+        target,
+        actual: fmtCounts[format] || 0,
+      }))
+      .filter(row => row.target > 0 && row.actual < row.target)
+      .sort((a,b) => (b.target-b.actual) - (a.target-a.actual));
+
+    const qualityFlags = futureScheduled
+      .map(s => ({ id:s.id, title:s.title, status:gateStatus(s) }))
+      .filter(s => ["blocked","warnings","missing"].includes(s.status));
+    const needsScript = futureScheduled.filter(s => !s.script);
+
+    const sequenceIssues = [];
+    for (let i = 1; i < days.length; i++) {
+      const prev = getForDay(days[i-1])[0];
+      const curr = getForDay(days[i])[0];
+      if (!prev || !curr) continue;
+      const prevFmt = prev.format || "standard";
+      const currFmt = curr.format || "standard";
+      if (seqRules.no_consecutive_classics && prevFmt === "classics" && currFmt === "classics") {
+        sequenceIssues.push({ key:`classic-${i}`, message:`Back-to-back Classics on ${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][i-1]} and ${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][i]}.` });
+      }
+      if (seqRules.no_consecutive_performance_special && prevFmt === "performance_special" && currFmt === "performance_special") {
+        sequenceIssues.push({ key:`perf-${i}`, message:`Back-to-back Performance Specials on ${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][i-1]} and ${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][i]}.` });
+      }
+      if (seqRules.no_consecutive_same_format && prevFmt === currFmt) {
+        sequenceIssues.push({ key:`same-${i}`, message:`Same format repeats on consecutive days: ${FORMAT_MAP[currFmt]?.label || currFmt}.` });
+      }
+    }
+
+    const safeReadyCount = ready.filter(s => gateStatus(s) !== "blocked").length;
+    const penalty = missingSlots*10 + qualityFlags.length*12 + needsScript.length*5 + sequenceIssues.length*8 + formatGaps.length*4;
+    return {
+      cadence,
+      scheduledCount: scheduled.length,
+      missingSlots,
+      formatGaps,
+      qualityFlags,
+      needsScript,
+      sequenceIssues,
+      safeReadyCount,
+      score: Math.max(0, Math.min(100, 100 - penalty)),
+    };
+  }, [days, stories, ready, cadence, formatMix, seqRules]);
+
   // Auto-fill week respecting cadence + format mix + sequence rules
-  const autoFillWeek = () => {
+  const autoFillWeek = ({ safeOnly=false } = {}) => {
     const futureDays = days.filter(d => !isPast(d) && getForDay(d).length === 0);
     // Respect weekly cadence — only fill up to target
     const alreadyScheduled = days.filter(d => !isPast(d) && getForDay(d).length > 0).length;
@@ -153,7 +298,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
     const fmtCounts = {};
     for (const s of scheduled) { fmtCounts[s.format||"standard"] = (fmtCounts[s.format||"standard"]||0)+1; }
 
-    let available = [...ready];
+    let available = safeOnly ? ready.filter(s => gateStatus(s) !== "blocked") : [...ready];
     let lastFormat = scheduled[scheduled.length-1]?.format || null;
     const placed = [];
 
@@ -262,6 +407,12 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
 
       {/* 3-week coverage */}
       <CoverageSummary stories={stories} weekOffset={weekOffset} cadence={cadence} />
+
+      <CalendarAuditPanel
+        audit={weekAudit}
+        onAutoFill={() => autoFillWeek()}
+        onSafeFill={() => autoFillWeek({ safeOnly:true })}
+      />
 
       {/* Auto-produce banner */}
       {needsScript > 0 && (

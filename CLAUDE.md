@@ -1,7 +1,7 @@
 # Uncle Carter Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.16.0
+- App badge/package target: v3.16.1
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.16.1: Calendar weekly planner audit, safe auto-fill, quality/scripting/sequence planning flags.
 - v3.16.0: provider/agent finish-up, LLM provider keys, next/font typography cleanup, agent write actions.
 - v3.15.3: AI usage CSV export and Quality Gate V2 foundation.
 - v3.15.2: provider usage charts.
@@ -72,6 +73,17 @@ scheduling, provider operations, quality gates, and analytics.
   - `quality_gate_checked_at`
 - Pipeline has a Quality filter: Passed, Warnings, Blocked, Not audited.
 - Detail modal has a Re-audit action.
+
+## Calendar Planner
+- Component: `src/components/CalendarView.jsx`
+- Shows 3-week coverage plus a weekly planner audit for the visible week.
+- Audit checks:
+  - missing cadence slots
+  - quality gate warnings/blockers/missing audits
+  - scheduled stories missing scripts
+  - format mix gaps
+  - sequence-rule issues
+- `Auto-fill safe` avoids Quality Gate blocked stories.
 
 ## Supabase
 - Canonical schema file: `supabase-schema.sql`

@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
-const ALLOWED_DOMAIN = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
+const ALLOWED_DOMAIN    = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
+const BRAND_PROFILE_ID  = "00000000-0000-0000-0000-000000000001";
 
 async function authenticate(request) {
   const authHeader = request.headers.get("authorization");
@@ -24,6 +25,34 @@ function rateLimit(userId) {
   limits.count++;
   global._agentLimits[userId] = limits;
   return limits.count > 20;
+}
+
+function serviceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
+
+// Load LLM key from provider_secrets, fall back to env var
+async function loadLLMKey(provider) {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const providerType = provider === "openai" ? "llm_openai" : "llm_anthropic";
+      const { data } = await serviceClient()
+        .from("provider_secrets")
+        .select("secrets")
+        .eq("brand_profile_id", BRAND_PROFILE_ID)
+        .eq("provider_type", providerType)
+        .eq("active", true)
+        .maybeSingle();
+      if (data?.secrets?.api_key) return data.secrets.api_key;
+    } catch {}
+  }
+  if (provider === "anthropic") return process.env.ANTHROPIC_API_KEY || null;
+  if (provider === "openai")    return process.env.OPENAI_API_KEY    || null;
+  return null;
 }
 
 // ── Provider routing ──────────────────────────────────────
@@ -60,9 +89,8 @@ function transformMessagesForOpenAI(messages, system) {
   return out;
 }
 
-async function callAnthropic({ model, system, messages, maxTokens }) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY not configured");
+async function callAnthropic({ model, system, messages, maxTokens, key }) {
+  if (!key) throw new Error("Anthropic API key not configured");
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -113,9 +141,8 @@ async function callAnthropic({ model, system, messages, maxTokens }) {
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
 }
 
-async function callOpenAI({ model, system, messages, maxTokens }) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("OPENAI_API_KEY not configured");
+async function callOpenAI({ model, system, messages, maxTokens, key }) {
+  if (!key) throw new Error("OpenAI API key not configured");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -165,12 +192,40 @@ async function callOpenAI({ model, system, messages, maxTokens }) {
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
 }
 
-// GET — return which providers are configured (client uses this to hide unavailable models)
-export async function GET() {
-  return Response.json({
-    anthropic: !!process.env.ANTHROPIC_API_KEY,
-    openai:    !!process.env.OPENAI_API_KEY,
-  });
+// GET — return which providers are available for this tenant
+// Checks Supabase provider_secrets first, falls back to env vars
+export async function GET(request) {
+  let anthropic = !!process.env.ANTHROPIC_API_KEY;
+  let openai    = !!process.env.OPENAI_API_KEY;
+
+  const authHeader = request.headers.get("authorization");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+
+  if (token && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const anonClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      );
+      const { data: { user } } = await anonClient.auth.getUser(token);
+      if (user?.email?.endsWith(`@${ALLOWED_DOMAIN}`)) {
+        const { data } = await serviceClient()
+          .from("provider_secrets")
+          .select("provider_type, secrets")
+          .eq("brand_profile_id", BRAND_PROFILE_ID)
+          .in("provider_type", ["llm_openai", "llm_anthropic"])
+          .eq("active", true);
+        if (data) {
+          for (const row of data) {
+            if (row.provider_type === "llm_anthropic" && row.secrets?.api_key) anthropic = true;
+            if (row.provider_type === "llm_openai"    && row.secrets?.api_key) openai    = true;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return Response.json({ anthropic, openai });
 }
 
 export async function POST(request) {
@@ -181,8 +236,9 @@ export async function POST(request) {
   const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700 } = await request.json();
 
   try {
-    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens });
-    return await callAnthropic({ model, system, messages, maxTokens });
+    const key = await loadLLMKey(provider);
+    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key });
+    return await callAnthropic({ model, system, messages, maxTokens, key });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }

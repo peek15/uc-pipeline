@@ -13,7 +13,7 @@ function ScoreBar({ score, label, max = 25 }) {
       <div style={{ flex:1, height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden" }}>
         <div style={{ height:"100%", width:`${(score/max)*100}%`, background:"var(--t1)", borderRadius:2 }} />
       </div>
-      <span style={{ fontSize:10, fontFamily:"'DM Mono',monospace", color:"var(--t2)", width:20, textAlign:"right" }}>{score}</span>
+      <span style={{ fontSize:10, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t2)", width:20, textAlign:"right" }}>{score}</span>
     </div>
   );
 }
@@ -258,7 +258,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           />
         </div>
         <input value={count} onChange={e=>setCount(e.target.value.replace(/[^0-9]/g,""))}
-          style={{ width:52, padding:"9px 0", borderRadius:8, textAlign:"center", fontSize:13, fontWeight:700, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", outline:"none", fontFamily:"'DM Mono',monospace" }} />
+          style={{ width:52, padding:"9px 0", borderRadius:8, textAlign:"center", fontSize:13, fontWeight:700, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", outline:"none", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }} />
         <button onClick={handleFind} disabled={loading} style={{
           padding:"9px 20px", borderRadius:8, fontSize:13, fontWeight:600,
           background: loading ? "var(--fill2)" : "var(--t1)",
@@ -343,7 +343,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                 item.status==="done"?"#4A9B7F":item.status==="running"?"#C49A3C":item.status==="error"?"#C0666A":"var(--t4)"
               }} />
               <span style={{ fontSize:12, color:"var(--t2)", flex:1 }}>{item.label} · {item.params.count} stories</span>
-              <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>{item.status}</span>
+              <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{item.status}</span>
               {item.status==="pending" && (
                 <button onClick={()=>setQueue(q=>q.filter((_,idx)=>idx!==i))} style={{ width:18, height:18, borderRadius:4, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
                   <X size={11} color="var(--t4)" />
@@ -397,7 +397,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                       {sc!=null&&(
                         <div style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 9px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)" }}>
                           <Star size={11} color={sc>=70?"var(--t1)":"var(--t3)"} fill={sc>=70?"var(--t1)":"none"} />
-                          <span style={{ fontSize:12, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{sc}</span>
+                          <span style={{ fontSize:12, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t1)" }}>{sc}</span>
                           <span style={{ fontSize:10, color:"var(--t3)" }}>/100</span>
                         </div>
                       )}

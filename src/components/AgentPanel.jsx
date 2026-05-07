@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { X, Send, Trash2, Bot, Paperclip, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { getAiCalls } from "@/lib/ai/audit";
+import { formatCost } from "@/lib/ai/costs";
 
 // ── Model registry ────────────────────────────────────────
 const MODELS = [
@@ -15,7 +17,7 @@ const MODELS = [
 const PROVIDER_LABEL = { anthropic: "Claude", openai: "OpenAI" };
 
 // ── Pipeline context ──────────────────────────────────────
-function buildSystem(stories, tab) {
+function buildSystem(stories, tab, metrics) {
   const counts = {};
   for (const s of stories) counts[s.status] = (counts[s.status] || 0) + 1;
   const bank = stories.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
@@ -25,6 +27,10 @@ function buildSystem(stories, tab) {
     .map(s => `  • "${s.title}" [${s.status}]${s.archetype ? ` · ${s.archetype}` : ""}${s.era ? ` · ${s.era}` : ""} (id:${s.id})`)
     .join("\n");
 
+  const metricsBlock = metrics
+    ? `\nAI usage (7d): ${metrics.calls} calls · ${metrics.cost} · ${metrics.failed} failures\nBy type: ${metrics.byType}`
+    : "";
+
   return `You are the pipeline agent for Uncle Carter, an NBA storytelling brand at Peek Studios.
 
 Pipeline state (${new Date().toLocaleDateString()}):
@@ -32,7 +38,7 @@ Pipeline state (${new Date().toLocaleDateString()}):
 - Stages: ${Object.entries(counts).map(([k,v]) => `${k}×${v}`).join(", ")}
 - Production bank (approved+scripted+produced): ${bank}
 - Current view: ${tab}
-
+${metricsBlock}
 Stories:
 ${snapshot || "(none yet)"}
 
@@ -41,17 +47,33 @@ Navigation actions — embed in your response to trigger them:
   [[nav:production]]  [[nav:calendar]]  [[nav:analyze]]
   [[story:STORY_ID]]   — open a story detail panel
 
-When navigating, narrate it briefly then include the tag.
+Write actions — embed ONLY when the user explicitly asks you to make a change:
+  [[approve:STORY_ID]]           — move story to "approved"
+  [[reject:STORY_ID]]            — move story to "rejected"
+  [[stage:STORY_ID:STATUS]]      — move to any stage: research / scripted / produced / approved / rejected / archived
+
+Always narrate the action by name before embedding the tag. One tag per response unless asked for bulk.
 Be concise — one short paragraph unless detail is requested.`;
 }
 
 function stripActions(text) {
-  return text.replace(/\[\[nav:\w+\]\]/g, "").replace(/\[\[story:[a-f0-9-]+\]\]/g, "").replace(/  +/g, " ").trim();
+  return text
+    .replace(/\[\[nav:\w+\]\]/g, "")
+    .replace(/\[\[story:[a-f0-9-]+\]\]/g, "")
+    .replace(/\[\[approve:[a-f0-9-]+\]\]/g, "")
+    .replace(/\[\[reject:[a-f0-9-]+\]\]/g, "")
+    .replace(/\[\[stage:[a-f0-9-]+:\w+\]\]/g, "")
+    .replace(/  +/g, " ").trim();
 }
 function parseActions(text) {
+  const stageMatch = text.match(/\[\[stage:([a-f0-9-]+):(\w+)\]\]/);
   return {
-    nav:   text.match(/\[\[nav:(\w+)\]\]/)?.[1]          ?? null,
-    story: text.match(/\[\[story:([a-f0-9-]+)\]\]/)?.[1] ?? null,
+    nav:     text.match(/\[\[nav:(\w+)\]\]/)?.[1]          ?? null,
+    story:   text.match(/\[\[story:([a-f0-9-]+)\]\]/)?.[1] ?? null,
+    approve: text.match(/\[\[approve:([a-f0-9-]+)\]\]/)?.[1] ?? null,
+    reject:  text.match(/\[\[reject:([a-f0-9-]+)\]\]/)?.[1]  ?? null,
+    stageId: stageMatch?.[1] ?? null,
+    stageTo: stageMatch?.[2] ?? null,
   };
 }
 
@@ -100,7 +122,7 @@ function Bubble({ m, streaming }) {
 }
 
 // ── Main component ────────────────────────────────────────
-export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory }) {
+export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory, onUpdateStory }) {
   const [messages,  setMessages]  = useState([]);
   const [input,     setInput]     = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -109,15 +131,33 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   const [showPicker, setShowPicker] = useState(false);
   const [providers, setProviders] = useState({ anthropic: true, openai: false });
   const [dragOver,  setDragOver]  = useState(false);
+  const [metrics,   setMetrics]   = useState(null);
 
   const scrollRef = useRef(null);
   const fileRef   = useRef(null);
   const panelRef  = useRef(null);
 
-  // Fetch available providers (no auth needed — only returns boolean flags)
+  // Fetch available providers — passes auth so server can check Supabase LLM keys
   useEffect(() => {
-    fetch("/api/agent").then(r => r.json()).then(setProviders).catch(() => {});
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      fetch("/api/agent", { headers }).then(r => r.json()).then(setProviders).catch(() => {});
+    });
   }, []);
+
+  // Fetch AI usage metrics once per panel open
+  useEffect(() => {
+    if (!isOpen || metrics) return;
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    getAiCalls({ limit: 500 }).then(calls => {
+      const recent = calls.filter(c => c.created_at && new Date(c.created_at).getTime() >= cutoff);
+      const cost   = recent.reduce((s, c) => s + (Number(c.cost_estimate) || 0), 0);
+      const byType = Object.entries(
+        recent.reduce((acc, c) => { const k = c.type || "unknown"; acc[k] = (acc[k] || 0) + 1; return acc; }, {})
+      ).sort((a,b) => b[1]-a[1]).slice(0,5).map(([k,n]) => `${k}×${n}`).join(", ");
+      setMetrics({ calls: recent.length, cost: formatCost(cost), failed: recent.filter(c=>!c.success).length, byType: byType || "none" });
+    }).catch(() => {});
+  }, [isOpen, metrics]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -155,10 +195,13 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   }, [addImages]);
 
   const runActions = useCallback((text) => {
-    const { nav, story } = parseActions(text);
-    if (nav) onNavigate(nav);
-    if (story) { const s = stories.find(x => x.id === story); if (s) onOpenStory(s); }
-  }, [onNavigate, onOpenStory, stories]);
+    const { nav, story, approve, reject, stageId, stageTo } = parseActions(text);
+    if (nav)     onNavigate(nav);
+    if (story)   { const s = stories.find(x => x.id === story); if (s) onOpenStory(s); }
+    if (approve) onUpdateStory?.(approve, { status: "approved" });
+    if (reject)  onUpdateStory?.(reject,  { status: "rejected" });
+    if (stageId && stageTo) onUpdateStory?.(stageId, { status: stageTo });
+  }, [onNavigate, onOpenStory, onUpdateStory, stories]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -182,7 +225,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           provider: selectedModel.provider,
           model:    modelId,
           messages: history,
-          system:   buildSystem(stories, tab),
+          system:   buildSystem(stories, tab, metrics),
           maxTokens: 700,
         }),
       });

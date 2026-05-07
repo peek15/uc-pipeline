@@ -82,7 +82,7 @@ export default function ShortcutsCheatSheet({ isOpen, onClose }) {
                       {hint && <span style={{ fontSize: 10, color: "var(--t4)", marginLeft: 6 }}>{hint}</span>}
                     </span>
                     <kbd style={{
-                      fontFamily: "'DM Mono', monospace",
+                      fontFamily: "ui-monospace,'SF Mono',Menlo,monospace",
                       fontSize: 11, fontWeight: 600,
                       padding: "3px 8px", borderRadius: 5,
                       background: "var(--fill2)",
@@ -102,7 +102,7 @@ export default function ShortcutsCheatSheet({ isOpen, onClose }) {
           padding: "10px 24px",
           borderTop: "0.5px solid var(--border)",
           fontSize: 11, color: "var(--t4)",
-          fontFamily: "'DM Mono', monospace",
+          fontFamily: "ui-monospace,'SF Mono',Menlo,monospace",
         }}>
           Tip: shortcuts ignore typing in input fields.
         </div>

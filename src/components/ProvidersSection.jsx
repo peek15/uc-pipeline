@@ -61,6 +61,9 @@ const LICENSED_PROVIDERS = [
   { key: "stub",         label: "Stub" },
 ];
 
+const LLM_OPENAI_PROVIDERS    = [{ key: "openai",    label: "OpenAI" }];
+const LLM_ANTHROPIC_PROVIDERS = [{ key: "anthropic", label: "Anthropic" }];
+
 const LANG_OPTIONS = [
   { key: "en", label: "English" },
   { key: "fr", label: "French" },
@@ -116,7 +119,7 @@ function Slider({ label, value, onChange, min = 0, max = 1, step = 0.01, hint })
           style={{ flex: 1, height: 3, background: "var(--border)", borderRadius: 999, appearance: "none", outline: "none", accentColor: "var(--t1)" }} />
         <input type="number" min={min} max={max} step={step} value={value}
           onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(Math.max(min, Math.min(max, v))); }}
-          style={{ ...inputStyle, width: 70, padding: "5px 8px", textAlign: "right", fontFamily: "'DM Mono',monospace", fontSize: 12 }} />
+          style={{ ...inputStyle, width: 70, padding: "5px 8px", textAlign: "right", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", fontSize: 12 }} />
       </div>
     </div>
   );
@@ -136,7 +139,7 @@ function SecretInput({ label, value, onChange, isSet, placeholder }) {
         <input type={reveal ? "text" : "password"} value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={isSet ? "•••••••• (saved — leave empty to keep)" : (placeholder || "")}
-          style={{ ...inputStyle, paddingRight: 40, fontFamily: reveal ? "'DM Mono',monospace" : "inherit" }}
+          style={{ ...inputStyle, paddingRight: 40, fontFamily: reveal ? "ui-monospace,'SF Mono',Menlo,monospace" : "inherit" }}
           autoComplete="off" />
         <button type="button" onClick={() => setReveal(r => !r)}
           style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
@@ -153,7 +156,7 @@ function SecretInput({ label, value, onChange, isSet, placeholder }) {
 // ─── Status pill ─────────────────────────────────────────
 
 function pillStyle(kind) {
-  const base = { fontSize: 10, fontWeight: 600, fontFamily: "'DM Mono',monospace",
+  const base = { fontSize: 10, fontWeight: 600, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace",
     padding: "3px 9px", borderRadius: 4, border: "0.5px solid var(--border)",
     display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" };
   if (kind === "success") return { ...base, background: "rgba(74,155,127,0.12)", color: "#4A9B7F", borderColor: "rgba(74,155,127,0.3)" };
@@ -296,7 +299,7 @@ function ProviderForm({ brandId, providerType, providers, initial, onSaved, rend
           <div>
             <div style={{ fontWeight: 600 }}>
               {testResult.ok ? "Connection OK" : "Connection failed"}
-              {testResult.latency_ms != null && testResult.ok && <span style={{ fontWeight: 400, marginLeft: 6, fontFamily: "'DM Mono',monospace" }}>({testResult.latency_ms}ms)</span>}
+              {testResult.latency_ms != null && testResult.ok && <span style={{ fontWeight: 400, marginLeft: 6, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>({testResult.latency_ms}ms)</span>}
             </div>
             {testResult.error && <div style={{ marginTop: 2, color: "var(--t2)" }}>{testResult.error}</div>}
           </div>
@@ -312,6 +315,26 @@ function ProviderForm({ brandId, providerType, providers, initial, onSaved, rend
         </div>
       )}
     </div>
+  );
+}
+
+// ─── LLM fields ──────────────────────────────────────────
+
+function LLMOpenAIFields({ secrets, updateSecret, isSet }) {
+  return (
+    <>
+      <SecretInput label="OpenAI API key" value={secrets.api_key || ""} onChange={(v) => updateSecret("api_key", v)} isSet={isSet.api_key} placeholder="sk-..." />
+      <div style={{ fontSize: 11, color: "var(--t3)" }}>Used for GPT-4o and GPT-4o mini in the agent panel. Get your key at platform.openai.com.</div>
+    </>
+  );
+}
+
+function LLMAnthropicFields({ secrets, updateSecret, isSet }) {
+  return (
+    <>
+      <SecretInput label="Anthropic API key (override)" value={secrets.api_key || ""} onChange={(v) => updateSecret("api_key", v)} isSet={isSet.api_key} placeholder="sk-ant-..." />
+      <div style={{ fontSize: 11, color: "var(--t3)" }}>Optional. Leave empty to use the server's environment key. Set this to use a per-tenant key instead.</div>
+    </>
   );
 }
 
@@ -354,7 +377,7 @@ function VoiceFields({ providerName, config, updateConfig, secrets, updateSecret
                 {LANG_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
               </select>
               <input type="text" value={v.voice_id} onChange={(e) => updateVoice(i, { voice_id: e.target.value })} placeholder="voice ID"
-                style={{ ...inputStyle, fontFamily: "'DM Mono',monospace" }} />
+                style={{ ...inputStyle, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }} />
               <button onClick={() => removeVoice(i)} style={{ ...btnGhost, padding: "0 10px" }}><X size={12} /></button>
             </div>
           ))}
@@ -385,7 +408,7 @@ function StorageFields({ providerName, config, updateConfig, secrets, updateSecr
       <div>
         <div style={labelStyle}>Bucket name</div>
         <input type="text" value={config.bucket || ""} onChange={(e) => updateConfig({ bucket: e.target.value })}
-          placeholder="uc-assets" style={{ ...inputStyle, fontFamily: "'DM Mono',monospace" }} />
+          placeholder="uc-assets" style={{ ...inputStyle, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }} />
       </div>
     </>
   );
@@ -394,13 +417,13 @@ function StorageFields({ providerName, config, updateConfig, secrets, updateSecr
       <SecretInput label="Access key ID"     value={secrets.access_key_id     || ""} onChange={(v) => updateSecret("access_key_id", v)} isSet={isSet.access_key_id} placeholder="AKIA..." />
       <SecretInput label="Secret access key" value={secrets.secret_access_key || ""} onChange={(v) => updateSecret("secret_access_key", v)} isSet={isSet.secret_access_key} />
       <div><div style={labelStyle}>Region</div><input type="text" value={config.region || ""} onChange={(e) => updateConfig({ region: e.target.value })} placeholder="us-east-1" style={inputStyle} /></div>
-      <div><div style={labelStyle}>Bucket name</div><input type="text" value={config.bucket || ""} onChange={(e) => updateConfig({ bucket: e.target.value })} placeholder="my-bucket" style={{ ...inputStyle, fontFamily: "'DM Mono',monospace" }} /></div>
+      <div><div style={labelStyle}>Bucket name</div><input type="text" value={config.bucket || ""} onChange={(e) => updateConfig({ bucket: e.target.value })} placeholder="my-bucket" style={{ ...inputStyle, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }} /></div>
     </>
   );
   if (providerName === "gcs") return (
     <>
       <SecretInput label="Service account JSON" value={secrets.service_account_json || ""} onChange={(v) => updateSecret("service_account_json", v)} isSet={isSet.service_account_json} placeholder='{"type":"service_account",...}' />
-      <div><div style={labelStyle}>Bucket name</div><input type="text" value={config.bucket || ""} onChange={(e) => updateConfig({ bucket: e.target.value })} placeholder="my-gcs-bucket" style={{ ...inputStyle, fontFamily: "'DM Mono',monospace" }} /></div>
+      <div><div style={labelStyle}>Bucket name</div><input type="text" value={config.bucket || ""} onChange={(e) => updateConfig({ bucket: e.target.value })} placeholder="my-gcs-bucket" style={{ ...inputStyle, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }} /></div>
     </>
   );
   return null;
@@ -462,10 +485,12 @@ function LicensedFields({ providerName, config, updateConfig, secrets, updateSec
 
 function providerRows(configs) {
   return [
-    { type: "voice", label: "Voice", config: configs.voice },
-    { type: "visual_atmospheric", label: "Visual — atmospheric", config: configs.visual_atmospheric },
-    { type: "visual_licensed", label: "Visual — licensed", config: configs.visual_licensed },
-    { type: "storage", label: "Storage", config: configs.storage },
+    { type: "llm_openai",         label: "LLM — OpenAI",            config: configs.llm_openai },
+    { type: "llm_anthropic",      label: "LLM — Anthropic override", config: configs.llm_anthropic },
+    { type: "voice",              label: "Voice",                    config: configs.voice },
+    { type: "visual_atmospheric", label: "Visual — atmospheric",     config: configs.visual_atmospheric },
+    { type: "visual_licensed",    label: "Visual — licensed",        config: configs.visual_licensed },
+    { type: "storage",            label: "Storage",                  config: configs.storage },
   ];
 }
 
@@ -522,7 +547,7 @@ function ProviderOverview({ configs, calls }) {
         ].map(([label, value]) => (
           <div key={label} style={{ padding: "12px 14px", borderRadius: 9, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
             <div style={labelStyle}>{label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--t1)" }}>{value}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: "var(--t1)" }}>{value}</div>
           </div>
         ))}
       </div>
@@ -539,11 +564,11 @@ function ProviderOverview({ configs, calls }) {
           return (
             <div key={row.type} style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 0.8fr 0.7fr 0.7fr 0.8fr", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "0.5px solid var(--border2)", fontSize: 12 }}>
               <span style={{ color: "var(--t1)", fontWeight: 600 }}>{row.label}</span>
-              <span style={{ color: cfg ? "var(--t2)" : "var(--t4)", fontFamily: "'DM Mono',monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfg?.provider_name || "missing"}</span>
+              <span style={{ color: cfg ? "var(--t2)" : "var(--t4)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cfg?.provider_name || "missing"}</span>
               <span style={{ color: healthColor(state), fontWeight: 600 }}>{state}</span>
-              <span style={{ color: "var(--t2)", fontFamily: "'DM Mono',monospace" }}>{stats.calls}</span>
-              <span style={{ color: stats.failed ? "var(--error)" : "var(--t3)", fontFamily: "'DM Mono',monospace" }}>{stats.failed}</span>
-              <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace" }}>{formatCost(stats.cost)}</span>
+              <span style={{ color: "var(--t2)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{stats.calls}</span>
+              <span style={{ color: stats.failed ? "var(--error)" : "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{stats.failed}</span>
+              <span style={{ color: "var(--t1)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{formatCost(stats.cost)}</span>
             </div>
           );
         })}
@@ -565,7 +590,7 @@ function MiniBarChart({ rows, valueKey = "cost", formatValue = v => v, empty = "
             <div style={{ height: 7, borderRadius: 99, background: "var(--fill2)", overflow: "hidden" }}>
               <div style={{ height: "100%", width: `${Math.max(4, (value / max) * 100)}%`, borderRadius: 99, background: row.color || "var(--t1)" }} />
             </div>
-            <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{formatValue(value)}</span>
+            <span style={{ color: "var(--t1)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{formatValue(value)}</span>
           </div>
         );
       })}
@@ -601,7 +626,7 @@ function DailyCostChart({ calls }) {
             <div style={{ width: "100%", height: 86, display: "flex", alignItems: "end" }}>
               <div style={{ width: "100%", minHeight: day.cost > 0 ? 5 : 1, height: max > 0 ? `${Math.max(3, (day.cost / max) * 86)}px` : 1, borderRadius: "4px 4px 1px 1px", background: day.cost > 0 ? "var(--t1)" : "var(--fill2)" }} />
             </div>
-            <span style={{ fontSize: 9, color: "var(--t4)", fontFamily: "'DM Mono',monospace", whiteSpace: "nowrap" }}>{day.label.split(" ")[1]}</span>
+            <span style={{ fontSize: 9, color: "var(--t4)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", whiteSpace: "nowrap" }}>{day.label.split(" ")[1]}</span>
           </div>
         ))}
       </div>
@@ -665,7 +690,7 @@ function ProviderHealth({ configs, onReload }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)" }}>{row.label}</span>
-                {cfg?.provider_name && <span style={{ fontSize: 11, color: "var(--t3)", fontFamily: "'DM Mono',monospace" }}>{cfg.provider_name}</span>}
+                {cfg?.provider_name && <span style={{ fontSize: 11, color: "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{cfg.provider_name}</span>}
               </div>
               <div style={{ fontSize: 11, color: "var(--t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {!cfg ? "Not configured" : cfg.last_test_error || (cfg.last_test_at ? `Last tested ${new Date(cfg.last_test_at).toLocaleString()}` : "Not tested yet")}
@@ -800,7 +825,7 @@ function AIUsage() {
         ].map(([label, value]) => (
           <div key={label} style={{ padding: "12px 14px", borderRadius: 9, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
             <div style={labelStyle}>{label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'DM Mono',monospace", color: "var(--t1)" }}>{value}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: "var(--t1)" }}>{value}</div>
           </div>
         ))}
       </div>
@@ -820,9 +845,9 @@ function AIUsage() {
         {byType.length ? byType.map(row => (
           <div key={row.type} style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 10, alignItems: "center", padding: "5px 0", fontSize: 12 }}>
             <span style={{ color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.type}</span>
-            <span style={{ color: "var(--t2)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.calls}</span>
-            <span style={{ color: row.failed ? "var(--error)" : "var(--t3)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.failed}</span>
-            <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{formatCost(row.cost)}</span>
+            <span style={{ color: "var(--t2)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{row.calls}</span>
+            <span style={{ color: row.failed ? "var(--error)" : "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{row.failed}</span>
+            <span style={{ color: "var(--t1)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{formatCost(row.cost)}</span>
           </div>
         )) : <div style={{ fontSize: 12, color: "var(--t4)" }}>{loading ? "Loading AI usage..." : "No AI calls logged yet. Run the ai_calls SQL if this stays empty after AI usage."}</div>}
       </div>
@@ -832,11 +857,11 @@ function AIUsage() {
           const avg = row.durationCount ? Math.round(row.durationTotal / row.durationCount) : null;
           return (
             <div key={row.provider} style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 80px 70px", gap: 10, alignItems: "center", padding: "5px 0", fontSize: 12 }}>
-              <span style={{ color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'DM Mono',monospace" }}>{row.provider}</span>
-              <span style={{ color: "var(--t2)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.calls}</span>
-              <span style={{ color: row.failed ? "var(--error)" : "var(--t3)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{row.failed}</span>
-              <span style={{ color: "var(--t3)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{avg != null ? `${avg}ms` : "—"}</span>
-              <span style={{ color: "var(--t1)", fontFamily: "'DM Mono',monospace", textAlign: "right" }}>{formatCost(row.cost)}</span>
+              <span style={{ color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{row.provider}</span>
+              <span style={{ color: "var(--t2)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{row.calls}</span>
+              <span style={{ color: row.failed ? "var(--error)" : "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{row.failed}</span>
+              <span style={{ color: "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{avg != null ? `${avg}ms` : "—"}</span>
+              <span style={{ color: "var(--t1)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{formatCost(row.cost)}</span>
             </div>
           );
         }) : <div style={{ fontSize: 12, color: "var(--t4)" }}>{loading ? "Loading AI usage..." : "No provider usage logged yet."}</div>}
@@ -845,7 +870,7 @@ function AIUsage() {
         <div style={{ ...labelStyle, marginBottom: 12 }}>Recent failures</div>
         {failures.length ? failures.map(call => (
           <div key={call.id} style={{ display: "grid", gridTemplateColumns: "130px 1fr auto", gap: 10, alignItems: "center", padding: "7px 0", borderTop: "0.5px solid var(--border2)" }}>
-            <span style={{ fontSize: 11, color: "var(--error)", fontFamily: "'DM Mono',monospace" }}>{call.type}</span>
+            <span style={{ fontSize: 11, color: "var(--error)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{call.type}</span>
             <span style={{ fontSize: 12, color: "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{call.error_message || call.error_type || "Unknown error"}</span>
             <span style={{ fontSize: 10, color: "var(--t4)" }}>{call.created_at ? new Date(call.created_at).toLocaleDateString() : ""}</span>
           </div>
@@ -867,7 +892,7 @@ export default function ProvidersSection() {
   const reload = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const types = ["voice", "storage", "visual_atmospheric", "visual_licensed"];
+      const types = ["voice", "storage", "visual_atmospheric", "visual_licensed", "llm_openai", "llm_anthropic"];
       const [results, usage] = await Promise.all([
         Promise.all(types.map(t => loadProviderConfig(UNCLE_CARTER_PROFILE_ID, t))),
         getAiCalls({ limit: 1000 }),
@@ -935,7 +960,23 @@ export default function ProvidersSection() {
 
       {!loading && tab === "configure" && (
         <>
-          <ProviderCard id="voice" title="Voice" defaultExpanded={true}
+          <ProviderCard id="llm_openai" title="Language Model — OpenAI" defaultExpanded={true}
+            description="GPT-4o and GPT-4o mini. Add your key here to enable OpenAI models in the agent panel."
+            status={status(configs.llm_openai)}>
+            <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="llm_openai"
+              providers={LLM_OPENAI_PROVIDERS} initial={configs.llm_openai} onSaved={reload}
+              renderFields={(p) => <LLMOpenAIFields {...p} />} />
+          </ProviderCard>
+
+          <ProviderCard id="llm_anthropic" title="Language Model — Anthropic (override)"
+            description="Optional per-tenant Anthropic key. Leave unconfigured to use the server environment key."
+            status={status(configs.llm_anthropic)}>
+            <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="llm_anthropic"
+              providers={LLM_ANTHROPIC_PROVIDERS} initial={configs.llm_anthropic} onSaved={reload}
+              renderFields={(p) => <LLMAnthropicFields {...p} />} />
+          </ProviderCard>
+
+          <ProviderCard id="voice" title="Voice"
             description="Text-to-speech for English, French, Spanish, Portuguese (and any language you add)."
             status={status(configs.voice)}>
             <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="voice"

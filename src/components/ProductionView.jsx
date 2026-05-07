@@ -40,7 +40,7 @@ function ConfidenceBar({ value }) {
       <div style={{ width: 60, height: 3, background: "var(--bg3)", borderRadius: 2, overflow: "hidden" }}>
         <div style={{ width: `${value}%`, height: "100%", background: color, borderRadius: 2 }} />
       </div>
-      <span style={{ fontSize: 10, fontFamily: "'DM Mono',monospace", color: "var(--t2)", width: 28 }}>{value}%</span>
+      <span style={{ fontSize: 10, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: "var(--t2)", width: 28 }}>{value}%</span>
     </div>
   );
 }
@@ -63,7 +63,7 @@ function Section({ title, status, statusColor, description, children }) {
           {description && <div style={{ fontSize: 11, color: "var(--t3)", lineHeight: 1.45 }}>{description}</div>}
         </div>
         {status && (
-          <span style={{ fontSize: 10, fontWeight: 600, fontFamily: "'DM Mono',monospace", padding: "2px 8px", borderRadius: 4,
+          <span style={{ fontSize: 10, fontWeight: 600, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", padding: "2px 8px", borderRadius: 4,
             background: statusColor === "success" ? "var(--success-bg)" : statusColor === "warning" ? "var(--warning-bg)" : "var(--fill)",
             color: statusColor === "success" ? "var(--success)" : statusColor === "warning" ? "var(--warning)" : "var(--t3)",
             border: "0.5px solid var(--border)", whiteSpace: "nowrap", flexShrink: 0 }}>{status}</span>
@@ -107,7 +107,7 @@ function StreamPreview({ text }) {
       margin: 0, padding: "10px 12px", borderRadius: 7,
       background: "var(--fill)", border: "0.5px solid var(--border)",
       fontSize: 10, color: "var(--t3)", lineHeight: 1.6,
-      fontFamily: "'DM Mono', monospace", whiteSpace: "pre-wrap",
+      fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", whiteSpace: "pre-wrap",
       wordBreak: "break-word", maxHeight: 120, overflowY: "auto",
     }}>
       {text}<span className="anim-pulse" style={{ display: "inline-block", width: 6, height: 10, background: "var(--t3)", marginLeft: 2, verticalAlign: "text-bottom", borderRadius: 1 }} />
@@ -404,7 +404,7 @@ function VoiceSection({ story, brand_profile_id, onSaved }) {
                     </div>
                 }
                 <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", width: 76 }}>{LANG_LABELS[lang] || lang}</span>
-                <span style={{ fontSize: 10, fontFamily: "'DM Mono',monospace", color: lerr ? "#C0666A" : "var(--t3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 10, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: lerr ? "#C0666A" : "var(--t3)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {lerr ? lerr.slice(0, 60) : hasRef ? `${ref.provider || "—"} · ${ref.duration_estimate_ms ? Math.round(ref.duration_estimate_ms / 1000) + "s" : "—"}` : lstat === "running" ? "generating…" : "—"}
                 </span>
               </div>
@@ -552,7 +552,7 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
                   <img src={a.thumbnail_url || a.file_url} alt={a.prompt || ""}
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                   <div style={{ position: "absolute", top: 4, left: 4, fontSize: 9, fontWeight: 600,
-                    fontFamily: "'DM Mono',monospace", padding: "2px 5px", borderRadius: 3,
+                    fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", padding: "2px 5px", borderRadius: 3,
                     background: a.asset_type === "atmospheric" ? "rgba(74,155,127,0.85)" : "rgba(91,143,185,0.85)",
                     color: "#fff" }}>
                     {a.asset_type === "atmospheric" ? "ATM" : "LIC"}
@@ -565,7 +565,7 @@ function VisualSection({ story, brand_profile_id, onSaved }) {
                   )}
                   {a.rank_score != null && (
                     <div style={{ position: "absolute", bottom: 4, right: 4, fontSize: 9, fontWeight: 600,
-                      fontFamily: "'DM Mono',monospace", padding: "2px 5px", borderRadius: 3,
+                      fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", padding: "2px 5px", borderRadius: 3,
                       background: "rgba(0,0,0,0.7)", color: "#fff" }}>
                       {Math.round(a.rank_score)}
                     </div>
@@ -697,10 +697,10 @@ function AssemblySection({ story, brand_profile_id, onSaved }) {
                   fontSize: 12,
                 }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: scene.script_segments?.en ? 4 : 0 }}>
-                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 10, color: "var(--t3)", width: 20 }}>#{scene.index}</span>
+                    <span style={{ fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", fontSize: 10, color: "var(--t3)", width: 20 }}>#{scene.index}</span>
                     <span style={{ fontWeight: 600, color: "var(--t1)", textTransform: "capitalize" }}>{scene.position}</span>
                     {scene.asset_type && <span style={{ fontSize: 10, color: "var(--t3)" }}>{scene.asset_type}</span>}
-                    {scene.duration_ms && <span style={{ fontSize: 10, color: "var(--t3)", marginLeft: "auto", fontFamily: "'DM Mono',monospace" }}>{Math.round(scene.duration_ms/1000)}s</span>}
+                    {scene.duration_ms && <span style={{ fontSize: 10, color: "var(--t3)", marginLeft: "auto", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{Math.round(scene.duration_ms/1000)}s</span>}
                   </div>
                   {scene.script_segments?.en && (
                     <div style={{ fontSize: 11, color: "var(--t2)", lineHeight: 1.4, marginLeft: 30 }}>
@@ -717,7 +717,7 @@ function AssemblySection({ story, brand_profile_id, onSaved }) {
               margin: 0, padding: "12px 14px", borderRadius: 8,
               background: "var(--bg3)", border: "0.5px solid var(--border)",
               fontSize: 10, color: "var(--t2)", lineHeight: 1.6,
-              fontFamily: "'DM Mono', monospace",
+              fontFamily: "ui-monospace,'SF Mono',Menlo,monospace",
               overflowX: "auto", maxHeight: 280, overflowY: "auto",
               whiteSpace: "pre-wrap", wordBreak: "break-word",
             }}>
@@ -763,7 +763,7 @@ function AssetMatchesSection({ story, brand_profile_id }) {
           {matches.length === 0 && <div style={{ fontSize: 11, color: "var(--t3)", fontStyle: "italic" }}>Library empty — all gaps need generation.</div>}
           {(gaps || []).map((g, i) => (
             <div key={i} style={{ fontSize: 11, padding: "6px 10px", borderRadius: 6, background: "var(--fill)" }}>
-              <span style={{ fontFamily: "'DM Mono',monospace", color: "var(--t2)" }}>{g.position_key} × {g.count}</span>
+              <span style={{ fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: "var(--t2)" }}>{g.position_key} × {g.count}</span>
               <span style={{ color: "var(--t3)", marginLeft: 8 }}>{g.reasoning}</span>
             </div>
           ))}
@@ -834,7 +834,7 @@ export default function ProductionView({ stories, onUpdate }) {
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em", margin: 0, color: "var(--t1)" }}>Production</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 12, color: "var(--t3)", fontFamily: "'DM Mono',monospace" }}>{queue.length} in flight</span>
+          <span style={{ fontSize: 12, color: "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{queue.length} in flight</span>
           <button onClick={() => setShowLibrary(true)} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 500, background: "var(--fill2)", color: "var(--t2)", border: "0.5px solid var(--border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
             <Library size={12} /> Asset library
           </button>
@@ -858,7 +858,7 @@ export default function ProductionView({ stories, onUpdate }) {
                 <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 500, color: "var(--t1)", lineHeight: 1.3, marginBottom: 4 }}>{story.title || "(untitled)"}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <ProgressDots story={story} />
-                  <span style={{ fontSize: 10, fontFamily: "'DM Mono',monospace", color: "var(--t3)" }}>{PRODUCTION_STATUS_LABELS[story.production_status] || story.status || ""}</span>
+                  <span style={{ fontSize: 10, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: "var(--t3)" }}>{PRODUCTION_STATUS_LABELS[story.production_status] || story.status || ""}</span>
                 </div>
               </button>
             );
@@ -870,7 +870,7 @@ export default function ProductionView({ stories, onUpdate }) {
             <>
               <div style={{ paddingBottom: 14, borderBottom: "0.5px solid var(--border)", marginBottom: 4 }}>
                 <div style={{ fontSize: 16, fontWeight: 600, color: "var(--t1)", lineHeight: 1.3 }}>{selected.title}</div>
-                <div style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 11, color: "var(--t3)", fontFamily: "'DM Mono',monospace", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 11, color: "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", flexWrap: "wrap" }}>
                   <span>{selected.format || "—"}</span><span>·</span><span>{selected.archetype || "—"}</span>
                   {selected.reach_score != null && <><span>·</span><span>reach {selected.reach_score}</span></>}
                   {selected.community_score_final != null && <><span>·</span><span>comm {selected.community_score_final}</span></>}

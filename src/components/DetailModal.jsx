@@ -19,7 +19,7 @@ function ScoreRow({ label, value, max=100, muted=false }) {
       <div style={{flex:1,height:3,borderRadius:2,background:"var(--bg3)",overflow:"hidden"}}>
         <div style={{height:"100%",width:`${(value/max)*100}%`,background:muted?"var(--t3)":"var(--t1)",borderRadius:2}}/>
       </div>
-      <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:muted?"var(--t3)":"var(--t1)",width:24,textAlign:"right"}}>{value}</span>
+      <span style={{fontSize:11,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:muted?"var(--t3)":"var(--t1)",width:24,textAlign:"right"}}>{value}</span>
     </div>
   );
 }
@@ -110,7 +110,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
               style={{width:28,height:28,borderRadius:6,border:"1px solid var(--border)",background:"var(--fill2)",cursor:idx<stories.length-1?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx>=stories.length-1?0.3:1}}>
               <ChevronRight size={14} color="var(--t2)"/>
             </button>
-            {stories.length>0&&<span style={{fontSize:11,color:"var(--t4)",fontFamily:"'DM Mono',monospace"}}>{idx+1}/{stories.length}</span>}
+            {stories.length>0&&<span style={{fontSize:11,color:"var(--t4)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>{idx+1}/{stories.length}</span>}
           </div>
 
           {/* Status + format */}
@@ -144,7 +144,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
             {/* Players — full, no truncation */}
             {players&&<div style={{fontSize:13,color:"var(--t3)",marginBottom:14,lineHeight:1.5}}>{players}</div>}
 
-            {current.statline&&<div style={{padding:"7px 10px",borderRadius:6,background:"var(--fill2)",border:"1px solid var(--border)",fontFamily:"'DM Mono',monospace",fontSize:12,color:"var(--t2)",marginBottom:12}}>{current.statline}</div>}
+            {current.statline&&<div style={{padding:"7px 10px",borderRadius:6,background:"var(--fill2)",border:"1px solid var(--border)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:12,color:"var(--t2)",marginBottom:12}}>{current.statline}</div>}
 
             {current.angle&&<p style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,marginBottom:12}}>{current.angle}</p>}
             {current.hook&&(
@@ -155,7 +155,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
 
             {current.script&&(
               <div style={{borderRadius:7,padding:"12px 14px",background:"var(--bg2)",border:"1px solid var(--border)",maxHeight:180,overflowY:"auto"}}>
-                <div style={{fontSize:10,color:"var(--t4)",marginBottom:6,fontFamily:"'DM Mono',monospace"}}>v{current.script_version||1} · {wc(current.script)} words</div>
+                <div style={{fontSize:10,color:"var(--t4)",marginBottom:6,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>v{current.script_version||1} · {wc(current.script)} words</div>
                 <div className="type-script" style={{fontSize:13,color:"var(--t2)",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{current.script}</div>
               </div>
             )}
@@ -184,7 +184,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Readiness</div>
-                <span style={{fontSize:12,fontWeight:700,fontFamily:"'DM Mono',monospace",color:rColor}}>{readiness}/8</span>
+                <span style={{fontSize:12,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:rColor}}>{readiness}/8</span>
               </div>
               <div style={{height:3,borderRadius:2,background:"var(--bg3)",overflow:"hidden",marginBottom:10}}>
                 <div style={{height:"100%",width:`${(readiness/8)*100}%`,background:rColor,borderRadius:2}}/>
@@ -206,7 +206,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
               <div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                   <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Quality Gate</div>
-                  <span style={{fontSize:10,fontWeight:700,fontFamily:"'DM Mono',monospace",color:gateBlockers?"var(--error)":"var(--warning)"}}>
+                  <span style={{fontSize:10,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:gateBlockers?"var(--error)":"var(--warning)"}}>
                     {gateBlockers ? `${gateBlockers} blocker` : `${gateWarnings} warning${gateWarnings===1?"":"s"}`}
                   </span>
                 </div>
@@ -288,10 +288,10 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
                   {editing?(
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <input type="range" min="0" max="100" value={localReach} onChange={e=>setLocalReach(e.target.value)} style={{flex:1}}/>
-                      <span style={{fontSize:11,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--t1)",minWidth:24}}>{localReach}</span>
+                      <span style={{fontSize:11,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)",minWidth:24}}>{localReach}</span>
                     </div>
                   ):(
-                    <div style={{fontSize:12,fontWeight:700,fontFamily:"'DM Mono',monospace",color:current.reach_score!=null?"var(--t1)":"var(--t4)"}}>{current.reach_score??"—"}</div>
+                    <div style={{fontSize:12,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:current.reach_score!=null?"var(--t1)":"var(--t4)"}}>{current.reach_score??"—"}</div>
                   )}
                 </div>
               </div>
@@ -355,7 +355,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
         {/* Keyboard hint */}
         <div style={{padding:"8px 20px",borderTop:"1px solid var(--border2)",display:"flex",gap:12,fontSize:10,color:"var(--t4)"}}>
           {[["←→","Previous/next story"],["Esc","Close"]].map(([k,v])=>(
-            <span key={k}><kbd style={{fontFamily:"'DM Mono',monospace",fontSize:9,padding:"1px 5px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
+            <span key={k}><kbd style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:9,padding:"1px 5px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
           ))}
         </div>
       </div>

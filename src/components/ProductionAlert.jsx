@@ -201,7 +201,7 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
           {!expanded && <span style={{ fontSize:11, color:"var(--t3)" }}>· {visibleBullets.length} alert{visibleBullets.length !== 1 ? "s" : ""}</span>}
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>⌘J</span>
+          <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>⌘J</span>
           <span style={{ fontSize:12, color:"var(--t4)" }}>{expanded ? "↑" : "↓"}</span>
         </div>
       </div>

@@ -259,7 +259,7 @@ export default function ScriptView({ stories, onUpdate }) {
                 loading?.startsWith("fr") ? 1 : loading?.startsWith("es") ? 2 : loading?.startsWith("pt") ? 3 : 0
               } />
               <span style={{ fontSize:11, color:"var(--t3)" }}>{batchStep}</span>
-              <span style={{ fontSize:11, color:"var(--t4)", fontFamily:"'DM Mono',monospace" }}>{batchDone}/{unscripted.length + batchDone}</span>
+              <span style={{ fontSize:11, color:"var(--t4)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{batchDone}/{unscripted.length + batchDone}</span>
             </div>
           )}
         </div>
@@ -386,7 +386,7 @@ export default function ScriptView({ stories, onUpdate }) {
                   <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)", flexWrap:"wrap" }}>
                     <span style={{ color:ac, fontWeight:500 }}>{s.archetype}</span>
                     {s.era && <><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
-                    {s.script && <><span style={{color:"var(--t4)"}}>·</span><span style={{fontFamily:"'DM Mono',monospace",fontSize:11}}>v{s.script_version||1} · {wc(s.script)}w</span></>}
+                    {s.script && <><span style={{color:"var(--t4)"}}>·</span><span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:11}}>v{s.script_version||1} · {wc(s.script)}w</span></>}
                     {isLoadingThis
                       ? <ProgressSteps steps={STEPS} current={currentStep} />
                       : availLangs.map(l => (
@@ -509,7 +509,7 @@ export default function ScriptView({ stories, onUpdate }) {
                   {/* Shortcut hint */}
                   <div style={{ marginTop:10, fontSize:10, color:"var(--t4)", display:"flex", gap:10, flexWrap:"wrap" }}>
                     {[["⌥G","Generate/rewrite"],["⌥T","Translate all"],["1-4","Switch lang"],["→←","Expand/collapse"]].map(([k,v])=>(
-                      <span key={k}><kbd style={{fontFamily:"'DM Mono',monospace",fontSize:9,padding:"1px 4px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
+                      <span key={k}><kbd style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:9,padding:"1px 4px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
                     ))}
                   </div>
                 </div>

@@ -19,7 +19,7 @@ function IntelligenceStage({ count }) {
     <div style={{ padding:"16px", borderRadius:10, background:"var(--bg2)", border:"1px solid var(--border)", marginBottom:20 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
         <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Intelligence Layer</span>
-        <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:"var(--t2)" }}>Stage {active} active</span>
+        <span style={{ fontSize:11, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t2)" }}>Stage {active} active</span>
       </div>
       <div style={{ display:"flex", gap:4, marginBottom:10 }}>
         {stages.map((s, i) => (
@@ -66,7 +66,7 @@ function BarChart({ data, valueKey="avg", labelKey="label", color="var(--t1)", f
                 {fmt && <span style={{ width:8, height:8, borderRadius:2, background:fmt.color, display:"inline-block", flexShrink:0 }}/>}
                 <span style={{ fontSize:12, color:"var(--t2)" }}>{d[labelKey]} {d.count!=null&&<span style={{color:"var(--t4)",fontSize:11}}>({d.count})</span>}</span>
               </div>
-              <span style={{ fontSize:12, fontWeight:600, fontFamily:"'DM Mono',monospace", color: i===0?"var(--t1)":"var(--t2)" }}>{typeof d[valueKey]==="number"?d[valueKey].toFixed(1):d[valueKey]}</span>
+              <span style={{ fontSize:12, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color: i===0?"var(--t1)":"var(--t2)" }}>{typeof d[valueKey]==="number"?d[valueKey].toFixed(1):d[valueKey]}</span>
             </div>
             <div style={{ height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden" }}>
               <div style={{ height:"100%", width:`${(d[valueKey]/max)*100}%`, background:barColor, borderRadius:2, transition:"width 0.4s ease" }}/>
@@ -105,7 +105,7 @@ function ScoreCorrelation({ stories }) {
       <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14, padding:"10px 14px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)" }}>
         <div>
           <div style={{ fontSize:11, color:"var(--t3)" }}>Score ↔ Completion correlation</div>
-          <div style={{ fontSize:20, fontWeight:700, fontFamily:"'DM Mono',monospace", color: corr>0.5?"#4A9B7F":corr>0?"#C49A3C":"#C0666A" }}>{(corr*100).toFixed(0)}%</div>
+          <div style={{ fontSize:20, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color: corr>0.5?"#4A9B7F":corr>0?"#C49A3C":"#C0666A" }}>{(corr*100).toFixed(0)}%</div>
         </div>
         <div style={{ fontSize:12, color:"var(--t3)", flex:1 }}>
           {corr > 0.5 ? "Strong — AI score is a reliable predictor of completion rate." :
@@ -123,11 +123,11 @@ function ScoreCorrelation({ stories }) {
               <div style={{ fontSize:12, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontSize:10, color:"var(--t4)" }}>Score</div>
-                <div style={{ fontSize:12, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{s.score_total}</div>
+                <div style={{ fontSize:12, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t1)" }}>{s.score_total}</div>
               </div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontSize:10, color:"var(--t4)" }}>Completion</div>
-                <div style={{ fontSize:12, fontWeight:600, fontFamily:"'DM Mono',monospace", color: completion>60?"#4A9B7F":completion>40?"#C49A3C":"var(--t3)" }}>{completion.toFixed(1)}%</div>
+                <div style={{ fontSize:12, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color: completion>60?"#4A9B7F":completion>40?"#C49A3C":"var(--t3)" }}>{completion.toFixed(1)}%</div>
               </div>
             </div>
           );
@@ -312,7 +312,7 @@ export default function AnalyzeView({ stories, onUpdate }) {
             ].map(m=>(
               <div key={m.label} style={{ padding:"12px 14px", borderRadius:9, background:"var(--bg2)", border:"1px solid var(--border)" }}>
                 <div style={{ fontSize:10, color:"var(--t3)", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.06em" }}>{m.label}</div>
-                <div style={{ fontSize:22, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)", letterSpacing:0 }}>
+                <div style={{ fontSize:22, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t1)", letterSpacing:0 }}>
                   {m.value}<span style={{ fontSize:12, color:"var(--t3)", fontWeight:400 }}>{m.suffix}</span>
                 </div>
               </div>

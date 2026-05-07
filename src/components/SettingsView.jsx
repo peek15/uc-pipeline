@@ -354,7 +354,7 @@ export default function SettingsView({ stories, onSettingsChange, initialSetting
                       <input type="range" min="0" max="100" step="5" value={val}
                         onChange={e=>updateFmtMix(f.key,e.target.value)}
                         style={{ width:120 }}/>
-                      <span style={{ fontSize:12, fontWeight:700, fontFamily:"'DM Mono',monospace", color:f.color, width:36, textAlign:"right" }}>{val}%</span>
+                      <span style={{ fontSize:12, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:f.color, width:36, textAlign:"right" }}>{val}%</span>
                     </div>
                   </div>
                   <div style={{ height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden" }}>
@@ -406,7 +406,7 @@ export default function SettingsView({ stories, onSettingsChange, initialSetting
           ].map(m=>(
             <div key={m.label} style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)" }}>
               <div style={{ fontSize:10, color:"var(--t3)", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.06em" }}>{m.label}</div>
-              <div style={{ fontSize:20, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t1)" }}>{m.value}</div>
+              <div style={{ fontSize:20, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t1)" }}>{m.value}</div>
             </div>
           ))}
         </div>

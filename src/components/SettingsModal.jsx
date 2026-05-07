@@ -156,7 +156,7 @@ function RuleBuilder({ rule, onChange, onDelete, index, conflicts, totalRules })
     <div style={{ borderRadius:9, border:`1px solid ${hasConflict?"#C0666A":"var(--border)"}`, background:"var(--card)", marginBottom:8, overflow:"hidden" }}>
       <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 12px", borderBottom:"1px solid var(--border2)" }}>
         <GripVertical size={14} color="var(--t4)" style={{ cursor:"grab", flexShrink:0 }}/>
-        <span style={{ fontSize:10, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t4)", width:18 }}>{index+1}</span>
+        <span style={{ fontSize:10, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)", width:18 }}>{index+1}</span>
         <select value={rule.type||""} onChange={e=>onChange({...rule,type:e.target.value})} style={{ fontSize:12, padding:"3px 8px", borderRadius:5, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none", flex:1 }}>
           <option value="">Select rule type...</option>
           {RULE_TYPES.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
@@ -931,7 +931,7 @@ ${fileText.slice(0,3000)}` : text };
                 <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                   <input type="number" min="1" max="14" value={settings.strategy?.weekly_cadence||4}
                     onChange={e=>upd("strategy.weekly_cadence", Math.min(14,Math.max(1,parseInt(e.target.value)||1)))}
-                    style={{ width:72, padding:"8px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:16, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                    style={{ width:72, padding:"8px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:16, outline:"none", textAlign:"center", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}/>
                   <span style={{ fontSize:12, color:"var(--t3)" }}>episodes per week</span>
                 </div>
               </div>
@@ -1062,7 +1062,7 @@ ${fileText.slice(0,3000)}` : text };
                       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
                         <input type="number" min="0" max="100" step="5" value={prog.weight||0}
                           onChange={e=>updProg(i,{...prog,weight:Math.min(100,Math.max(0,parseInt(e.target.value)||0))})}
-                          style={{ width:48, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                          style={{ width:48, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}/>
                         <span style={{ fontSize:12, color:"var(--t3)" }}>%</span>
                       </div>
                       <div style={{ position:"relative", height:3, borderRadius:2, background:"var(--bg3)" }}>
@@ -1108,7 +1108,7 @@ ${fileText.slice(0,3000)}` : text };
               {programmes.length>0 && (
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)", marginTop:4 }}>
                   <span style={{ fontSize:12, color:"var(--t3)" }}>Total weight</span>
-                  <span style={{ fontSize:13, fontWeight:700, fontFamily:"'DM Mono',monospace", color:programmes.reduce((a,p)=>a+(p.weight||0),0)===100?"#4A9B7F":"#C0666A" }}>
+                  <span style={{ fontSize:13, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:programmes.reduce((a,p)=>a+(p.weight||0),0)===100?"#4A9B7F":"#C0666A" }}>
                     {programmes.reduce((a,p)=>a+(p.weight||0),0)}%
                   </span>
                 </div>
@@ -1145,7 +1145,7 @@ ${fileText.slice(0,3000)}` : text };
                           <span style={{ fontSize:13, color:"var(--t1)", flex:1 }}>{label}</span>
                           <input type="number" min={min} max={max} step={step} value={val}
                             onChange={e=>upd(`strategy.alerts.${key}`,Math.min(max,Math.max(min,parseInt(e.target.value)||min)))}
-                            style={{ width:52, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                            style={{ width:52, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}/>
                           <span style={{ fontSize:12, color:"var(--t3)", width:28 }}>{key==="horizon_days"?"days":""}</span>
                         </div>
                         <div style={{ fontSize:11, color:"var(--t3)", marginBottom:6 }}>{hint}</div>
@@ -1188,7 +1188,7 @@ ${fileText.slice(0,3000)}` : text };
                           </select>
                           <input type="number" value={customThresholdValue} onChange={e=>setCustomThresholdValue(e.target.value)}
                             placeholder="Value"
-                            style={{ width:80, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", textAlign:"center", fontFamily:"'DM Mono',monospace" }}/>
+                            style={{ width:80, padding:"7px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", textAlign:"center", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}/>
                         </div>
                         <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
                           <button onClick={()=>{setShowCustomThreshold(false);setCustomThresholdName("");setCustomThresholdValue("");}} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, background:"transparent", border:"0.5px solid var(--border)", color:"var(--t3)", cursor:"pointer" }}>Cancel</button>
@@ -1321,7 +1321,7 @@ ${fileText.slice(0,3000)}` : text };
               </div>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderTop:"0.5px solid var(--border2)", marginTop:4 }}>
                 <span style={{ fontSize:11, color:"var(--t4)" }}>Uncle Carter Pipeline</span>
-                <span style={{ fontSize:11, fontFamily:"'DM Mono',monospace", color:"var(--t4)" }}>v{VERSION_NUM}</span>
+                <span style={{ fontSize:11, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)" }}>v{VERSION_NUM}</span>
               </div>
             </div>
           )}
@@ -1388,7 +1388,7 @@ ${fileText.slice(0,3000)}` : text };
                 ].map(({label,value,editable,mono})=>(
                   <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>
                     <span style={{ fontSize:13, color:"var(--t3)" }}>{label}</span>
-                    <span style={{ fontSize:13, color:editable?"var(--t1)":"var(--t4)", fontFamily:mono?"'DM Mono',monospace":"inherit" }}>{value}</span>
+                    <span style={{ fontSize:13, color:editable?"var(--t1)":"var(--t4)", fontFamily:mono?"ui-monospace,'SF Mono',Menlo,monospace":"inherit" }}>{value}</span>
                   </div>
                 ))}
               </div>

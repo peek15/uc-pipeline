@@ -34,7 +34,7 @@ export default class ErrorBoundary extends Component {
         background: "rgba(192,102,106,0.1)",
         border: "1px solid rgba(192,102,106,0.5)",
         color: "var(--t1, #1a1917)",
-        fontFamily: "'DM Mono', monospace",
+        fontFamily: "ui-monospace,'SF Mono',Menlo,monospace",
         fontSize: 12, lineHeight: 1.5,
         whiteSpace: "pre-wrap", overflow: "auto",
         maxHeight: "70vh",

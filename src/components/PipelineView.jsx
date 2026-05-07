@@ -37,7 +37,7 @@ function ScoreBar({ score, label, max=25 }) {
       <div style={{ flex:1, height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden" }}>
         <div style={{ height:"100%", width:`${(score/max)*100}%`, background:"var(--t1)", borderRadius:2 }} />
       </div>
-      <span style={{ fontSize:10, fontFamily:"'DM Mono',monospace", color:"var(--t2)", width:20, textAlign:"right" }}>{score}</span>
+      <span style={{ fontSize:10, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t2)", width:20, textAlign:"right" }}>{score}</span>
     </div>
   );
 }
@@ -303,7 +303,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:8,borderBottom:"1px solid var(--border)"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:12,fontWeight:600,color:"var(--t1)",letterSpacing:"0.04em",textTransform:"uppercase"}}>{st.label}</span>
-                <span style={{fontSize:11,color:"var(--t3)",fontFamily:"'DM Mono',monospace"}}>{items.length}</span>
+                <span style={{fontSize:11,color:"var(--t3)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>{items.length}</span>
               </div>
               {stKey==="accepted"&&items.length>0&&(
                 <button onClick={()=>onBulkAction("accepted","approved")} style={{padding:"4px 12px",borderRadius:6,fontSize:11,fontWeight:600,background:"var(--t1)",color:"var(--bg)",border:"none",cursor:"pointer"}}>
@@ -376,12 +376,12 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                       {/* Score + readiness + date */}
                       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <span style={{fontSize:9,fontWeight:700,fontFamily:"'DM Mono',monospace",color:rColor,padding:"1px 4px",borderRadius:3,background:readiness===8?"rgba(74,155,127,0.1)":"transparent"}}>{readiness}/8</span>
-                          {hasScore&&<span style={{fontSize:11,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--t1)"}}>{s.score_total}</span>}
+                          <span style={{fontSize:9,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:rColor,padding:"1px 4px",borderRadius:3,background:readiness===8?"rgba(74,155,127,0.1)":"transparent"}}>{readiness}/8</span>
+                          {hasScore&&<span style={{fontSize:11,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)"}}>{s.score_total}</span>}
                           {!hasScore&&s.obscurity>0&&<ScoreDots score={s.obscurity}/>}
                         </div>
-                        {s.reach_score!=null&&<span style={{fontSize:10,color:"var(--t4)",fontFamily:"'DM Mono',monospace"}}>↗{s.reach_score}</span>}
-                        {dateStr&&<span style={{fontSize:10,color:"var(--t4)",fontFamily:"'DM Mono',monospace"}}>{dateStr}</span>}
+                        {s.reach_score!=null&&<span style={{fontSize:10,color:"var(--t4)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>↗{s.reach_score}</span>}
+                        {dateStr&&<span style={{fontSize:10,color:"var(--t4)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>{dateStr}</span>}
                       </div>
 
                       {/* Advance */}
@@ -411,8 +411,8 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                               <span style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>AI Score</span>
                               <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                                {s.reach_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}}>↗ reach <span style={{fontFamily:"'DM Mono',monospace",color:"var(--t2)",fontWeight:600}}>{s.reach_score}</span></span>}
-                                <span style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--t1)"}}>{s.score_total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span></span>
+                                {s.reach_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}}>↗ reach <span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t2)",fontWeight:600}}>{s.reach_score}</span></span>}
+                                <span style={{fontSize:13,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)"}}>{s.score_total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span></span>
                               </div>
                             </div>
                             {s.score_emotional!=null&&(
@@ -463,7 +463,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       {/* Shortcut hint */}
       <div style={{marginTop:24,padding:"10px 14px",borderRadius:8,background:"var(--fill2)",border:"1px solid var(--border2)",fontSize:11,color:"var(--t4)",display:"flex",gap:16,flexWrap:"wrap"}}>
         {[["↑↓","Navigate"],["→←","Expand"],["Enter/D","Full detail"],["Space","Select"],["⌘E","Select all"],["⌘↵","Approve"],["⌘⌫","Reject"],["⌥→←","Switch tab"]].map(([k,v])=>(
-          <span key={k}><kbd style={{fontFamily:"'DM Mono',monospace",fontSize:9,padding:"1px 5px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
+          <span key={k}><kbd style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:9,padding:"1px 5px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
         ))}
       </div>
     </div>

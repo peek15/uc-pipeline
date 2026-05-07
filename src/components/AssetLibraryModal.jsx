@@ -57,7 +57,7 @@ function ErrorBox({ children }) {
 function TypeBadge({ type }) {
   const def = ASSET_LIB_TYPES.find(t => t.key === type);
   return (
-    <span style={{ fontSize: 10, fontFamily: "'DM Mono',monospace", padding: "2px 7px", borderRadius: 4, background: "var(--fill2)", color: "var(--t3)", border: "0.5px solid var(--border)" }}>
+    <span style={{ fontSize: 10, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", padding: "2px 7px", borderRadius: 4, background: "var(--fill2)", color: "var(--t3)", border: "0.5px solid var(--border)" }}>
       {def?.label || type}
     </span>
   );
@@ -82,7 +82,7 @@ function AssetRow({ asset, onToggle, onDelete }) {
       )}
       {!isImg && (
         <div style={{ width: 40, height: 40, borderRadius: 4, background: "var(--fill2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <span style={{ fontSize: 9, fontFamily: "'DM Mono',monospace", color: "var(--t3)", textTransform: "uppercase" }}>{ext || "?"}</span>
+          <span style={{ fontSize: 9, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: "var(--t3)", textTransform: "uppercase" }}>{ext || "?"}</span>
         </div>
       )}
 

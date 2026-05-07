@@ -1,16 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* ── Typography ── */
-  --font-body: 'DM Sans', -apple-system, system-ui, sans-serif;
-  --font-display: 'DM Sans', -apple-system, system-ui, sans-serif;
-  --font-mono: 'DM Mono', ui-monospace, monospace;
-  --font-editorial: 'Instrument Serif', Georgia, serif;
-  --font-script: Georgia, 'Times New Roman', serif;
+  /* ── Typography — next/font vars injected by layout.js ── */
+  --font-body:      var(--font-dm-sans), -apple-system, system-ui, sans-serif;
+  --font-display:   var(--font-dm-sans), -apple-system, system-ui, sans-serif;
+  --font-mono:      ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
+  --font-editorial: var(--font-instrument-serif), Georgia, serif;
+  --font-script:    Georgia, 'Times New Roman', serif;
 
   /* ── Backgrounds ── */
   --bg:    #F7F6F3;  /* warm off-white page */

@@ -21,7 +21,7 @@ import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.15.3";
+const VERSION = "3.16.0";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -408,7 +408,7 @@ export default function Home() {
             ? <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)" }}>Uncle Carter</span>
-                  <span style={{ fontSize:9, fontWeight:600, fontFamily:"'DM Mono',monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
+                  <span style={{ fontSize:9, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
                 </div>
               </div>
             : <div style={{ height:16, flexShrink:0 }} />
@@ -528,7 +528,7 @@ export default function Home() {
             ].map(({k, dot}) => (counts[k]||0) > 0 ? (
               <div key={k} style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"var(--fill2)", border:"0.5px solid var(--border2)", flexShrink:0 }}>
                 <span style={{ width:5, height:5, borderRadius:"50%", background:dot, flexShrink:0, display:"inline-block" }} />
-                <span style={{ fontSize:11, color:"var(--t2)", fontFamily:"'DM Mono',monospace" }}>{counts[k]}</span>
+                <span style={{ fontSize:11, color:"var(--t2)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{counts[k]}</span>
                 <span style={{ fontSize:10, color:"var(--t3)" }}>{STAGES[k].label}</span>
               </div>
             ) : null)}
@@ -587,6 +587,7 @@ export default function Home() {
         tab={tab}
         onNavigate={setTab}
         onOpenStory={setSelected}
+        onUpdateStory={updateStory}
       />
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}

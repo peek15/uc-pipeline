@@ -47,7 +47,7 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
     <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"0.5px solid var(--border)", marginBottom:16 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
         <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>3-week coverage</span>
-        <span style={{ fontSize:12, fontWeight:700, fontFamily:"'DM Mono',monospace", color }}>{covered}/{totalSlots} slots</span>
+        <span style={{ fontSize:12, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color }}>{covered}/{totalSlots} slots</span>
       </div>
       <div style={{ height:4, borderRadius:2, background:"var(--bg3)", overflow:"hidden", marginBottom:10 }}>
         <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:2, transition:"width 0.4s" }}/>
@@ -438,7 +438,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                               </div>
                               <div style={{ fontSize:12, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
                             </div>
-                            {s.score_total && <span style={{ fontSize:11, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--t3)", flexShrink:0 }}>{s.score_total}</span>}
+                            {s.score_total && <span style={{ fontSize:11, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t3)", flexShrink:0 }}>{s.score_total}</span>}
                           </button>
                         );
                       })}

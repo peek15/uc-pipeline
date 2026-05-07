@@ -189,6 +189,8 @@ async function runProviderTest(provider_type, provider_name, secrets, config) {
   if (provider_type === "voice")              return testVoice             (provider_name, secrets, config, t0);
   if (provider_type === "visual_atmospheric") return testVisualAtmospheric (provider_name, secrets, config, t0);
   if (provider_type === "visual_licensed")    return testVisualLicensed    (provider_name, secrets, config, t0);
+  if (provider_type === "llm_openai")         return testLLMOpenAI         (provider_name, secrets, config, t0);
+  if (provider_type === "llm_anthropic")      return testLLMAnthropic      (provider_name, secrets, config, t0);
   return { ok: false, error: `No test handler for provider_type=${provider_type}` };
 }
 
@@ -326,4 +328,38 @@ async function testVisualLicensed(name, secrets, config, t0) {
   }
 
   return { ok: false, error: `Unknown licensed provider: ${name}` };
+}
+
+async function testLLMOpenAI(name, secrets, config, t0) {
+  const key = secrets?.api_key;
+  if (!key) return { ok: false, error: "Missing api_key" };
+  try {
+    const res = await fetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      return { ok: false, error: `OpenAI ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+    }
+    return { ok: true, latency_ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e), latency_ms: Date.now() - t0 };
+  }
+}
+
+async function testLLMAnthropic(name, secrets, config, t0) {
+  const key = secrets?.api_key;
+  if (!key) return { ok: false, error: "Missing api_key" };
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/models", {
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      return { ok: false, error: `Anthropic ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+    }
+    return { ok: true, latency_ms: Date.now() - t0 };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e), latency_ms: Date.now() - t0 };
+  }
 }

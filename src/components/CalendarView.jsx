@@ -1,8 +1,9 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
-import { X, ChevronLeft, ChevronRight, Plus, Circle, RefreshCw, ShieldCheck, AlertCircle } from "lucide-react";
-import { STAGES, ACCENT, ARCHETYPES, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
+import { X, ChevronLeft, ChevronRight, Plus, RefreshCw, ShieldCheck, AlertCircle } from "lucide-react";
+import { ACCENT, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
+import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 
 const PLATFORMS = ["TikTok","Instagram","YouTube","All"];
 const DEFAULT_CADENCE = 5;
@@ -44,7 +45,7 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
   }
 
   return (
-    <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"0.5px solid var(--border)", marginBottom:16 }}>
+    <Panel style={{ height:"100%" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
         <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>3-week coverage</span>
         <span style={{ fontSize:12, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color }}>{covered}/{totalSlots} slots</span>
@@ -62,7 +63,7 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
           </span>
         ))}
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -84,7 +85,7 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
   ];
 
   return (
-    <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--bg2)", border:"0.5px solid var(--border)", marginBottom:16 }}>
+    <Panel style={{ height:"100%" }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom:12, flexWrap:"wrap" }}>
         <div style={{ display:"flex", alignItems:"center", gap:9 }}>
           <div style={{ width:28, height:28, borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -144,7 +145,7 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
       ) : (
         <div style={{ fontSize:11, color:"var(--success)" }}>Week looks balanced against current cadence, quality, and sequence rules.</div>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -152,7 +153,6 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
   const [weekOffset,  setWeekOffset]  = useState(0);
   const [showAssign,  setShowAssign]  = useState(null); // day index
   const [platform,    setPlatform]    = useState("All");
-  const [view,        setView]        = useState("week"); // week | month
 
   // Read from settings — fall back to defaults
   const cadence   = settings?.strategy?.weekly_cadence || DEFAULT_CADENCE;
@@ -405,14 +405,20 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
   return (
     <div className="animate-fade-in">
 
-      {/* 3-week coverage */}
-      <CoverageSummary stories={stories} weekOffset={weekOffset} cadence={cadence} />
-
-      <CalendarAuditPanel
-        audit={weekAudit}
-        onAutoFill={() => autoFillWeek()}
-        onSafeFill={() => autoFillWeek({ safeOnly:true })}
+      <PageHeader
+        title="Schedule"
+        description="Plan the visible week, check cadence and quality pressure, then move scheduled stories into scripting and production."
+        meta={`${scheduledNext14.length} scheduled · ${ready.length} ready`}
       />
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:12, marginBottom:16 }}>
+        <CoverageSummary stories={stories} weekOffset={weekOffset} cadence={cadence} />
+        <CalendarAuditPanel
+          audit={weekAudit}
+          onAutoFill={() => autoFillWeek()}
+          onSafeFill={() => autoFillWeek({ safeOnly:true })}
+        />
+      </div>
 
       {/* Auto-produce banner */}
       {needsScript > 0 && (
@@ -452,11 +458,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
         </div>
 
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          <button onClick={autoFillWeek} style={{
-            padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500,
-            background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer",
-            display:"flex", alignItems:"center", gap:5,
-          }}>
+          <button onClick={autoFillWeek} style={buttonStyle("secondary", { padding:"5px 12px" })}>
             ⌘F Auto-fill week
           </button>
         </div>
@@ -475,7 +477,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
       </div>
 
       {/* Week grid */}
-      <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(168px, 1fr))", gap:8, alignItems:"stretch" }}>
         {days.map((d, di) => {
           const items    = getForDay(d).filter(s => platform==="All" || !s.platform_target || s.platform_target===platform);
           const past     = isPast(d);
@@ -490,6 +492,9 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
               background: today_ ? "var(--fill2)" : "transparent",
               opacity: past ? 0.45 : 1,
               overflow:"hidden",
+              minHeight:220,
+              display:"flex",
+              flexDirection:"column",
             }}>
               {/* Day header */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px" }}>
@@ -498,8 +503,8 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                     {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][di]}
                   </span>
                   <span style={{ fontSize:11, color:"var(--t4)" }}>{d.getMonth()+1}/{d.getDate()}</span>
-                  {today_ && <span style={{ fontSize:9, fontWeight:600, padding:"1px 6px", borderRadius:99, background:"var(--t1)", color:"var(--bg)" }}>Today</span>}
-                  {isGap && <span style={{ fontSize:10, color:"var(--t4)" }}>empty slot</span>}
+                  {today_ && <Pill active>Today</Pill>}
+                  {isGap && <Pill>Empty</Pill>}
                 </div>
                 {!past && (
                   <button onClick={()=>setShowAssign(showAssign===di?null:di)} style={{
@@ -513,7 +518,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
 
               {/* Scheduled items */}
               {items.length > 0 && (
-                <div style={{ padding:"0 8px 8px" }}>
+                <div style={{ padding:"0 8px 8px", flex:1 }}>
                   {items.map(s => {
                     const fmtObj = FORMAT_MAP[s.format];
                     const ac     = fmtObj ? fmtObj.color : (ACCENT[s.archetype]||"var(--border)");
@@ -597,6 +602,11 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                   )}
                 </div>
               ); })()}
+              {!items.length && !showAssign && (
+                <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"14px", color:"var(--t4)", fontSize:11, textAlign:"center" }}>
+                  {past ? "No post" : "Open slot"}
+                </div>
+              )}
             </div>
           );
         })}

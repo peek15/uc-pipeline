@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Sparkles, Search, Volume2, Image as ImageIcon, FileText, Check, X, RefreshCw, AlertCircle, Layers, Play, Pause, Download, Copy, Library } from "lucide-react";
-import { PRODUCTION_STATUS_LABELS, isInProductionQueue } from "@/lib/constants";
+import { isInProductionQueue } from "@/lib/constants";
 import { runAgent, recordAgentFeedback, voiceAgent, visualAgent, assemblyAgent } from "@/lib/ai/agent-runner";
 import { runPromptStream } from "@/lib/ai/runner";
 import { buildStreamPrompt as buildBriefPrompt, parseOutput as parseBriefOutput } from "@/lib/ai/agents/brief-author";
@@ -12,6 +12,7 @@ import { updateProductionStatus, supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
+import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 
 const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 const LANG_LABELS = { en: "English", fr: "French", es: "Spanish", pt: "Portuguese", de: "German", it: "Italian", ja: "Japanese", zh: "Chinese" };
@@ -52,6 +53,55 @@ function ProgressDots({ story }) {
   const hasAssembly = !!story.assembly_brief;
   const dot = (on) => <span style={{ width: 5, height: 5, borderRadius: "50%", background: on ? "var(--t1)" : "var(--t4)", display: "inline-block" }} />;
   return <span style={{ display: "inline-flex", gap: 3 }}>{dot(hasBrief)}{dot(hasVisuals)}{dot(hasAudio)}{dot(hasAssembly)}</span>;
+}
+
+function productionReadiness(story) {
+  const checks = [
+    { key: "brief", label: "Brief", done: !!story.visual_brief },
+    { key: "assets", label: "Assets", done: !!story.visual_refs?.selected?.length },
+    { key: "voice", label: "Voice", done: !!(story.audio_refs && Object.keys(story.audio_refs || {}).length) },
+    { key: "visuals", label: "Visuals", done: !!story.visual_refs?.selected?.length },
+    { key: "assembly", label: "Assembly", done: !!story.assembly_brief },
+  ];
+  const done = checks.filter(c => c.done).length;
+  return { checks, done, total: checks.length, percent: Math.round((done / checks.length) * 100) };
+}
+
+function matchesProductionFilter(story, filter) {
+  if (filter === "all") return true;
+  if (filter === "needs_brief") return !story.visual_brief;
+  if (filter === "needs_assets") return !story.visual_refs?.selected?.length;
+  if (filter === "needs_voice") return !(story.audio_refs && Object.keys(story.audio_refs || {}).length);
+  if (filter === "needs_assembly") return !story.assembly_brief;
+  if (filter === "ready_review") return productionReadiness(story).done >= 4;
+  return true;
+}
+
+function ReadinessStrip({ story }) {
+  const readiness = productionReadiness(story);
+  const color = readiness.done === readiness.total ? "var(--success)" : readiness.done >= 3 ? "var(--warning)" : "var(--t3)";
+  return (
+    <Panel style={{ marginBottom: 12, background: "var(--card)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(86px, 1fr))", gap: 8, alignItems: "stretch" }}>
+        <div style={{ padding: "10px 12px", borderRadius: 8, background: "var(--fill2)", border: "0.5px solid var(--border)" }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Readiness</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, fontFamily: "var(--font-mono)", color }}>{readiness.percent}</span>
+            <span style={{ fontSize: 11, color: "var(--t3)" }}>%</span>
+          </div>
+          <div style={{ height: 4, borderRadius: 999, background: "var(--bg3)", overflow: "hidden", marginTop: 8 }}>
+            <div style={{ height: "100%", width: `${readiness.percent}%`, background: color }} />
+          </div>
+        </div>
+        {readiness.checks.map(check => (
+          <div key={check.key} style={{ padding: "10px 9px", borderRadius: 8, background: check.done ? "var(--success-bg)" : "var(--fill2)", border: `0.5px solid ${check.done ? "rgba(74,155,127,0.24)" : "var(--border)"}` }}>
+            <div style={{ fontSize: 10, color: check.done ? "var(--success)" : "var(--t4)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{check.label}</div>
+            <div style={{ fontSize: 12, color: check.done ? "var(--success)" : "var(--t3)", fontWeight: 600 }}>{check.done ? "Ready" : "Open"}</div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
 }
 
 function Section({ title, status, statusColor, description, children }) {
@@ -779,7 +829,9 @@ function AssetMatchesSection({ story, brand_profile_id }) {
 export default function ProductionView({ stories, onUpdate }) {
   const queue = useMemo(() => (stories || []).filter(isInProductionQueue), [stories]);
   const [selectedId, setSelectedId] = usePersistentState("production_selected", queue[0]?.id || null);
+  const [queueFilter, setQueueFilter] = usePersistentState("production_queue_filter", "all");
   const [showLibrary, setShowLibrary] = useState(false);
+  const filteredQueue = useMemo(() => queue.filter(story => matchesProductionFilter(story, queueFilter)), [queue, queueFilter]);
 
   useEffect(() => {
     if (!selectedId && queue.length) setSelectedId(queue[0].id);
@@ -790,17 +842,17 @@ export default function ProductionView({ stories, onUpdate }) {
   useEffect(() => {
     const handler = (e) => {
       if (shouldIgnoreFromInput()) return;
-      if (queue.length === 0) return;
+      if (filteredQueue.length === 0) return;
 
       // Queue navigation
       if (matches(e, SHORTCUTS.productionDown.combo) || matches(e, SHORTCUTS.productionUp.combo)) {
         e.preventDefault();
-        const idx = queue.findIndex(s => s.id === selectedId);
+        const idx = filteredQueue.findIndex(s => s.id === selectedId);
         const safe = idx === -1 ? 0 : idx;
         const next = e.key === "ArrowDown"
-          ? Math.min(safe + 1, queue.length - 1)
+          ? Math.min(safe + 1, filteredQueue.length - 1)
           : Math.max(safe - 1, 0);
-        setSelectedId(queue[next].id);
+        setSelectedId(filteredQueue[next].id);
         return;
       }
 
@@ -813,9 +865,17 @@ export default function ProductionView({ stories, onUpdate }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [queue, selectedId, setSelectedId]);
+  }, [filteredQueue, selectedId, setSelectedId]);
 
   const selected = queue.find(s => s.id === selectedId);
+  const filterOptions = [
+    { key: "all", label: "All", count: queue.length },
+    { key: "needs_brief", label: "Needs brief", count: queue.filter(s => matchesProductionFilter(s, "needs_brief")).length },
+    { key: "needs_assets", label: "Needs assets", count: queue.filter(s => matchesProductionFilter(s, "needs_assets")).length },
+    { key: "needs_voice", label: "Needs voice", count: queue.filter(s => matchesProductionFilter(s, "needs_voice")).length },
+    { key: "needs_assembly", label: "Needs assembly", count: queue.filter(s => matchesProductionFilter(s, "needs_assembly")).length },
+    { key: "ready_review", label: "Ready review", count: queue.filter(s => matchesProductionFilter(s, "ready_review")).length },
+  ];
 
   if (queue.length === 0) {
     return (
@@ -831,23 +891,29 @@ export default function ProductionView({ stories, onUpdate }) {
     <div>
       <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} />
 
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em", margin: 0, color: "var(--t1)" }}>Production</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 12, color: "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{queue.length} in flight</span>
-          <button onClick={() => setShowLibrary(true)} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 500, background: "var(--fill2)", color: "var(--t2)", border: "0.5px solid var(--border)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <PageHeader
+        title="Produce"
+        description="Pick a story, check its production readiness, then run the agents for brief, assets, voice, visuals, and assembly."
+        meta={`${queue.length} in flight`}
+        action={
+          <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
             <Library size={12} /> Asset library
           </button>
-        </div>
-      </header>
-      <p style={{ fontSize: 13, color: "var(--t3)", margin: "0 0 20px", maxWidth: 720 }}>
-        Pick a story on the left. Five agents handle brief, library matching, voice, visuals, and assembly. Your edits train the system.
-      </p>
+        }
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 14, alignItems: "start" }}>
         <div style={{ background: "var(--bg2)", borderRadius: 10, border: "0.5px solid var(--border)", padding: 8, position: "sticky", top: 16 }}>
-          {queue.map(story => {
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+            {filterOptions.map(option => (
+              <button key={option.key} onClick={() => setQueueFilter(option.key)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>
+                <Pill active={queueFilter === option.key}>{option.label} · {option.count}</Pill>
+              </button>
+            ))}
+          </div>
+          {filteredQueue.length ? filteredQueue.map(story => {
             const isSelected = story.id === selectedId;
+            const readiness = productionReadiness(story);
             return (
               <button key={story.id} onClick={() => setSelectedId(story.id)}
                 style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", marginBottom: 4, borderRadius: 7,
@@ -858,11 +924,13 @@ export default function ProductionView({ stories, onUpdate }) {
                 <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 500, color: "var(--t1)", lineHeight: 1.3, marginBottom: 4 }}>{story.title || "(untitled)"}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <ProgressDots story={story} />
-                  <span style={{ fontSize: 10, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: "var(--t3)" }}>{PRODUCTION_STATUS_LABELS[story.production_status] || story.status || ""}</span>
+                  <span style={{ fontSize: 10, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: readiness.done >= 4 ? "var(--success)" : "var(--t3)" }}>{readiness.done}/{readiness.total}</span>
                 </div>
               </button>
             );
-          })}
+          }) : (
+            <div style={{ padding: "28px 8px", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>No stories match this production filter.</div>
+          )}
         </div>
 
         <div style={{ background: "var(--bg2)", borderRadius: 10, border: "0.5px solid var(--border)", padding: "20px 24px" }}>
@@ -877,6 +945,7 @@ export default function ProductionView({ stories, onUpdate }) {
                 </div>
               </div>
 
+              <ReadinessStrip story={selected} />
               <PipelineProgress story={selected} />
               <BriefSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
               <AssetMatchesSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} />

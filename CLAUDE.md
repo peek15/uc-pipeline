@@ -1,7 +1,7 @@
 # Uncle Carter Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.16.3
+- App badge/package target: v3.16.4
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.16.4: Phase 1 UI audit upgrades: shared operational UI primitives, Calendar planner board, Produce queue filters/readiness strip.
 - v3.16.3: Provider cost alerts in AI Usage using rolling ai_calls cost estimates and persisted local budgets.
 - v3.16.2: Quality Gate V2 deeper checks, gate score, info issues, and Pipeline re-audit visible stories.
 - v3.16.1: Calendar weekly planner audit, safe auto-fill, quality/scripting/sequence planning flags.
@@ -81,7 +82,7 @@ scheduling, provider operations, quality gates, and analytics.
 
 ## Calendar Planner
 - Component: `src/components/CalendarView.jsx`
-- Shows 3-week coverage plus a weekly planner audit for the visible week.
+- Shows a planner-board week view, 3-week coverage, and a weekly planner audit for the visible week.
 - Audit checks:
   - missing cadence slots
   - quality gate warnings/blockers/missing audits
@@ -89,6 +90,12 @@ scheduling, provider operations, quality gates, and analytics.
   - format mix gaps
   - sequence-rule issues
 - `Auto-fill safe` avoids Quality Gate blocked stories.
+
+## Production
+- Component: `src/components/ProductionView.jsx`
+- Uses a left production queue plus selected-story agent workspace.
+- Queue filters include all, needs brief, needs assets, needs voice, needs assembly, and ready review.
+- Selected stories show a readiness strip for brief, assets, voice, visuals, and assembly.
 
 ## Supabase
 - Canonical schema file: `supabase-schema.sql`

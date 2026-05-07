@@ -21,7 +21,7 @@ import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.16.3";
+const VERSION = "3.16.4";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },

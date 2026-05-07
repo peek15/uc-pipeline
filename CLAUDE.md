@@ -1,7 +1,7 @@
 # Uncle Carter Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.17.1
+- App badge/package target: v3.17.2
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.2: SaaS Phase 3 brand-agnostic workflow layer: scripts JSONB adapter, configured-language Create/Produce/Calendar readiness, brand-aware quality gate terms, agent prompt subject language, and generic pipeline agent context.
 - v3.17.1: SaaS Phase 2 brand-config engine: brand taxonomy helper, brand-aware Research prompt/options, brand-aware script/scoring/translation/reach prompts, taxonomy/prompt defaults in settings.
 - v3.17.0: SaaS Phase 1 tenant foundation: workspace tables/RLS scaffold, tenant-scoped story reads/writes, tenant-scoped settings/provider/assets/AI usage wiring.
 - v3.16.9: Create V2 unified workflow: shared story queue, persistent selected-story workspace, Script-to-Review step tabs, and smoother Write/Produce transition.
@@ -71,6 +72,8 @@ scheduling, provider operations, quality gates, and analytics.
 ## Brand Config Engine
 - Helper: `src/lib/brandConfig.js`
 - Uncle Carter values are now treated as seed defaults, not the only product model.
+- Script language access should go through `getStoryScript()`, `storyScriptPatch()`, `hasAllConfiguredScripts()`, and `getBrandLanguages()`.
+- `storyScriptPatch()` writes legacy columns only for EN/FR/ES/PT and writes every language to `stories.scripts` JSONB for SaaS brands with custom language sets.
 - Brand settings can provide:
   - `strategy.programmes`
   - `taxonomy.eras`
@@ -81,6 +84,8 @@ scheduling, provider operations, quality gates, and analytics.
 - Research uses brand programmes/archetypes/subjects and passes `brand_config` into research/scoring prompts.
 - Create script generation and translation pass `brand_config` into AI prompts.
 - Reach/script/scoring/translation prompts should prefer `brand_config` over UC defaults.
+- Production voice and assembly agents now read legacy script columns plus `stories.scripts`.
+- Calendar language readiness and Production Alert translation warnings use configured brand languages.
 
 ## UI System
 - Shared operational primitives live in `src/components/OperationalUI.jsx`.
@@ -110,6 +115,8 @@ scheduling, provider operations, quality gates, and analytics.
 ## Quality Gate
 - Core logic: `src/lib/qualityGate.js`
 - Research runs the gate before adding stories to Pipeline.
+- Quality Gate V2 accepts brand-specific factual anchor terms at `settings.quality_gate.factual_anchor_terms`.
+- PT review warnings only apply when Portuguese is a configured brand language and the PT script exists.
 - Gate state persists on `stories` via:
   - `quality_gate`
   - `quality_gate_status`

@@ -161,6 +161,8 @@ ALTER TABLE stories
   ADD COLUMN IF NOT EXISTS subject_tags TEXT[],
   ADD COLUMN IF NOT EXISTS platform_target TEXT,
   ADD COLUMN IF NOT EXISTS production_status TEXT,
+  ADD COLUMN IF NOT EXISTS scripts JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS visual_brief JSONB,
   ADD COLUMN IF NOT EXISTS visual_refs JSONB,
   ADD COLUMN IF NOT EXISTS audio_refs JSONB,
@@ -176,6 +178,18 @@ SET workspace_id = COALESCE(workspace_id, '00000000-0000-0000-0000-000000000001'
     brand_profile_id = COALESCE(brand_profile_id, '00000000-0000-0000-0000-000000000001')
 WHERE workspace_id IS NULL OR brand_profile_id IS NULL;
 
+UPDATE stories
+SET scripts =
+  CASE WHEN script IS NOT NULL AND script <> '' THEN jsonb_build_object('en', script) ELSE '{}'::jsonb END
+  || CASE WHEN script_fr IS NOT NULL AND script_fr <> '' THEN jsonb_build_object('fr', script_fr) ELSE '{}'::jsonb END
+  || CASE WHEN script_es IS NOT NULL AND script_es <> '' THEN jsonb_build_object('es', script_es) ELSE '{}'::jsonb END
+  || CASE WHEN script_pt IS NOT NULL AND script_pt <> '' THEN jsonb_build_object('pt', script_pt) ELSE '{}'::jsonb END
+  || COALESCE(scripts, '{}'::jsonb)
+WHERE (script IS NOT NULL AND script <> '')
+   OR (script_fr IS NOT NULL AND script_fr <> '')
+   OR (script_es IS NOT NULL AND script_es <> '')
+   OR (script_pt IS NOT NULL AND script_pt <> '');
+
 ALTER TABLE stories ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated users full access" ON stories;
 DROP POLICY IF EXISTS "Tenant stories access" ON stories;
@@ -190,6 +204,7 @@ CREATE INDEX IF NOT EXISTS idx_stories_scheduled ON stories (scheduled_date);
 CREATE INDEX IF NOT EXISTS idx_stories_created ON stories (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_stories_brand ON stories (brand_profile_id);
 CREATE INDEX IF NOT EXISTS idx_stories_quality_gate ON stories (quality_gate_status);
+CREATE INDEX IF NOT EXISTS idx_stories_scripts_gin ON stories USING GIN (scripts);
 
 -- ═══════════════════════════════════════════
 -- BRAND PROFILES

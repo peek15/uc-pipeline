@@ -195,7 +195,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           format: s.format || format || suggestFormat(s.era),
           ...(sc ? { score_total: sc.total } : {}),
         };
-        return { s: normalized, i, gate: auditStoryQuality(normalized, stories), score: sc };
+        return { s: normalized, i, gate: auditStoryQuality(normalized, stories, settings), score: sc };
       })
       .filter(({ gate }) => gate.canAdd);
     const blocked = results.length - gated.length;
@@ -383,7 +383,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
             {sortedResults.map(({ s, i, score: sc }) => {
               const scoreData = scores[i];
               const fmt = programmeMap[s.format || format || suggestFormat(s.era)];
-              const gate = auditStoryQuality({ ...s, format: s.format || format || suggestFormat(s.era), score_total: scoreData?.total ?? sc }, stories);
+              const gate = auditStoryQuality({ ...s, format: s.format || format || suggestFormat(s.era), score_total: scoreData?.total ?? sc }, stories, settings);
               return (
                 <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"0.5px solid var(--border)", borderLeft:`2px solid ${fmt?.color||"var(--border)"}` }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
@@ -444,7 +444,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       {!loading&&!results.length&&(
         <div style={{ textAlign:"center", padding:"60px 0", color:"var(--t4)" }}>
           <Search size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }}/>
-          <div style={{ fontSize:13 }}>Search or build a queue to find NBA stories</div>
+          <div style={{ fontSize:13 }}>Search or build a queue to find stories</div>
           <div style={{ fontSize:11, marginTop:6, color:"var(--t4)" }}>Add multiple searches to queue to mix formats in one batch</div>
         </div>
       )}

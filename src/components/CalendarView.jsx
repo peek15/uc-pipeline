@@ -1,9 +1,10 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
 import { X, ChevronLeft, ChevronRight, Plus, RefreshCw, ShieldCheck, AlertCircle } from "lucide-react";
-import { ACCENT, LANGS, FORMAT_MAP, FORMATS } from "@/lib/constants";
+import { ACCENT, FORMAT_MAP, FORMATS } from "@/lib/constants";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
+import { getBrandLanguages, getStoryScript } from "@/lib/brandConfig";
 
 const PLATFORMS = ["TikTok","Instagram","YouTube","All"];
 const DEFAULT_CADENCE = 5;
@@ -150,6 +151,7 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
 }
 
 export default function CalendarView({ stories, onUpdate, onProduce, settings }) {
+  const languages = useMemo(() => getBrandLanguages(settings), [settings]);
   const [weekOffset,  setWeekOffset]  = useState(0);
   const [showAssign,  setShowAssign]  = useState(null); // day index
   const [platform,    setPlatform]    = useState("All");
@@ -588,7 +590,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                   {items.map(s => {
                     const fmtObj = FORMAT_MAP[s.format];
                     const ac     = fmtObj ? fmtObj.color : (ACCENT[s.archetype]||"var(--border)");
-                    const ready4 = [!!s.script, !!s.script_fr, !!s.script_es, !!s.script_pt].filter(Boolean).length;
+                    const readyCount = languages.filter(l => getStoryScript(s, l.key)).length;
                     return (
                       <div key={s.id} draggable={!past} onDragStart={(e)=>e.dataTransfer.setData("text/story-id", s.id)} style={{
                         display:"flex", alignItems:"center", gap:8, padding:"var(--card-padding-y, 8px) var(--card-padding-x, 10px)", borderRadius:7, marginBottom:"var(--card-gap, 3px)",
@@ -603,10 +605,10 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                           </div>
                           <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
                           <div style={{ display:"flex", gap:3, marginTop:3 }}>
-                            {LANGS.filter(l=>l.key==="en"?s.script:s[`script_${l.key}`]).map(l=>(
+                            {languages.filter(l => getStoryScript(s, l.key)).map(l=>(
                               <span key={l.key} style={{ fontSize:8, fontWeight:700, padding:"1px 4px", borderRadius:3, background:"var(--fill2)", color:"var(--t3)" }}>{l.label}</span>
                             ))}
-                            <span style={{ fontSize:9, color: ready4===4?"var(--success)":"var(--t4)", marginLeft:2 }}>{ready4}/4 langs</span>
+                            <span style={{ fontSize:9, color: readyCount===languages.length?"var(--success)":"var(--t4)", marginLeft:2 }}>{readyCount}/{languages.length} langs</span>
                           </div>
                         </div>
                         <button onClick={()=>onUpdate(s.id,{scheduled_date:null})} style={{ width:22, height:22, borderRadius:5, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>

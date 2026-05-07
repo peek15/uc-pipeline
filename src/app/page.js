@@ -19,9 +19,9 @@ import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, tenantStorageKey } from "@/lib/brand";
-import { brandConfigForPrompt } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getBrandLanguages, getStoryScript, storyScriptPatch } from "@/lib/brandConfig";
 
-const VERSION = "3.17.1";
+const VERSION = "3.17.2";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -249,7 +249,7 @@ export default function Home() {
   // by moving the story to scripted status after calling the API directly
   const handleProduce = useCallback(async (storyId) => {
     const story = stories.find(s => s.id === storyId);
-    if (!story || story.script) return;
+    if (!story || getStoryScript(story, "en")) return;
     const { runPrompt } = await import("@/lib/ai/runner");
 
     // English script
@@ -259,17 +259,21 @@ export default function Home() {
       context: { story_id: storyId },
       parse:   false,
     });
-    await updateStory(storyId, { script: enText, script_version: 1, status: "scripted" });
+    await updateStory(storyId, { ...storyScriptPatch("en", enText, story), script_version: 1, status: "scripted" });
 
-    // Auto-translate to FR / ES / PT
-    for (const lang of ["fr","es","pt"]) {
+    // Auto-translate to configured secondary languages.
+    const secondaryLanguages = getBrandLanguages(appSettings).filter(lang => lang.key !== "en");
+    let storySnapshot = { ...story, ...storyScriptPatch("en", enText, story) };
+    for (const lang of secondaryLanguages) {
       const { text: translated } = await runPrompt({
         type:    "translate-script",
-        params:  { script: enText, lang_key: lang, brand_config: brandConfigForPrompt(appSettings) },
+        params:  { script: enText, lang_key: lang.key, brand_config: brandConfigForPrompt(appSettings) },
         context: { story_id: storyId },
         parse:   false,
       });
-      await updateStory(storyId, { [`script_${lang}`]: translated });
+      const patch = storyScriptPatch(lang.key, translated, storySnapshot);
+      storySnapshot = { ...storySnapshot, ...patch };
+      await updateStory(storyId, patch);
     }
   }, [stories, updateStory, appSettings]);
 
@@ -599,6 +603,7 @@ export default function Home() {
         onOpenStory={setSelected}
         onUpdateStory={updateStory}
         tenant={tenant}
+        settings={appSettings}
       />
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}

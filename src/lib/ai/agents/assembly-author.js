@@ -3,7 +3,7 @@
 // v3.12.0
 //
 // Final agent in the Production pipeline.
-// Reads:    story scripts (EN/FR/ES/PT), visual_brief, audio_refs,
+// Reads:    story scripts (legacy columns or scripts JSONB), visual_brief, audio_refs,
 //           visual_refs (selected assets)
 // Outputs:  { scenes, voice_tracks, total_duration_ms, export_notes,
 //             markdown_brief, confidence }
@@ -16,6 +16,7 @@
 import { runPrompt } from "@/lib/ai/runner";
 import { loadAgentContext, formatFeedbackContext, brandIdentityBlock,
          extractJson, hybridConfidence, logFeedback } from "./base";
+import { subjectText } from "@/lib/brandConfig";
 
 export const AGENT_NAME = "assembly-author";
 export const defaults   = { maxTokens: 2000, model: "sonnet" };
@@ -144,12 +145,22 @@ function buildPrompt({ story, brand, feedback }) {
       `  ${lang.toUpperCase()}: url="${ref.url || ""}" key="${ref.key || ""}" duration_ms=${ref.duration_estimate_ms || "?"} provider=${ref.provider || "?"}`
     ).join("\n") || "  (no audio generated yet)";
 
-  const scripts = [
+  const scriptEntries = new Map(
+    Object.entries(story.scripts && typeof story.scripts === "object" ? story.scripts : {})
+      .map(([lang, text]) => [String(lang).toUpperCase(), text])
+  );
+  [
     ["EN", story.script],
     ["FR", story.script_fr],
     ["ES", story.script_es],
     ["PT", story.script_pt],
-  ].filter(([, s]) => s).map(([lang, s]) => `--- SCRIPT ${lang} ---\n${s.slice(0, 600)}`).join("\n\n");
+  ].forEach(([lang, text]) => {
+    if (text && !scriptEntries.has(lang)) scriptEntries.set(lang, text);
+  });
+  const scripts = [...scriptEntries.entries()]
+    .filter(([, s]) => s)
+    .map(([lang, s]) => `--- SCRIPT ${lang} ---\n${String(s).slice(0, 600)}`)
+    .join("\n\n");
 
   const brief = story.visual_brief || {};
 
@@ -169,18 +180,12 @@ Output EXACTLY this JSON (no markdown, no preamble):
       "visual_url": "<asset url or null>",
       "asset_type": "atmospheric|licensed|null",
       "script_segments": {
-        "en": "<the script text that plays during this scene>",
-        "fr": "<same segment in French, or null>",
-        "es": "<same segment in Spanish, or null>",
-        "pt": "<same segment in Portuguese, or null>"
+        "<language_key>": "<the script text that plays during this scene, or null>"
       }
     }
   ],
   "voice_tracks": {
-    "en": { "url": "<url>", "key": "<key>", "duration_ms": <number or null> },
-    "fr": { "url": "<url>", "key": "<key>", "duration_ms": <number or null> },
-    "es": { "url": "<url>", "key": "<key>", "duration_ms": <number or null> },
-    "pt": { "url": "<url>", "key": "<key>", "duration_ms": <number or null> }
+    "<language_key>": { "url": "<url>", "key": "<key>", "duration_ms": <number or null> }
   },
   "total_duration_ms": <total estimated video duration>,
   "export_notes": "1-2 sentences for the editor: pacing notes, transitions, or anything special",
@@ -204,7 +209,7 @@ Markdown brief format (write this into the markdown_brief field as a single esca
 [one row per language]
 
 ## Scene Script Breakdown
-[For each scene: heading with scene # and position, then EN/FR/ES/PT script segments]
+[For each scene: heading with scene # and position, then all available language script segments]
 
 ## Visual Brief
 **Scene:** [scene]
@@ -222,7 +227,7 @@ ${brandBlock}
 Title:     ${story.title || "(untitled)"}
 Format:    ${story.format || "(unspecified)"}
 Archetype: ${story.archetype || "(unspecified)"}
-Players:   ${story.players || "(unspecified)"}
+Subjects:  ${subjectText(story) || "(unspecified)"}
 
 --- VISUAL BRIEF ---
 Scene:      ${brief.scene || "(none)"}
@@ -243,8 +248,8 @@ ${feedbackBlock}
 RULES:
 - Create 1 scene per selected visual asset (if no visuals: create 3 placeholder scenes)
 - Assign visuals in selection_order (first = intro, last = outro, middle = middle)
-- Split the EN script proportionally across scenes by duration
-- Mirror the split for FR/ES/PT (same segment index, corresponding translation)
+- Split the primary script proportionally across scenes by duration
+- Mirror the split for every available translated script (same segment index, corresponding translation)
 - voice_tracks: copy urls and keys exactly from the audio list above; fill duration_ms from given values
 - total_duration_ms: use EN voice duration if available, else estimate from script word count (≈130 words/min)
 - export_notes: practical notes for the editor (e.g. "hard cut at intro, slow fade outro")
@@ -258,6 +263,7 @@ JSON only.`;
 // ─── Normalizers ───────────────────────────────────────────
 
 function normalizeScene(s) {
+  const rawSegments = s.script_segments && typeof s.script_segments === "object" ? s.script_segments : {};
   return {
     index:        Number(s.index)       || 0,
     position:     String(s.position     || "middle"),
@@ -265,12 +271,9 @@ function normalizeScene(s) {
     visual_id:    s.visual_id           || null,
     visual_url:   s.visual_url          || null,
     asset_type:   s.asset_type          || null,
-    script_segments: {
-      en: s.script_segments?.en || null,
-      fr: s.script_segments?.fr || null,
-      es: s.script_segments?.es || null,
-      pt: s.script_segments?.pt || null,
-    },
+    script_segments: Object.fromEntries(
+      Object.entries(rawSegments).map(([lang, text]) => [String(lang).toLowerCase(), text || null])
+    ),
   };
 }
 

@@ -16,6 +16,7 @@ import { runPrompt } from "@/lib/ai/runner";
 import { supabase } from "@/lib/db";
 import { loadAgentContext, formatFeedbackContext, brandIdentityBlock,
          extractJson, hybridConfidence, logFeedback } from "./base";
+import { subjectText } from "@/lib/brandConfig";
 
 export const AGENT_NAME = "asset-curator";
 export const defaults  = { maxTokens: 1200, model: "haiku" };
@@ -140,7 +141,7 @@ Title:     ${story.title || "(untitled)"}
 Format:    ${story.format || "(unspecified)"}
 Era:       ${story.era || "(unspecified)"}
 Archetype: ${story.archetype || "(unspecified)"}
-Players:   ${story.players || "(unspecified)"}
+Subjects:  ${subjectText(story) || "(unspecified)"}
 
 --- VISUAL BRIEF (just authored) ---
 Scene:      ${brief.scene  || ""}

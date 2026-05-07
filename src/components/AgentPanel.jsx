@@ -5,6 +5,7 @@ import { supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { getAiCalls } from "@/lib/ai/audit";
 import { formatCost } from "@/lib/ai/costs";
+import { getBrandContentType, getBrandName } from "@/lib/brandConfig";
 
 // ── Model registry ────────────────────────────────────────
 const MODELS = [
@@ -17,7 +18,9 @@ const MODELS = [
 const PROVIDER_LABEL = { anthropic: "Claude", openai: "OpenAI" };
 
 // ── Pipeline context ──────────────────────────────────────
-function buildSystem(stories, tab, metrics) {
+function buildSystem(stories, tab, metrics, settings) {
+  const brandName = getBrandName(settings);
+  const contentType = getBrandContentType(settings);
   const counts = {};
   for (const s of stories) counts[s.status] = (counts[s.status] || 0) + 1;
   const bank = stories.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
@@ -31,7 +34,7 @@ function buildSystem(stories, tab, metrics) {
     ? `\nAI usage (7d): ${metrics.calls} calls · ${metrics.cost} · ${metrics.failed} failures\nBy type: ${metrics.byType}`
     : "";
 
-  return `You are the pipeline agent for Uncle Carter, an NBA storytelling brand at Peek Studios.
+  return `You are the pipeline agent for ${brandName}, a ${contentType} content pipeline.
 
 Pipeline state (${new Date().toLocaleDateString()}):
 - Active stories: ${stories.filter(s => !["rejected","archived"].includes(s.status)).length}
@@ -123,7 +126,7 @@ function Bubble({ m, streaming }) {
 }
 
 // ── Main component ────────────────────────────────────────
-export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory, onUpdateStory, tenant }) {
+export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory, onUpdateStory, tenant, settings = null }) {
   const [messages,  setMessages]  = useState([]);
   const [input,     setInput]     = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -226,7 +229,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           provider: selectedModel.provider,
           model:    modelId,
           messages: history,
-          system:   buildSystem(stories, tab, metrics),
+          system:   buildSystem(stories, tab, metrics, settings),
           maxTokens: 700,
         }),
       });

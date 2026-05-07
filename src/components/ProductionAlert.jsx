@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, TrendingUp, Calendar, FileText, X, ArrowRight, RefreshCw } from "lucide-react";
 import { FORMAT_MAP, FORMATS, ARCHETYPES, ACCENT } from "@/lib/constants";
+import { getBrandLanguages, getStoryScript, hasAllConfiguredScripts } from "@/lib/brandConfig";
 
 // ── Fallback defaults (match DEFAULT_SETTINGS in SettingsModal) ──
 const DEFAULT_HEALTHY = 20;
@@ -75,9 +76,9 @@ function getBestPerformers(stories) {
   return sorted[0] || null;
 }
 
-function getMissingTranslations(stories) {
-  const scripted = stories.filter(s => s.script && ["scripted","produced"].includes(s.status));
-  return scripted.filter(s => !s.script_fr || !s.script_es || !s.script_pt).length;
+function getMissingTranslations(stories, settings) {
+  const scripted = stories.filter(s => getStoryScript(s, "en") && ["scripted","produced"].includes(s.status));
+  return scripted.filter(s => !hasAllConfiguredScripts(s, settings)).length;
 }
 
 function getCalendarGaps(stories, HORIZON_DAYS, CADENCE) {
@@ -107,7 +108,8 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
   const daysUntilGap = getDaysUntilGap(stories, ready, HORIZON_DAYS, CADENCE);
   const formatAlerts = getFormatBalance(stories, ready);
   const bestPerformer= getBestPerformers(stories);
-  const missingTrans = getMissingTranslations(stories);
+  const missingTrans = getMissingTranslations(stories, settings);
+  const languageLabel = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join("/");
   const calGaps      = getCalendarGaps(stories, HORIZON_DAYS, CADENCE);
 
   const stockColor  = stockLevel >= HEALTHY_STOCK ? "#4A9B7F" : stockLevel >= LOW_STOCK ? "#C49A3C" : "#C0666A";
@@ -169,7 +171,7 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
       id: "trans",
       icon: FileText,
       color: "#C49A3C",
-      text: `${missingTrans} scripted ${missingTrans === 1 ? "story" : "stories"} missing FR/ES/PT translations — blocking full publishing readiness.`,
+      text: `${missingTrans} scripted ${missingTrans === 1 ? "story" : "stories"} missing configured translations (${languageLabel}) — blocking full publishing readiness.`,
       action: { label: "Go to Script", fn: () => onNavigate("script") },
       dismissible: true,
     });

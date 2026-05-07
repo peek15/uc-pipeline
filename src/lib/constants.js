@@ -147,5 +147,11 @@ export function isInProductionQueue(story) {
  */
 export function hasAllLaunchLanguages(story) {
   if (!story) return false;
-  return !!(story.script && story.script_fr && story.script_es && story.script_pt);
+  const scripts = story.scripts && typeof story.scripts === "object" ? story.scripts : {};
+  return !!(
+    (story.script || scripts.en) &&
+    (story.script_fr || scripts.fr) &&
+    (story.script_es || scripts.es) &&
+    (story.script_pt || scripts.pt)
+  );
 }

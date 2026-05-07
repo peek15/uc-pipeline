@@ -3,10 +3,10 @@
 // v3.11.0
 //
 // Orchestrates voice generation per language. Two modes:
-//   - cascade: generate EN, surface for approval, then FR/ES/PT in parallel
-//   - auto:    generate all 4 in parallel
+//   - cascade: generate primary language, then configured translations
+//   - auto:    generate all available script languages in parallel
 //
-// Reads:    story scripts (en, fr, es, pt), brand voice config
+// Reads:    story scripts (legacy columns or scripts JSONB), brand voice config
 // Outputs:  per-language audio files saved to storage, audio_refs on story
 // Triggers: user clicks "Generate voice" in ProductionView
 //
@@ -17,6 +17,7 @@ import { getVoiceProvider, resolveVoiceId } from "@/lib/providers/voice/provider
 import { getStorageProvider } from "@/lib/providers/storage/storage";
 import { logFeedback, hybridConfidence } from "./base";
 import { supabase } from "@/lib/db";
+import { getStoryScript } from "@/lib/brandConfig";
 
 export const AGENT_NAME = "voice-producer";
 export const defaults  = { /* no model — this agent doesn't call Claude */ };
@@ -94,7 +95,7 @@ export async function runOne({ story, language, brand_profile_id, workspace_id =
 
 /**
  * Cascade flow: generate EN first (returns immediately for approval),
- * then on a separate call generate FR/ES/PT in parallel.
+ * then on a separate call generate configured translations in parallel.
  *
  * For full-auto: just call runAll().
  */
@@ -129,7 +130,7 @@ export async function runAll({ story, brand_profile_id, workspace_id = null, lan
 /**
  * Save audio_refs on the story after a successful run.
  * Merges with existing audio_refs (for cascade flow — EN saved first,
- * then FR/ES/PT merged in).
+ * then configured translation refs merged in).
  */
 export async function persistAudioRefs(story_id, newRefs) {
   // Load existing
@@ -165,17 +166,21 @@ export async function recordFeedback(opts) {
 // ─── helpers ─────────────────────────────────────────────
 
 function pickScript(story, lang) {
-  const k = lang === "en" ? "script" : `script_${lang}`;
-  return story?.[k] || (lang === "en" ? story?.script : null);
+  return getStoryScript(story, lang);
 }
 
 function detectAvailableLanguages(story) {
-  const langs = [];
-  if (story.script)    langs.push("en");
-  if (story.script_fr) langs.push("fr");
-  if (story.script_es) langs.push("es");
-  if (story.script_pt) langs.push("pt");
-  return langs;
+  const scripts = story?.scripts && typeof story.scripts === "object" ? story.scripts : {};
+  const fromMap = Object.entries(scripts)
+    .filter(([, text]) => !!text)
+    .map(([lang]) => String(lang).toLowerCase());
+  const fromLegacy = [
+    ["en", story?.script],
+    ["fr", story?.script_fr],
+    ["es", story?.script_es],
+    ["pt", story?.script_pt],
+  ].filter(([, text]) => !!text).map(([lang]) => lang);
+  return [...new Set([...fromMap, ...fromLegacy])];
 }
 
 // Rough estimate at 150 words/min English narration. For UX progress hints.

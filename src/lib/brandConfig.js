@@ -93,3 +93,45 @@ export function brandConfigForPrompt(settings) {
     closing_line: cfg.closing_line,
   };
 }
+
+export function scriptFieldForLanguage(langKey) {
+  const key = String(langKey || "en").toLowerCase();
+  return key === "en" ? "script" : `script_${key}`;
+}
+
+export function getStoryScript(story, langKey = "en") {
+  const key = String(langKey || "en").toLowerCase();
+  if (!story) return "";
+  if (story.scripts && typeof story.scripts === "object" && story.scripts[key]) return story.scripts[key];
+  return story[scriptFieldForLanguage(key)] || "";
+}
+
+export function storyScriptPatch(langKey, text, story = {}) {
+  const key = String(langKey || "en").toLowerCase();
+  const legacyField = ["en", "fr", "es", "pt"].includes(key) ? { [scriptFieldForLanguage(key)]: text } : {};
+  return {
+    ...legacyField,
+    scripts: {
+      ...(story.scripts && typeof story.scripts === "object" ? story.scripts : {}),
+      [key]: text,
+    },
+  };
+}
+
+export function getConfiguredLanguageKeys(settings) {
+  return getBrandLanguages(settings).map(l => l.key);
+}
+
+export function hasAllConfiguredScripts(story, settings) {
+  return getConfiguredLanguageKeys(settings).every(lang => !!getStoryScript(story, lang));
+}
+
+export function getAvailableStoryLanguages(story, settings) {
+  return getBrandLanguages(settings).filter(lang => !!getStoryScript(story, lang.key));
+}
+
+export function subjectText(story) {
+  if (!story) return "";
+  if (Array.isArray(story.players)) return story.players.join(", ");
+  return String(story.players || story.subjects || story.subject || "").trim();
+}

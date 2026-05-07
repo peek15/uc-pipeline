@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, Download, FileText, Image as ImageIcon, Library, Mic2, PackageCheck, RefreshCw, Search, Sparkles, Video, Wand2 } from "lucide-react";
-import { ACCENT, LANGS, hasAllLaunchLanguages, isInProductionQueue } from "@/lib/constants";
+import { ACCENT, isInProductionQueue } from "@/lib/constants";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 import AssetLibraryModal from "@/components/AssetLibraryModal";
-import { brandConfigForPrompt } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getBrandLanguages, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
 import {
   AssetMatchesSection,
   AssemblySection,
@@ -28,14 +28,14 @@ function wc(text) {
 
 function getScript(story, lang, localLangs, streaming) {
   if (!story) return "";
-  if (lang === "en") return streaming[story.id] !== undefined ? streaming[story.id] : story.script || "";
-  return localLangs[story.id]?.[lang] ?? story[`script_${lang}`] ?? "";
+  if (lang === "en") return streaming[story.id] !== undefined ? streaming[story.id] : getStoryScript(story, "en") || "";
+  return localLangs[story.id]?.[lang] ?? getStoryScript(story, lang) ?? "";
 }
 
-function createProgress(story) {
+function createProgress(story, settings) {
   const checks = [
-    { key: "script", label: "Script", done: !!story.script },
-    { key: "translations", label: "Langs", done: hasAllLaunchLanguages(story) },
+    { key: "script", label: "Script", done: !!getStoryScript(story, "en") },
+    { key: "translations", label: "Langs", done: hasAllConfiguredScripts(story, settings) },
     { key: "brief", label: "Brief", done: !!story.visual_brief },
     { key: "assets", label: "Assets", done: !!story.visual_refs?.selected?.length },
     { key: "voice", label: "Voice", done: !!(story.audio_refs && Object.keys(story.audio_refs || {}).length) },
@@ -45,9 +45,9 @@ function createProgress(story) {
   return { checks, done, total: checks.length, percent: Math.round((done / checks.length) * 100) };
 }
 
-function nextAction(story) {
-  if (!story.script) return "Write script";
-  if (!hasAllLaunchLanguages(story)) return "Translate";
+function nextAction(story, settings) {
+  if (!getStoryScript(story, "en")) return "Write script";
+  if (!hasAllConfiguredScripts(story, settings)) return "Translate";
   if (!story.visual_brief) return "Brief";
   if (!story.visual_refs?.selected?.length) return "Visuals";
   if (!(story.audio_refs && Object.keys(story.audio_refs || {}).length)) return "Voice";
@@ -55,14 +55,15 @@ function nextAction(story) {
   return "Review";
 }
 
-function queueFilterMatch(story, filter) {
+function queueFilterMatch(story, filter, settings) {
   if (filter === "all") return true;
-  if (filter === "needs_script") return !story.script;
-  if (filter === "needs_translation") return !!story.script && !hasAllLaunchLanguages(story);
-  if (filter === "needs_brief") return !!story.script && !story.visual_brief;
+  const hasScript = !!getStoryScript(story, "en");
+  if (filter === "needs_script") return !hasScript;
+  if (filter === "needs_translation") return hasScript && !hasAllConfiguredScripts(story, settings);
+  if (filter === "needs_brief") return hasScript && !story.visual_brief;
   if (filter === "needs_visuals") return matchesProductionFilter(story, "needs_assets");
   if (filter === "needs_voice") return matchesProductionFilter(story, "needs_voice");
-  if (filter === "ready_review") return createProgress(story).done >= 5;
+  if (filter === "ready_review") return createProgress(story, settings).done >= 5;
   return true;
 }
 
@@ -73,6 +74,8 @@ function stepForMode(mode, current) {
 }
 
 function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings }) {
+  const languages = getBrandLanguages(settings);
+  const secondaryLanguages = languages.filter(l => l.key !== "en");
   const [viewLang, setViewLang] = usePersistentState("create_script_lang", "en");
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState(null);
@@ -105,16 +108,18 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
         onChunk: (live) => setStreaming(prev => ({ ...prev, [story.id]: live })),
       });
       setStreaming(prev => { const next = { ...prev }; delete next[story.id]; return next; });
-      await onUpdate(story.id, { script: enText, script_version: (story.script_version || 0) + 1, status: "scripted" });
+      const enPatch = storyScriptPatch("en", enText, story);
+      let storySnapshot = { ...story, ...enPatch };
+      await onUpdate(story.id, { ...enPatch, script_version: (story.script_version || 0) + 1, status: "scripted" });
 
       if (withTranslate) {
-        const nextLangs = {};
-        for (const lang of ["fr", "es", "pt"]) {
+        for (const lang of secondaryLanguages.map(l => l.key)) {
           setLoading(`${lang}-${story.id}`);
           const translated = await translateLang(lang, enText);
-          nextLangs[lang] = translated;
           setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id] || {}), [lang]: translated } }));
-          await onUpdate(story.id, { [`script_${lang}`]: translated });
+          const patch = storyScriptPatch(lang, translated, storySnapshot);
+          storySnapshot = { ...storySnapshot, ...patch };
+          await onUpdate(story.id, patch);
         }
       }
     } catch (err) {
@@ -126,16 +131,19 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
   };
 
   const translateMissing = async () => {
-    const script = story.script || getScript(story, "en", localLangs, streaming);
+    const script = getScript(story, "en", localLangs, streaming);
     if (!script) return;
     setError(null);
+    let storySnapshot = story;
     try {
-      for (const lang of ["fr", "es", "pt"]) {
-        if (getScript(story, lang, localLangs, streaming)) continue;
+      for (const lang of secondaryLanguages.map(l => l.key)) {
+        if (getScript(storySnapshot, lang, localLangs, streaming)) continue;
         setLoading(`${lang}-${story.id}`);
         const translated = await translateLang(lang, script);
         setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id] || {}), [lang]: translated } }));
-        await onUpdate(story.id, { [`script_${lang}`]: translated });
+        const patch = storyScriptPatch(lang, translated, storySnapshot);
+        storySnapshot = { ...storySnapshot, ...patch };
+        await onUpdate(story.id, patch);
       }
     } catch (err) {
       setError(err?.message || String(err));
@@ -148,19 +156,19 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
     const slug = (story.title || "story").slice(0, 30).replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
     const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
-    LANGS.forEach(lang => {
+    languages.forEach(lang => {
       const text = getScript(story, lang.key, localLangs, streaming);
-      if (text) zip.file(`UC-${slug}_${lang.key}.txt`, text);
+      if (text) zip.file(`${slug}_${lang.key}.txt`, text);
     });
     const blob = await zip.generateAsync({ type: "blob" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `UC-${slug}-voice-pack.zip`;
+    a.download = `${slug}-voice-pack.zip`;
     a.click();
   };
 
   const scriptText = getScript(story, viewLang, localLangs, streaming);
-  const available = LANGS.filter(lang => getScript(story, lang.key, localLangs, streaming));
+  const available = languages.filter(lang => getScript(story, lang.key, localLangs, streaming));
   const isStreaming = story.id in streaming;
   const isBusy = !!loading;
 
@@ -171,11 +179,11 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>Script workspace</div>
           <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>Generate the English script first, then keep translations attached to the same story record.</div>
         </div>
-        <Pill active={!!story.script}>{story.script ? `v${story.script_version || 1} · ${wc(story.script)}w` : "no script"}</Pill>
+        <Pill active={!!getStoryScript(story, "en")}>{getStoryScript(story, "en") ? `v${story.script_version || 1} · ${wc(getStoryScript(story, "en"))}w` : "no script"}</Pill>
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-        {LANGS.map(lang => {
+        {languages.map(lang => {
           const has = !!getScript(story, lang.key, localLangs, streaming);
           const busy = loading === `${lang.key}-${story.id}`;
           return (
@@ -203,7 +211,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
         <button onClick={() => generate(true)} disabled={isBusy} style={buttonStyle("primary", { padding: "7px 12px" })}>
           <Sparkles size={12} /> {story.script ? "Rewrite + translate" : "Generate script"}
         </button>
-        {story.script && available.length < 4 && (
+        {getStoryScript(story, "en") && available.length < languages.length && (
           <button onClick={translateMissing} disabled={isBusy} style={buttonStyle("secondary", { padding: "7px 12px" })}>
             <Wand2 size={12} /> Translate missing
           </button>
@@ -252,18 +260,18 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
     ["approved", "scripted", "produced"].includes(story.status) || isInProductionQueue(story)
   ), [stories]);
 
-  const filteredQueue = useMemo(() => queue.filter(story => queueFilterMatch(story, queueFilter)), [queue, queueFilter]);
+  const filteredQueue = useMemo(() => queue.filter(story => queueFilterMatch(story, queueFilter, settings)), [queue, queueFilter, settings]);
   const selected = queue.find(story => story.id === selectedId) || filteredQueue[0] || queue[0] || null;
 
   const steps = [
-    { key: "script", label: "Script", icon: FileText, done: !!selected?.script, mode: "write" },
-    { key: "translations", label: "Translations", icon: Wand2, done: selected ? hasAllLaunchLanguages(selected) : false, mode: "write" },
+    { key: "script", label: "Script", icon: FileText, done: !!getStoryScript(selected, "en"), mode: "write" },
+    { key: "translations", label: "Translations", icon: Wand2, done: selected ? hasAllConfiguredScripts(selected, settings) : false, mode: "write" },
     { key: "brief", label: "Brief", icon: Search, done: !!selected?.visual_brief, mode: "produce" },
     { key: "assets", label: "Assets", icon: Library, done: !!selected?.visual_refs?.selected?.length, mode: "produce" },
     { key: "voice", label: "Voice", icon: Mic2, done: !!(selected?.audio_refs && Object.keys(selected.audio_refs || {}).length), mode: "produce" },
     { key: "visuals", label: "Visuals", icon: ImageIcon, done: !!selected?.visual_refs?.selected?.length, mode: "produce" },
     { key: "assembly", label: "Assembly", icon: Video, done: !!selected?.assembly_brief, mode: "produce" },
-    { key: "review", label: "Review", icon: PackageCheck, done: selected ? createProgress(selected).done >= 5 : false, mode: "produce" },
+    { key: "review", label: "Review", icon: PackageCheck, done: selected ? createProgress(selected, settings).done >= 5 : false, mode: "produce" },
   ];
 
   useEffect(() => {
@@ -311,12 +319,12 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
 
   const filterOptions = [
     { key: "all", label: "All", count: queue.length },
-    { key: "needs_script", label: "Needs script", count: queue.filter(story => queueFilterMatch(story, "needs_script")).length },
-    { key: "needs_translation", label: "Needs translation", count: queue.filter(story => queueFilterMatch(story, "needs_translation")).length },
-    { key: "needs_brief", label: "Needs brief", count: queue.filter(story => queueFilterMatch(story, "needs_brief")).length },
-    { key: "needs_visuals", label: "Needs visuals", count: queue.filter(story => queueFilterMatch(story, "needs_visuals")).length },
-    { key: "needs_voice", label: "Needs voice", count: queue.filter(story => queueFilterMatch(story, "needs_voice")).length },
-    { key: "ready_review", label: "Ready review", count: queue.filter(story => queueFilterMatch(story, "ready_review")).length },
+    { key: "needs_script", label: "Needs script", count: queue.filter(story => queueFilterMatch(story, "needs_script", settings)).length },
+    { key: "needs_translation", label: "Needs translation", count: queue.filter(story => queueFilterMatch(story, "needs_translation", settings)).length },
+    { key: "needs_brief", label: "Needs brief", count: queue.filter(story => queueFilterMatch(story, "needs_brief", settings)).length },
+    { key: "needs_visuals", label: "Needs visuals", count: queue.filter(story => queueFilterMatch(story, "needs_visuals", settings)).length },
+    { key: "needs_voice", label: "Needs voice", count: queue.filter(story => queueFilterMatch(story, "needs_voice", settings)).length },
+    { key: "ready_review", label: "Ready review", count: queue.filter(story => queueFilterMatch(story, "ready_review", settings)).length },
   ];
 
   const saveProductionUpdate = (updates) => selected && onUpdate?.(selected.id, updates || {});
@@ -327,7 +335,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
       <PageHeader
         title="Create"
         description="One selected story moves through script, translations, production assets, assembly, and review."
-        meta={selected ? `${createProgress(selected).done}/${createProgress(selected).total} complete` : `${queue.length} stories`}
+        meta={selected ? `${createProgress(selected, settings).done}/${createProgress(selected, settings).total} complete` : `${queue.length} stories`}
         action={
           <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
             <Library size={12} /> Asset library
@@ -354,7 +362,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
             <div style={{ display: "grid", gap: 5 }}>
               {filteredQueue.length ? filteredQueue.map(story => {
                 const isSelected = selected?.id === story.id;
-                const progress = createProgress(story);
+                const progress = createProgress(story, settings);
                 const ac = ACCENT[story.archetype] || "var(--border)";
                 return (
                   <button key={story.id} onClick={() => setSelectedId(story.id)}
@@ -375,7 +383,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                       <span>{story.archetype || "story"}</span>
                       {story.era && <><span style={{ color: "var(--t4)" }}>·</span><span>{story.era}</span></>}
                       <span style={{ color: "var(--t4)" }}>·</span>
-                      <span>{nextAction(story)}</span>
+                      <span>{nextAction(story, settings)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ flex: 1, height: 4, borderRadius: 999, overflow: "hidden", background: "var(--bg3)" }}>
@@ -404,7 +412,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                         {selected.status && <><span>·</span><span>{selected.status}</span></>}
                       </div>
                     </div>
-                    <Pill active>{nextAction(selected)}</Pill>
+                    <Pill active>{nextAction(selected, settings)}</Pill>
                   </div>
                   <PipelineProgress story={selected} />
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 6 }}>
@@ -436,7 +444,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                 {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} />}
                 {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
                 {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
-                {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
+                {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} languages={getBrandLanguages(settings)} onSaved={saveProductionUpdate} />}
                 {activeStep === "visuals" && <VisualSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
                 {activeStep === "assembly" && <AssemblySection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
                 {activeStep === "review" && (
@@ -445,7 +453,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     <Panel style={{ background: "var(--card)" }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 8 }}>Create review</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
-                        {createProgress(selected).checks.map(check => (
+                        {createProgress(selected, settings).checks.map(check => (
                           <div key={check.key} style={{ padding: "10px 12px", borderRadius: 8, background: check.done ? "var(--success-bg)" : "var(--fill2)", border: "0.5px solid var(--border)" }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: check.done ? "var(--success)" : "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>{check.label}</div>
                             <div style={{ fontSize: 12, fontWeight: 600, color: check.done ? "var(--success)" : "var(--t3)" }}>{check.done ? "Ready" : "Open"}</div>

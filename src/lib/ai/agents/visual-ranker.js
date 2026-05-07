@@ -24,6 +24,7 @@ import { supabase } from "@/lib/db";
 import { getAtmosphericProvider, getLicensedProvider, selectVisualProvider } from "@/lib/providers/visual/visual";
 import { loadAgentContext, formatFeedbackContext, brandIdentityBlock,
          extractJson, hybridConfidence, logFeedback } from "./base";
+import { subjectText } from "@/lib/brandConfig";
 
 export const AGENT_NAME = "visual-ranker";
 export const defaults  = { maxTokens: 2000, model: "sonnet" };
@@ -351,7 +352,7 @@ Title:     ${story.title || "(untitled)"}
 Format:    ${story.format || "(unspecified)"}
 Era:       ${story.era || "(unspecified)"}
 Archetype: ${story.archetype || "(unspecified)"}
-Players:   ${story.players || "(unspecified)"}
+Subjects:  ${subjectText(story) || "(unspecified)"}
 
 --- VISUAL BRIEF ---
 Scene:      ${brief.scene  || ""}

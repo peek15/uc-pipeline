@@ -12,6 +12,7 @@ import { updateProductionStatus, supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
+import { getBrandLanguages, getStoryScript } from "@/lib/brandConfig";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 
 const LANG_LABELS = { en: "English", fr: "French", es: "Spanish", pt: "Portuguese", de: "German", it: "Italian", ja: "Japanese", zh: "Chinese" };
@@ -335,13 +336,18 @@ export function BriefSection({ story, brand_profile_id, onSaved }) {
 
 const ALL_VOICE_LANGS = ["en", "fr", "es", "pt"];
 
-export function VoiceSection({ story, brand_profile_id, onSaved }) {
+export function VoiceSection({ story, brand_profile_id, onSaved, languages = null }) {
   const [running, setRunning]       = useState(null);
   const [audioRefs, setAudioRefs]   = useState(story.audio_refs || {});
   const [langStatus, setLangStatus] = useState({});
   const [langErrors, setLangErrors] = useState({});
   const [playing, setPlaying]       = useState(null);
   const [audioEl] = useState(() => typeof Audio !== "undefined" ? new Audio() : null);
+  const voiceLangs = useMemo(() => {
+    const configured = Array.isArray(languages) && languages.length ? languages : ALL_VOICE_LANGS;
+    return [...new Set(configured.map(l => String(l?.key || l).toLowerCase()).filter(Boolean))];
+  }, [languages]);
+  const secondaryLangs = voiceLangs.filter(lang => lang !== "en");
 
   useEffect(() => {
     setAudioRefs(story.audio_refs || {});
@@ -391,28 +397,29 @@ export function VoiceSection({ story, brand_profile_id, onSaved }) {
   const cascadeOthers = async () => {
     setRunning("cascade"); sectionEvent("voice", "running");
     let last;
-    for (const lang of ["fr", "es", "pt"]) { last = (await runLang(lang)) || last; }
+    for (const lang of secondaryLangs) { last = (await runLang(lang)) || last; }
     setRunning(null); sectionEvent("voice", "done"); onSaved?.(last ? { audio_refs: last } : undefined);
   };
 
   const generateAll = async () => {
     setRunning("all"); sectionEvent("voice", "running");
-    const langs = ALL_VOICE_LANGS.filter(l => story[`script_${l}`] || l === "en");
+    const langs = voiceLangs.filter(l => getStoryScript(story, l));
     let last;
     for (const lang of langs) { last = (await runLang(lang)) || last; }
     setRunning(null); sectionEvent("voice", "done"); onSaved?.(last ? { audio_refs: last } : undefined);
   };
 
   const hasEN      = !!audioRefs.en;
-  const hasAll     = ALL_VOICE_LANGS.every(l => audioRefs[l]);
-  const doneCount  = ALL_VOICE_LANGS.filter(l => audioRefs[l]).length;
+  const hasAll     = voiceLangs.every(l => audioRefs[l]);
+  const doneCount  = voiceLangs.filter(l => audioRefs[l]).length;
   const showGrid   = running || doneCount > 0;
-  const status     = hasAll ? "all 4 ✓" : doneCount > 0 ? `${doneCount} / 4` : "not started";
+  const status     = hasAll ? `all ${voiceLangs.length} ✓` : doneCount > 0 ? `${doneCount} / ${voiceLangs.length}` : "not started";
   const statusColor = hasAll ? "success" : doneCount > 0 ? "warning" : "default";
+  const cascadeLabel = secondaryLangs.length ? `Cascade ${secondaryLangs.map(l => l.toUpperCase()).join(" / ")}` : "Cascade translations";
 
   return (
     <Section title="Voice generation" status={status} statusColor={statusColor}
-      description="Generate EN first, then cascade FR / ES / PT one by one.">
+      description={`Generate the primary voice first, then cascade configured languages one by one.`}>
 
       {!showGrid && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -420,14 +427,14 @@ export function VoiceSection({ story, brand_profile_id, onSaved }) {
             <Volume2 size={12} /> Generate EN first
           </button>
           <button onClick={generateAll} disabled={!!running} style={btnSecondary}>
-            Generate all 4
+            Generate all {voiceLangs.length}
           </button>
         </div>
       )}
 
       {showGrid && (
         <div style={{ display: "grid", gap: 6 }}>
-          {ALL_VOICE_LANGS.map(lang => {
+          {voiceLangs.map(lang => {
             const ref   = audioRefs[lang];
             const lstat = langStatus[lang];
             const lerr  = langErrors[lang];
@@ -464,7 +471,7 @@ export function VoiceSection({ story, brand_profile_id, onSaved }) {
 
       {hasEN && !hasAll && !running && (
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button onClick={cascadeOthers} style={btnPrimary}><Volume2 size={12} /> Cascade FR / ES / PT</button>
+          <button onClick={cascadeOthers} style={btnPrimary}><Volume2 size={12} /> {cascadeLabel}</button>
           <button onClick={generateEN} style={btnGhost}><RefreshCw size={12} /> Re-gen EN</button>
         </div>
       )}
@@ -825,8 +832,9 @@ export function AssetMatchesSection({ story, brand_profile_id }) {
 
 // ─── Main ───────────────────────────────────────────────
 
-export default function ProductionView({ stories, onUpdate, embedded = false, brandProfileId = DEFAULT_BRAND_PROFILE_ID, workspaceId = null }) {
+export default function ProductionView({ stories, onUpdate, embedded = false, brandProfileId = DEFAULT_BRAND_PROFILE_ID, workspaceId = null, settings = null }) {
   const queue = useMemo(() => (stories || []).filter(isInProductionQueue), [stories]);
+  const languages = useMemo(() => getBrandLanguages(settings), [settings]);
   const [selectedId, setSelectedId] = usePersistentState("production_selected", queue[0]?.id || null);
   const [queueFilter, setQueueFilter] = usePersistentState("production_queue_filter", "all");
   const [activeSection, setActiveSection] = usePersistentState("production_active_section", "brief");
@@ -978,7 +986,7 @@ export default function ProductionView({ stories, onUpdate, embedded = false, br
               {activeSection === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
               {activeSection === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
               {activeSection === "visuals" && <VisualSection story={selected} brand_profile_id={brandProfileId} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
-              {activeSection === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} languages={languages} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
               {activeSection === "assembly" && <AssemblySection story={selected} brand_profile_id={brandProfileId} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
               {activeSection === "review" && (
                 <div style={{ display:"grid", gap:12 }}>

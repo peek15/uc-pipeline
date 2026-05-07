@@ -11,6 +11,7 @@
 import { runPrompt } from "@/lib/ai/runner";
 import { loadAgentContext, formatFeedbackContext, brandIdentityBlock,
          extractJson, hybridConfidence, logFeedback } from "./base";
+import { getStoryScript, subjectText } from "@/lib/brandConfig";
 
 export const AGENT_NAME = "brief-author";
 
@@ -140,11 +141,11 @@ Title:        ${story.title || "(untitled)"}
 Format:       ${story.format || "(unspecified)"}
 Era:          ${story.era || "(unspecified)"}
 Archetype:    ${story.archetype || "(unspecified)"}
-Players:      ${story.players || "(unspecified)"}
+Subjects:     ${subjectText(story) || "(unspecified)"}
 Angle:        ${story.angle || "(unspecified)"}
 Hook:         ${story.hook || "(unspecified)"}
 Script (EN):
-${(story.script || "").slice(0, 1500) || "(no script)"}
+${getStoryScript(story, "en").slice(0, 1500) || "(no script)"}
 ${feedbackBlock}
 
 RULES:

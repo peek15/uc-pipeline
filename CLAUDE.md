@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.17.5
+- App badge/package target: v3.17.6
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.6: Programme color correction and content-agnostic audit: story queue left bars now use programme/format colors across Create, Produce, and Calendar; added `docs/content-agnostic-audit.md`.
 - v3.17.5: Phase 5 workspace/brand selector foundation: active tenant persists in UI storage, sidebar brand selector lists profiles in the workspace, new brand creation clones current settings into a fresh brand profile, and story/settings reloads follow the selected brand.
 - v3.17.4: Seed-preserving cleanup: app now prefers `brand_profiles.settings` JSONB while reading legacy `brief_doc`, Settings saves both formats safely, schema seeds/migrates Uncle Carter settings so no re-onboarding is required, and legacy Write/Settings components were cleaned to use configured language/script helpers.
 - v3.17.3: SaaS Phase 4 brand-facing hardening: dynamic app chrome, generic login/metadata copy, configured-language CSV import/export, dynamic story/detail readiness, generic Airtable subject/script fields, and settings workspace copy cleanup.
@@ -93,6 +94,8 @@ scheduling, provider operations, quality gates, and analytics.
 - Production voice and assembly agents now read legacy script columns plus `stories.scripts`.
 - Calendar language readiness and Production Alert translation warnings use configured brand languages.
 - App chrome, CSV import/export, detail readiness, and story list readiness should use `getBrandName()`, `subjectText()`, `getBrandLanguages()`, and `getStoryScript()` instead of hardcoded UC/player/FR-ES-PT assumptions.
+- Story/card left bars are operational programme indicators and should use programme/format color, not emotional archetype color.
+- Content-agnostic audit lives in `docs/content-agnostic-audit.md`.
 
 ## UI System
 - Shared operational primitives live in `src/components/OperationalUI.jsx`.

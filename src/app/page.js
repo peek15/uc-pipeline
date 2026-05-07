@@ -21,7 +21,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.17.5";
+const VERSION = "3.17.6";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },

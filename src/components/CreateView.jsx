@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Check, Copy, Download, FileText, Image as ImageIcon, Library, Mic2, PackageCheck, RefreshCw, Search, Sparkles, Video, Wand2 } from "lucide-react";
-import { ACCENT, isInProductionQueue } from "@/lib/constants";
+import { isInProductionQueue } from "@/lib/constants";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 import AssetLibraryModal from "@/components/AssetLibraryModal";
-import { brandConfigForPrompt, getBrandLanguages, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getBrandLanguages, getBrandProgrammeMap, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
 import {
   AssetMatchesSection,
   AssemblySection,
@@ -71,6 +71,11 @@ function stepForMode(mode, current) {
   if (mode === "write" && !["script", "translations"].includes(current)) return "script";
   if (mode === "produce" && ["script", "translations"].includes(current)) return "brief";
   return current;
+}
+
+function programmeColor(story, settings) {
+  const programme = getBrandProgrammeMap(settings)[story?.format];
+  return programme?.color || "var(--border)";
 }
 
 function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings }) {
@@ -363,7 +368,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
               {filteredQueue.length ? filteredQueue.map(story => {
                 const isSelected = selected?.id === story.id;
                 const progress = createProgress(story, settings);
-                const ac = ACCENT[story.archetype] || "var(--border)";
+                const ac = programmeColor(story, settings);
                 return (
                   <button key={story.id} onClick={() => setSelectedId(story.id)}
                     style={{

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Sparkles, Search, Volume2, Image as ImageIcon, FileText, Check, X, RefreshCw, AlertCircle, Layers, Play, Pause, Download, Copy, Library } from "lucide-react";
-import { isInProductionQueue } from "@/lib/constants";
+import { FORMAT_MAP, isInProductionQueue } from "@/lib/constants";
 import { runAgent, recordAgentFeedback, voiceAgent, visualAgent, assemblyAgent } from "@/lib/ai/agent-runner";
 import { runPromptStream } from "@/lib/ai/runner";
 import { buildStreamPrompt as buildBriefPrompt, parseOutput as parseBriefOutput } from "@/lib/ai/agents/brief-author";
@@ -12,17 +12,15 @@ import { updateProductionStatus, supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
-import { getBrandLanguages, getStoryScript } from "@/lib/brandConfig";
+import { getBrandLanguages, getBrandProgrammeMap, getStoryScript } from "@/lib/brandConfig";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 
 const LANG_LABELS = { en: "English", fr: "French", es: "Spanish", pt: "Portuguese", de: "German", it: "Italian", ja: "Japanese", zh: "Chinese" };
 
 // ─── Format border colors ───
-function formatBorder(format) {
-  if (format === "classics")            return "#4A9B7F";
-  if (format === "performance_special") return "#C0666A";
-  if (format === "special_edition")     return "#8B7EC8";
-  return "#C49A3C";
+function formatBorder(format, settings) {
+  const programme = getBrandProgrammeMap(settings)[format] || FORMAT_MAP[format];
+  return programme?.color || "var(--border)";
 }
 
 // ─── Reusable styles ───
@@ -942,9 +940,9 @@ export default function ProductionView({ stories, onUpdate, embedded = false, br
             return (
               <button key={story.id} onClick={() => setSelectedId(story.id)}
                 style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", marginBottom: 4, borderRadius: 7,
-                  borderLeft: `3px solid ${formatBorder(story.format)}`,
+                  borderLeft: `3px solid ${formatBorder(story.format, settings)}`,
                   background: isSelected ? "var(--bg)" : "transparent",
-                  border: "1px solid transparent", borderLeftColor: formatBorder(story.format),
+                  border: "1px solid transparent", borderLeftColor: formatBorder(story.format, settings),
                   cursor: "pointer", boxShadow: isSelected ? "var(--shadow-sm)" : "none", transition: "background 0.12s" }}>
                 <div style={{ fontSize: 13, fontWeight: isSelected ? 600 : 500, color: "var(--t1)", lineHeight: 1.3, marginBottom: 4 }}>{story.title || "(untitled)"}</div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

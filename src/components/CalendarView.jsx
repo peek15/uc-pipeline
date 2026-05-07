@@ -4,7 +4,7 @@ import { X, ChevronLeft, ChevronRight, Plus, RefreshCw, ShieldCheck, AlertCircle
 import { ACCENT, FORMAT_MAP, FORMATS } from "@/lib/constants";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
-import { getBrandLanguages, getStoryScript } from "@/lib/brandConfig";
+import { getBrandLanguages, getBrandProgrammeMap, getStoryScript } from "@/lib/brandConfig";
 
 const PLATFORMS = ["TikTok","Instagram","YouTube","All"];
 const DEFAULT_CADENCE = 5;
@@ -152,6 +152,7 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
 
 export default function CalendarView({ stories, onUpdate, onProduce, settings }) {
   const languages = useMemo(() => getBrandLanguages(settings), [settings]);
+  const programmeMap = useMemo(() => getBrandProgrammeMap(settings), [settings]);
   const [weekOffset,  setWeekOffset]  = useState(0);
   const [showAssign,  setShowAssign]  = useState(null); // day index
   const [platform,    setPlatform]    = useState("All");
@@ -464,7 +465,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:8 }}>
               {planPreview.placements.map(p => {
                 const d = new Date(p.date);
-                const fmtObj = FORMAT_MAP[p.story.format];
+                const fmtObj = programmeMap[p.story.format] || FORMAT_MAP[p.story.format];
                 return (
                   <div key={`${p.story.id}-${p.date}`} style={{ padding:"9px 10px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", borderLeft:`3px solid ${fmtObj?.color || "var(--border)"}` }}>
                     <div style={{ fontSize:10, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>
@@ -588,8 +589,8 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
               {items.length > 0 && (
                 <div style={{ padding:"0 8px 8px", flex:1 }}>
                   {items.map(s => {
-                    const fmtObj = FORMAT_MAP[s.format];
-                    const ac     = fmtObj ? fmtObj.color : (ACCENT[s.archetype]||"var(--border)");
+                    const fmtObj = programmeMap[s.format] || FORMAT_MAP[s.format];
+                    const ac     = fmtObj ? fmtObj.color : "var(--border)";
                     const readyCount = languages.filter(l => getStoryScript(s, l.key)).length;
                     return (
                       <div key={s.id} draggable={!past} onDragStart={(e)=>e.dataTransfer.setData("text/story-id", s.id)} style={{
@@ -644,8 +645,8 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                   ) : (
                     <div style={{ display:"flex", flexDirection:"column", gap:3, maxHeight:200, overflowY:"auto" }}>
                       {suggested.map((s,i) => {
-                        const fmtObj = FORMAT_MAP[s.format];
-                        const ac = fmtObj?fmtObj.color:(ACCENT[s.archetype]||"var(--border)");
+                        const fmtObj = programmeMap[s.format] || FORMAT_MAP[s.format];
+                        const ac = fmtObj?.color || "var(--border)";
                         return (
                           <button key={s.id} onClick={()=>assignToDay(s.id,assignDay,platform)} style={{
                             display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:7,
@@ -691,8 +692,8 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
           <>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:6, marginBottom:12 }}>
               {ready.slice(0, 12).map(s => {
-                const fmtObj = FORMAT_MAP[s.format];
-                const ac = fmtObj?.color || ACCENT[s.archetype] || "var(--border)";
+                const fmtObj = programmeMap[s.format] || FORMAT_MAP[s.format];
+                const ac = fmtObj?.color || "var(--border)";
                 return (
                   <div key={s.id} draggable onDragStart={(e)=>e.dataTransfer.setData("text/story-id", s.id)} style={{ padding:"8px 10px", borderRadius:7, background:"var(--card)", border:"0.5px solid var(--border)", borderLeft:`3px solid ${ac}`, cursor:"grab" }}>
                     <div style={{ fontSize:12, fontWeight:600, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>

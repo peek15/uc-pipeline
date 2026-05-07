@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-// research-stories.js — Discover new NBA story ideas.
+// research-stories.js — Discover new story ideas.
 // Extracted from ResearchView.buildPrompt().
 // ═══════════════════════════════════════════════════════════
 
@@ -21,14 +21,20 @@ export const defaults = {
  * @param {string} [params.existingTitles]
  * @param {number} [params.batch]
  */
-export function build({ topic, count, era, team, archetype, format, existingTitles = "", batch = 1 }) {
-  const fmtLabel = FORMAT_MAP[format]?.label || "";
-  const fmtDesc  = format === "classics"             ? "pre-2000s NBA"
-                 : format === "performance_special"  ? "historic records/dominant seasons"
-                 :                                     "recent NBA 2000s-present";
-  const angle = RESEARCH_ANGLES[Math.floor(Math.random() * RESEARCH_ANGLES.length)];
+export function build({ topic, count, era, team, archetype, format, existingTitles = "", batch = 1, brand_config = null }) {
+  const programmes = brand_config?.programmes || [];
+  const programme = programmes.find(p => p.id === format || p.key === format);
+  const fmtLabel = programme?.name || FORMAT_MAP[format]?.label || "";
+  const fmtDesc  = programme?.desc || FORMAT_MAP[format]?.desc || "";
+  const archetypes = brand_config?.archetypes?.length ? brand_config.archetypes : ARCHETYPES;
+  const angles = brand_config?.research_angles?.length ? brand_config.research_angles : RESEARCH_ANGLES;
+  const angle = angles[Math.floor(Math.random() * angles.length)];
+  const brandName = brand_config?.brand_name || "Uncle Carter";
+  const contentType = brand_config?.content_type || "narrative";
+  const voice = brand_config?.voice ? `\nBrand voice: ${brand_config.voice}.` : "";
+  const avoid = brand_config?.avoid ? `\nAvoid: ${brand_config.avoid}.` : "";
 
-  return `You are a story research engine for "Uncle Carter," an NBA storytelling brand. Find ${count} compelling, lesser-known human stories.\n\nReturn JSON objects with: title, archetype (${ARCHETYPES.join("/")}), obscurity (1-5, prefer 3-5), players, era, angle (2-3 sentences human tension), hook (1 sentence opener).\n\nRULES: Human story > highlights. Specific facts. Obscure > well-known. Each DISTINCT.${era ? `\nEra: ${era}.` : ""}${team ? `\nTeam: ${team}.` : ""}${archetype ? `\nArchetype: ${archetype}.` : ""}${fmtLabel ? `\nContent format: ${fmtLabel} (${fmtDesc}).` : ""}${topic ? `\nFocus: "${topic}"` : ""}${existingTitles ? `\nALREADY COVERED: ${existingTitles}` : ""}.\n\nAngle: "${angle}". Batch #${batch}. JSON array ONLY. No markdown.`;
+  return `You are a story research engine for "${brandName}", a ${contentType} content brand. Find ${count} compelling, lesser-known story ideas that fit this brand.${voice}${avoid}\n\nReturn JSON objects with: title, archetype (${archetypes.join("/")}), obscurity (1-5, prefer 3-5), players or subjects, era or context, angle (2-3 sentences human tension), hook (1 sentence opener), format.\n\nRULES: Human story > generic summary. Specific facts. Obscure > over-covered. Each DISTINCT.${era ? `\nEra/context: ${era}.` : ""}${team ? `\nSubject/team/entity: ${team}.` : ""}${archetype ? `\nArchetype: ${archetype}.` : ""}${fmtLabel ? `\nContent programme: ${fmtLabel}${fmtDesc ? ` (${fmtDesc})` : ""}.` : ""}${topic ? `\nFocus: "${topic}"` : ""}${existingTitles ? `\nALREADY COVERED: ${existingTitles}` : ""}.\n\nAngle: "${angle}". Batch #${batch}. JSON array ONLY. No markdown.`;
 }
 
 export function parse(text) {

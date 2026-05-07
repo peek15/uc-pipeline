@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Check, X, Star, Plus, Play, Pause, Trash2 } from "lucide-react";
-import { ARCHETYPES, ERAS, TEAMS, RESEARCH_ANGLES, FORMATS, FORMAT_MAP, suggestFormat } from "@/lib/constants";
+import { suggestFormat } from "@/lib/constants";
 import { runPrompt } from "@/lib/ai/runner";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
+import { brandConfigForPrompt, getBrandTaxonomy } from "@/lib/brandConfig";
 
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null) return null;
@@ -18,15 +19,21 @@ function ScoreBar({ score, label, max = 25 }) {
   );
 }
 
-async function scoreStories(stories) {
+async function scoreStories(stories, settings) {
   const { parsed } = await runPrompt({
     type:   "score-story",
-    params: { stories },
+    params: { stories, brand_config: brandConfigForPrompt(settings) },
   });
   return parsed || [];
 }
 
-export default function ResearchView({ stories, onAddStories, prefill, onPrefillUsed }) {
+export default function ResearchView({ stories, onAddStories, prefill, onPrefillUsed, settings }) {
+  const brandTaxonomy = getBrandTaxonomy(settings);
+  const programmes = brandTaxonomy.programmes;
+  const programmeMap = brandTaxonomy.programme_map;
+  const archetypes = brandTaxonomy.archetypes;
+  const eras = brandTaxonomy.eras;
+  const subjects = brandTaxonomy.subjects;
   // Search params
   const [topic,     setTopic]     = useState("");
   const [count,     setCount]     = useState("8");
@@ -76,12 +83,13 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         format:         params.format,
         existingTitles: getExisting(),
         batch:          batch + 1,
+        brand_config:   brandConfigForPrompt(settings),
       },
       maxTokens: Math.min(700 + n * 350, 8000),
     });
     if (!parsed || !Array.isArray(parsed)) throw new Error("Parse failed");
     return parsed.filter(s => s && s.title);
-  }, [batch, getExisting]);
+  }, [batch, getExisting, settings]);
 
   // Single search
   const doFetch = useCallback(async () => {
@@ -103,7 +111,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       if (newStories.length > 0) {
         setScoring(true);
         try {
-          const scoreData = await scoreStories(newStories);
+          const scoreData = await scoreStories(newStories, settings);
           setScores(prev => {
             const base = Object.keys(prev).length;
             const next = {...prev};
@@ -115,12 +123,12 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         } catch {} finally { setScoring(false); }
       }
     } catch(err) { setError(err.message); }
-  }, [topic, count, era, team, archetype, format, runSearch, stories]);
+  }, [topic, count, era, team, archetype, format, runSearch, stories, settings]);
 
   // Add to queue
   const addToQueue = () => {
     const label = [
-      format ? FORMAT_MAP[format]?.label : null,
+      format ? programmeMap[format]?.label : null,
       archetype || null,
       era || null,
       topic || null,
@@ -149,7 +157,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         if (newStories.length > 0) {
           setScoring(true);
           try {
-            const scoreData = await scoreStories(newStories);
+            const scoreData = await scoreStories(newStories, settings);
             setScores(prev => {
               const base = Object.keys(prev).length;
               const next = {...prev};
@@ -166,7 +174,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       if (i < q.length-1) await new Promise(r=>setTimeout(r,600));
     }
     setQueueRunning(false);
-  }, [runSearch, stories]);
+  }, [runSearch, stories, settings]);
 
   // Loading state — true if single search or queue running
   const [singleLoading, setSingleLoading] = useState(false);
@@ -237,7 +245,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       {(era||team||archetype||format) && (
         <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
           <span style={{ fontSize:11, color:"var(--t3)" }}>Targeting:</span>
-          {format && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:`${FORMAT_MAP[format]?.color}15`, color:FORMAT_MAP[format]?.color, border:`1px solid ${FORMAT_MAP[format]?.color}25`, fontWeight:600 }}>{FORMAT_MAP[format]?.label}</span>}
+          {format && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:`${programmeMap[format]?.color}15`, color:programmeMap[format]?.color, border:`1px solid ${programmeMap[format]?.color}25`, fontWeight:600 }}>{programmeMap[format]?.label}</span>}
           {archetype && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{archetype}</span>}
           {era && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{era}</span>}
           {team && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{team}</span>}
@@ -272,31 +280,31 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       {/* Filters — always visible */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:8, marginBottom:12 }}>
         <div>
-          <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Format</div>
+          <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Programme</div>
           <select value={format} onChange={e=>setFormat(e.target.value)} style={{...selStyle,width:"100%"}}>
-            <option value="">Any format</option>
-            {FORMATS.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
+            <option value="">Any programme</option>
+            {programmes.map(f=><option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
         </div>
         <div>
           <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Archetype</div>
           <select value={archetype} onChange={e=>setArchetype(e.target.value)} style={{...selStyle,width:"100%"}}>
             <option value="">Any archetype</option>
-            {ARCHETYPES.map(a=><option key={a} value={a}>{a}</option>)}
+            {archetypes.map(a=><option key={a} value={a}>{a}</option>)}
           </select>
         </div>
         <div>
           <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Era</div>
           <select value={era} onChange={e=>setEra(e.target.value)} style={{...selStyle,width:"100%"}}>
             <option value="">Any era</option>
-            {ERAS.map(e=><option key={e} value={e}>{e}</option>)}
+            {eras.map(e=><option key={e} value={e}>{e}</option>)}
           </select>
         </div>
         <div>
-          <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Team</div>
+          <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Subject</div>
           <select value={team} onChange={e=>setTeam(e.target.value)} style={{...selStyle,width:"100%"}}>
-            <option value="">Any team</option>
-            {TEAMS.map(t=><option key={t} value={t}>{t}</option>)}
+            <option value="">Any subject</option>
+            {subjects.map(t=><option key={t} value={t}>{t}</option>)}
           </select>
         </div>
       </div>
@@ -374,7 +382,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             {sortedResults.map(({ s, i, score: sc }) => {
               const scoreData = scores[i];
-              const fmt = FORMAT_MAP[s.format || format || suggestFormat(s.era)];
+              const fmt = programmeMap[s.format || format || suggestFormat(s.era)];
               const gate = auditStoryQuality({ ...s, format: s.format || format || suggestFormat(s.era), score_total: scoreData?.total ?? sc }, stories);
               return (
                 <div key={i} className="animate-fade-in" style={{ padding:"16px 18px", borderRadius:10, background:"var(--card)", border:"0.5px solid var(--border)", borderLeft:`2px solid ${fmt?.color||"var(--border)"}` }}>

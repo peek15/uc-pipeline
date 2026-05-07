@@ -9,6 +9,7 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 import AssetLibraryModal from "@/components/AssetLibraryModal";
+import { brandConfigForPrompt } from "@/lib/brandConfig";
 import {
   AssetMatchesSection,
   AssemblySection,
@@ -71,7 +72,7 @@ function stepForMode(mode, current) {
   return current;
 }
 
-function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming }) {
+function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings }) {
   const [viewLang, setViewLang] = usePersistentState("create_script_lang", "en");
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState(null);
@@ -85,7 +86,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
   const translateLang = async (lang, scriptText) => {
     const { text } = await runPrompt({
       type: "translate-script",
-      params: { script: scriptText, lang_key: lang },
+      params: { script: scriptText, lang_key: lang, brand_config: brandConfigForPrompt(settings) },
       context: { story_id: story.id },
       parse: false,
     });
@@ -99,7 +100,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
     try {
       const { text: enText } = await runPromptStream({
         type: "generate-script",
-        params: { story },
+        params: { story, brand_config: brandConfigForPrompt(settings) },
         context: { story_id: story.id },
         onChunk: (live) => setStreaming(prev => ({ ...prev, [story.id]: live })),
       });
@@ -223,7 +224,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
   );
 }
 
-function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming }) {
+function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings }) {
   return (
     <ScriptWorkspace
       story={story}
@@ -232,11 +233,12 @@ function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, stre
       setLocalLangs={setLocalLangs}
       streaming={streaming}
       setStreaming={setStreaming}
+      settings={settings}
     />
   );
 }
 
-export default function CreateView({ stories, onUpdate, mode, onModeChange, tenant }) {
+export default function CreateView({ stories, onUpdate, mode, onModeChange, tenant, settings }) {
   const brandProfileId = tenant?.brand_profile_id || DEFAULT_BRAND_PROFILE_ID;
   const workspaceId = tenant?.workspace_id;
   const [selectedId, setSelectedId] = usePersistentState("create_selected_story", null);
@@ -430,8 +432,8 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                 </div>
 
                 {["brief", "assets", "voice", "visuals", "assembly", "review"].includes(activeStep) && <ReadinessStrip story={selected} />}
-                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} />}
-                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} />}
+                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} />}
+                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} />}
                 {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
                 {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
                 {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}

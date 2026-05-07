@@ -19,8 +19,9 @@ import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, tenantStorageKey } from "@/lib/brand";
+import { brandConfigForPrompt } from "@/lib/brandConfig";
 
-const VERSION = "3.17.0";
+const VERSION = "3.17.1";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -254,7 +255,7 @@ export default function Home() {
     // English script
     const { text: enText } = await runPrompt({
       type:    "generate-script",
-      params:  { story },
+      params:  { story, brand_config: brandConfigForPrompt(appSettings) },
       context: { story_id: storyId },
       parse:   false,
     });
@@ -264,13 +265,13 @@ export default function Home() {
     for (const lang of ["fr","es","pt"]) {
       const { text: translated } = await runPrompt({
         type:    "translate-script",
-        params:  { script: enText, lang_key: lang },
+        params:  { script: enText, lang_key: lang, brand_config: brandConfigForPrompt(appSettings) },
         context: { story_id: storyId },
         parse:   false,
       });
       await updateStory(storyId, { [`script_${lang}`]: translated });
     }
-  }, [stories, updateStory]);
+  }, [stories, updateStory, appSettings]);
 
  // v3.11.4 — Global keyboard shortcuts driven by SHORTCUTS registry.
   // Cross-platform (metaKey || ctrlKey).
@@ -573,10 +574,10 @@ export default function Home() {
               <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} />
             </div>
             <div style={{ display: tab==="research"   ? "block" : "none" }}>
-              <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} />
+              <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} />
             </div>
             <div style={{ display: tab==="create" || tab==="script" || tab==="production" ? "block" : "none" }}>
-              <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={tenant} />
+              <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={tenant} settings={appSettings} />
             </div>
             <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
             <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} /></div>

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
-import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
+import { FORMATS, FORMAT_MAP, ARCHETYPES, ERAS, RESEARCH_ANGLES, SCRIPT_SYSTEM, TEAMS } from "@/lib/constants";
 import { supabase } from "@/lib/db";
 import { runPrompt } from "@/lib/ai/runner";
 import ProvidersSection from "@/components/ProvidersSection";
@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS = {
     name: "Uncle Carter",
     voice: "Calm, warm, slightly mischievous. Never reactive. Never loud.",
     avoid: "Hot takes, highlight reels, clichés, exclamation marks",
+    locked_elements: ["Because the score is never the whole story."],
     content_type: "narrative",
     goal_primary: "community",
     goal_secondary: "reach",
@@ -47,6 +48,14 @@ const DEFAULT_SETTINGS = {
       { id:"performance_special",name:"Performance Special", color:"#C0666A", role:"balanced",  weight:15, angle_suggestions:["shock","resilience","triumph"], custom_fields:[] },
       { id:"special_edition",    name:"Special Edition",     color:"#8B7EC8", role:"special",   weight:0,  angle_suggestions:[], custom_fields:[] },
     ],
+  },
+  taxonomy: {
+    eras: ERAS,
+    subjects: TEAMS,
+    research_angles: RESEARCH_ANGLES,
+  },
+  prompts: {
+    script_system: SCRIPT_SYSTEM,
   },
   appearance: {
     theme:       "system",

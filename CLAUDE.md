@@ -1,7 +1,7 @@
 # Uncle Carter Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.17.0
+- App badge/package target: v3.17.1
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.1: SaaS Phase 2 brand-config engine: brand taxonomy helper, brand-aware Research prompt/options, brand-aware script/scoring/translation/reach prompts, taxonomy/prompt defaults in settings.
 - v3.17.0: SaaS Phase 1 tenant foundation: workspace tables/RLS scaffold, tenant-scoped story reads/writes, tenant-scoped settings/provider/assets/AI usage wiring.
 - v3.16.9: Create V2 unified workflow: shared story queue, persistent selected-story workspace, Script-to-Review step tabs, and smoother Write/Produce transition.
 - v3.16.8: Create mode switcher harmonized; Shift+Option/Alt+Arrow switches Write/Produce inside Create.
@@ -66,6 +67,20 @@ scheduling, provider operations, quality gates, and analytics.
 - Story DB helpers in `src/lib/db.js` now accept tenant context and inject/scope `workspace_id` + `brand_profile_id`.
 - `supabase-schema.sql` includes Phase 1 workspace tables, `workspace_members`, `is_workspace_member()`, tenant indexes, and transitional RLS policies.
 - The default workspace is intentionally migration-compatible; generated future workspaces should require membership policies only.
+
+## Brand Config Engine
+- Helper: `src/lib/brandConfig.js`
+- Uncle Carter values are now treated as seed defaults, not the only product model.
+- Brand settings can provide:
+  - `strategy.programmes`
+  - `taxonomy.eras`
+  - `taxonomy.subjects`
+  - `taxonomy.research_angles`
+  - `prompts.script_system`
+  - brand voice/avoid/locked closing line
+- Research uses brand programmes/archetypes/subjects and passes `brand_config` into research/scoring prompts.
+- Create script generation and translation pass `brand_config` into AI prompts.
+- Reach/script/scoring/translation prompts should prefer `brand_config` over UC defaults.
 
 ## UI System
 - Shared operational primitives live in `src/components/OperationalUI.jsx`.

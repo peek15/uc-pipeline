@@ -13,18 +13,20 @@ export const defaults = {
  * @param {object} params
  * @param {object} params.story
  */
-export function build({ story }) {
-  return `You are scoring an Uncle Carter NBA story for reach potential (discoverability by new viewers).
+export function build({ story, brand_config = null }) {
+  const brandName = brand_config?.brand_name || "this brand";
+  const contentType = brand_config?.content_type || "content";
+  return `You are scoring a ${brandName} ${contentType} story for reach potential (discoverability by new viewers).
 
 Score this story 0-100 on reach potential based on:
-- Name recognition of the subject (40%) — how famous is the player/moment?
+- Name recognition of the subject (40%) — how famous or recognizable is the subject/moment?
 - Recency (25%) — how recently was this in public consciousness?
 - Search volume proxy (20%) — how often is this topic searched?
 - Trending relevance (15%) — is this connected to current news?
 
 Story: "${story.title}"
-Players: ${story.players || "Unknown"}
-Era: ${story.era || "Unknown"}
+Subject(s): ${story.players || story.subjects || "Unknown"}
+Era/context: ${story.era || "Unknown"}
 Angle: ${story.angle || ""}
 
 Return ONLY a JSON object: { "reach_score": number, "reasoning": "1 sentence" }

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { X, Circle, Check, FileText, Film, Award, Archive, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { STAGES, ACCENT, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES, CONTENT_TYPES, CHANNELS } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
-import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentType, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
+import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentTemplates, getContentType, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
 
 const ICONS = { accepted:Circle, approved:Check, scripted:FileText, produced:Film, published:Award, rejected:X, archived:Archive };
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
@@ -41,10 +41,12 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const idx     = stories.findIndex(s=>s.id===currentId);
   const languages = getBrandLanguages(settings);
   const programmes = getBrandProgrammes(settings);
+  const templates = getContentTemplates(settings);
   const hasPortuguese = languages.some(l => l.key === "pt") && !!getStoryScript(current, "pt");
 
   const [localFormat,    setLocalFormat]    = useState(current.format||"");
   const [localContentType, setLocalContentType] = useState(getContentType(current, settings));
+  const [localTemplateId, setLocalTemplateId] = useState(current.content_template_id || templates[0]?.id || "");
   const [localObjective, setLocalObjective] = useState(contentObjective(current));
   const [localAudience, setLocalAudience] = useState(contentAudience(current));
   const [localChannel, setLocalChannel] = useState(contentChannel(current));
@@ -59,6 +61,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   useEffect(() => {
     setLocalFormat(current.format||"");
     setLocalContentType(getContentType(current, settings));
+    setLocalTemplateId(current.content_template_id || templates[0]?.id || "");
     setLocalObjective(contentObjective(current));
     setLocalAudience(contentAudience(current));
     setLocalChannel(contentChannel(current));
@@ -86,6 +89,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
     if (onUpdate) onUpdate(current.id, {
       format:           localFormat||null,
       content_type:     localContentType||"narrative",
+      content_template_id: localTemplateId||null,
       objective:        localObjective||null,
       audience:         localAudience||null,
       channel:          localChannel||null,
@@ -296,6 +300,19 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
                     </select>
                   ):(
                     <div style={{fontSize:12,fontWeight:500,color:"var(--t1)"}}>{getContentTypeLabel(current, settings)}</div>
+                  )}
+                </div>
+
+                {/* Template */}
+                <div style={{padding:"8px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border2)"}}>
+                  <div style={{fontSize:10,color:"var(--t3)",marginBottom:4}}>Template</div>
+                  {editing?(
+                    <select value={localTemplateId} onChange={e=>{ const next = templates.find(t=>t.id===e.target.value); setLocalTemplateId(e.target.value); if (next?.content_type) setLocalContentType(next.content_type); }} style={{...sel,padding:"3px 6px",fontSize:11}}>
+                      <option value="">—</option>
+                      {templates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  ):(
+                    <div style={{fontSize:12,fontWeight:500,color:current.content_template_id?"var(--t1)":"var(--t4)"}}>{templates.find(t=>t.id===current.content_template_id)?.name || "Not set"}</div>
                   )}
                 </div>
 

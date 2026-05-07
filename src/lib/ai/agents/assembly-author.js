@@ -16,7 +16,7 @@
 import { runPrompt } from "@/lib/ai/runner";
 import { loadAgentContext, formatFeedbackContext, brandIdentityBlock,
          extractJson, hybridConfidence, logFeedback } from "./base";
-import { subjectText } from "@/lib/brandConfig";
+import { getContentTemplate, subjectText } from "@/lib/brandConfig";
 
 export const AGENT_NAME = "assembly-author";
 export const defaults   = { maxTokens: 2000, model: "sonnet" };
@@ -132,6 +132,7 @@ export function parseOutput(text, story = {}) {
 function buildPrompt({ story, brand, feedback }) {
   const brandBlock    = brandIdentityBlock(brand);
   const feedbackBlock = formatFeedbackContext(feedback);
+  const template = getStoryTemplate(story, brand);
 
   const visuals = (story.visual_refs?.selected || []);
   const visualList = visuals.length
@@ -164,10 +165,10 @@ function buildPrompt({ story, brand, feedback }) {
 
   const brief = story.visual_brief || {};
 
-  return `You are the assembly-author agent. Your job is to produce a complete video assembly plan for a short-form social video (45–60s), ready for CapCut export.
+  return `You are the assembly-author agent. Your job is to produce a complete assembly plan for a content deliverable, ready for editor handoff or export.
 
-You receive: the approved scripts in multiple languages, voice track metadata, selected visual assets, and a visual brief.
-You output: a JSON scene-by-scene timeline + a markdown editor brief.
+You receive: the selected content template, approved scripts/copy in multiple languages when present, voice track metadata, selected visual assets, and a visual brief.
+You output: a JSON scene-by-scene timeline + a markdown editor brief. For non-video deliverables, still create an ordered section-by-section plan with null voice tracks if audio is not needed.
 
 Output EXACTLY this JSON (no markdown, no preamble):
 {
@@ -195,8 +196,8 @@ Output EXACTLY this JSON (no markdown, no preamble):
 }
 
 Markdown brief format (write this into the markdown_brief field as a single escaped string):
-# Assembly Brief: [story title]
-**Format:** [format] | **Archetype:** [archetype] | **Duration:** ~[X]s | **Languages:** [list]
+# Assembly Brief: [content title]
+**Template:** [template] | **Deliverable:** [deliverable] | **Format:** [format] | **Duration:** ~[X]s | **Languages:** [list]
 
 ## Scenes
 | # | Position | Type | Duration | Asset URL |
@@ -223,11 +224,23 @@ Markdown brief format (write this into the markdown_brief field as a single esca
 --- BRAND IDENTITY ---
 ${brandBlock}
 
---- STORY ---
-Title:     ${story.title || "(untitled)"}
-Format:    ${story.format || "(unspecified)"}
-Archetype: ${story.archetype || "(unspecified)"}
-Subjects:  ${subjectText(story) || "(unspecified)"}
+--- CONTENT TEMPLATE ---
+Name:             ${template?.name || "(default)"}
+Content type:     ${story.content_type || template?.content_type || "(unspecified)"}
+Objective:        ${story.objective || template?.objective || "(unspecified)"}
+Audience:         ${story.audience || template?.audience || "(unspecified)"}
+Channel:          ${story.channel || story.platform_target || template?.channels?.[0] || "(unspecified)"}
+Deliverable type: ${story.deliverable_type || template?.deliverable_type || "(unspecified)"}
+Required fields:  ${(template?.required_fields || []).join(", ") || "(none)"}
+Workflow:         ${(template?.workflow_steps || []).join(" > ") || "(default)"}
+
+--- CONTENT ITEM ---
+Title:      ${story.title || "(untitled)"}
+Programme:  ${story.format || "(unspecified)"}
+Archetype:  ${story.archetype || "(unspecified)"}
+Subjects:   ${subjectText(story) || "(unspecified)"}
+Objective:  ${story.objective || "(unspecified)"}
+Audience:   ${story.audience || "(unspecified)"}
 
 --- VISUAL BRIEF ---
 Scene:      ${brief.scene || "(none)"}
@@ -246,6 +259,7 @@ ${scripts || "(no scripts yet)"}
 ${feedbackBlock}
 
 RULES:
+- Adapt the structure to the template. Video templates should use timed scenes. Carousel/press/email/page templates should use ordered sections with practical handoff notes.
 - Create 1 scene per selected visual asset (if no visuals: create 3 placeholder scenes)
 - Assign visuals in selection_order (first = intro, last = outro, middle = middle)
 - Split the primary script proportionally across scenes by duration
@@ -258,6 +272,21 @@ RULES:
 - Confidence: 100 only if scripts + audio + visuals are all present and complete
 
 JSON only.`;
+}
+
+function getStoryTemplate(story, brand) {
+  const settings = parseSettings(brand);
+  return getContentTemplate(settings, story?.content_template_id);
+}
+
+function parseSettings(brand) {
+  const raw = brand?.settings || brand?.brief_doc;
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+  if (raw.brand || raw.strategy) return raw;
+  return null;
 }
 
 // ─── Normalizers ───────────────────────────────────────────

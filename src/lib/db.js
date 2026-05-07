@@ -29,16 +29,25 @@ export async function getStories(tenant) {
 
 export async function upsertStory(story, tenant) {
   const t = normalizeTenant(tenant || story);
-  const { data, error } = await supabase
+  const row = {
+    ...story,
+    content_type: story.content_type || story.metadata?.content_type || "narrative",
+    content_template_id: story.content_template_id || story.metadata?.content_template_id || null,
+    workspace_id: story.workspace_id || t.workspace_id,
+    brand_profile_id: story.brand_profile_id || t.brand_profile_id,
+  };
+  let { data, error } = await supabase
     .from("stories")
-    .upsert({
-      ...story,
-      content_type: story.content_type || story.metadata?.content_type || "narrative",
-      workspace_id: story.workspace_id || t.workspace_id,
-      brand_profile_id: story.brand_profile_id || t.brand_profile_id,
-    }, { onConflict: "id" })
+    .upsert(row, { onConflict: "id" })
     .select()
     .single();
+  if (error && isMissingColumnError(error, "content_template_id")) {
+    const fallback = { ...row };
+    delete fallback.content_template_id;
+    const retry = await supabase.from("stories").upsert(fallback, { onConflict: "id" }).select().single();
+    data = retry.data;
+    error = retry.error;
+  }
   if (error) throw error;
   return data;
 }
@@ -57,15 +66,31 @@ export async function bulkUpsertStories(stories, tenant) {
   const rows = (stories || []).map(story => ({
     ...story,
     content_type: story.content_type || story.metadata?.content_type || "narrative",
+    content_template_id: story.content_template_id || story.metadata?.content_template_id || null,
     workspace_id: story.workspace_id || t.workspace_id,
     brand_profile_id: story.brand_profile_id || t.brand_profile_id,
   }));
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("stories")
     .upsert(rows, { onConflict: "id" })
     .select();
+  if (error && isMissingColumnError(error, "content_template_id")) {
+    const fallbackRows = rows.map(row => {
+      const next = { ...row };
+      delete next.content_template_id;
+      return next;
+    });
+    const retry = await supabase.from("stories").upsert(fallbackRows, { onConflict: "id" }).select();
+    data = retry.data;
+    error = retry.error;
+  }
   if (error) throw error;
   return data;
+}
+
+function isMissingColumnError(error, column) {
+  const msg = `${error?.message || ""} ${error?.details || ""} ${error?.hint || ""}`;
+  return msg.includes(column) && (msg.includes("column") || msg.includes("schema cache"));
 }
 
 // ─── BRAND PROFILES ───

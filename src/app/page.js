@@ -21,7 +21,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.17.8";
+const VERSION = "3.17.9";
 
 const TABS = [
   { key: "pipeline",   label: "Content",  Icon: Layers },
@@ -334,10 +334,10 @@ export default function Home() {
 
   const exportCSV = () => {
     const languages = getBrandLanguages(appSettings);
-    const hdr = ["Title","Status","Content Type","Programme","Objective","Audience","Channel","Campaign","Deliverable","Archetype","Era","Subjects","Angle","Hook",...languages.map(l => `Script ${l.key.toUpperCase()}`),"Score","Views","Completion%","Saves"];
+    const hdr = ["Title","Status","Content Type","Content Template","Programme","Objective","Audience","Channel","Campaign","Deliverable","Archetype","Era","Subjects","Angle","Hook",...languages.map(l => `Script ${l.key.toUpperCase()}`),"Score","Views","Completion%","Saves"];
     const esc = v => `"${(v||"").toString().replace(/"/g,'""')}"`;
     const rows = stories.map(s => [
-      esc(s.title), s.status, s.content_type || "narrative", esc(s.format), esc(contentObjective(s)), esc(contentAudience(s)), esc(contentChannel(s)), esc(s.campaign_name), esc(s.deliverable_type),
+      esc(s.title), s.status, s.content_type || "narrative", esc(s.content_template_id), esc(s.format), esc(contentObjective(s)), esc(contentAudience(s)), esc(contentChannel(s)), esc(s.campaign_name), esc(s.deliverable_type),
       esc(s.archetype), esc(s.era), esc(subjectText(s)), esc(s.angle), esc(s.hook),
       ...languages.map(l => esc(getStoryScript(s, l.key))),
       s.score_total, s.metrics_views, s.metrics_completion, s.metrics_saves,
@@ -383,6 +383,7 @@ export default function Home() {
           title,
           status: p[findIdx("Status")] || "accepted",
           content_type: p[findIdx("Content Type", "Content type", "Type")] || "narrative",
+          content_template_id: p[findIdx("Content Template", "Template", "Template ID")] || "",
           format: p[findIdx("Programme", "Program", "Format")] || "",
           objective: p[findIdx("Objective", "Goal")] || "",
           audience: p[findIdx("Audience", "Target Audience")] || "",

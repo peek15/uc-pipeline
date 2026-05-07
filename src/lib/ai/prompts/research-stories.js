@@ -18,10 +18,11 @@ export const defaults = {
  * @param {string} [params.team]
  * @param {string} [params.archetype]
  * @param {string} [params.format]
+ * @param {object} [params.content_template]
  * @param {string} [params.existingTitles]
  * @param {number} [params.batch]
  */
-export function build({ topic, count, era, team, archetype, format, existingTitles = "", batch = 1, brand_config = null }) {
+export function build({ topic, count, era, team, archetype, format, content_template = null, existingTitles = "", batch = 1, brand_config = null }) {
   const programmes = brand_config?.programmes || [];
   const programme = programmes.find(p => p.id === format || p.key === format);
   const fmtLabel = programme?.name || FORMAT_MAP[format]?.label || "";
@@ -31,10 +32,49 @@ export function build({ topic, count, era, team, archetype, format, existingTitl
   const angle = angles[Math.floor(Math.random() * angles.length)];
   const brandName = brand_config?.brand_name || "Uncle Carter";
   const contentType = brand_config?.content_type || "narrative";
+  const template = content_template || brand_config?.content_templates?.[0] || null;
+  const templateBlock = template ? `
+Content template:
+- id: ${template.id || "(none)"}
+- name: ${template.name || "(unnamed)"}
+- content_type: ${template.content_type || contentType}
+- objective: ${template.objective || "(unspecified)"}
+- audience: ${template.audience || "(unspecified)"}
+- channels: ${(template.channels || []).join(", ") || "(unspecified)"}
+- deliverable_type: ${template.deliverable_type || "(unspecified)"}
+- required_fields: ${(template.required_fields || []).join(", ") || "(none)"}
+- workflow_steps: ${(template.workflow_steps || []).join(" > ") || "(default)"}` : "";
   const voice = brand_config?.voice ? `\nBrand voice: ${brand_config.voice}.` : "";
   const avoid = brand_config?.avoid ? `\nAvoid: ${brand_config.avoid}.` : "";
 
-  return `You are a story research engine for "${brandName}", a ${contentType} content brand. Find ${count} compelling, lesser-known story ideas that fit this brand.${voice}${avoid}\n\nReturn JSON objects with: title, archetype (${archetypes.join("/")}), obscurity (1-5, prefer 3-5), players or subjects, era or context, angle (2-3 sentences human tension), hook (1 sentence opener), format.\n\nRULES: Human story > generic summary. Specific facts. Obscure > over-covered. Each DISTINCT.${era ? `\nEra/context: ${era}.` : ""}${team ? `\nSubject/team/entity: ${team}.` : ""}${archetype ? `\nArchetype: ${archetype}.` : ""}${fmtLabel ? `\nContent programme: ${fmtLabel}${fmtDesc ? ` (${fmtDesc})` : ""}.` : ""}${topic ? `\nFocus: "${topic}"` : ""}${existingTitles ? `\nALREADY COVERED: ${existingTitles}` : ""}.\n\nAngle: "${angle}". Batch #${batch}. JSON array ONLY. No markdown.`;
+  return `You are a content ideation engine for "${brandName}", a ${contentType} content brand. Find ${count} distinct content ideas that fit this brand and the selected template.${voice}${avoid}
+${templateBlock}
+
+Return JSON objects with:
+- title
+- content_template_id
+- content_type
+- objective
+- audience
+- channel
+- deliverable_type
+- archetype (${archetypes.join("/")})
+- obscurity (1-5, prefer 3-5 for narrative/editorial ideas)
+- players or subjects
+- era or context
+- angle (2-3 sentences describing the strategic or human angle)
+- hook (1 sentence opener)
+- format
+
+RULES:
+- Respect the selected content template. Do not force every idea into a narrative sports story.
+- For ad/product/publicity templates, prioritize objective, audience, offer/proof/CTA logic over obscure trivia.
+- For educational templates, prioritize teachable structure and clear audience value.
+- For narrative templates, prioritize human story, specific facts, and under-covered angles.
+- Each idea must be distinct from existing titles and from the other results.
+${era ? `\nEra/context: ${era}.` : ""}${team ? `\nSubject/team/entity: ${team}.` : ""}${archetype ? `\nArchetype: ${archetype}.` : ""}${fmtLabel ? `\nContent programme: ${fmtLabel}${fmtDesc ? ` (${fmtDesc})` : ""}.` : ""}${topic ? `\nFocus: "${topic}"` : ""}${existingTitles ? `\nALREADY COVERED: ${existingTitles}` : ""}.
+
+Angle seed: "${angle}". Batch #${batch}. JSON array ONLY. No markdown.`;
 }
 
 export function parse(text) {

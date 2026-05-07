@@ -9,7 +9,7 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 import AssetLibraryModal from "@/components/AssetLibraryModal";
-import { brandConfigForPrompt, getBrandLanguages, getBrandProgrammeMap, getContentTypeLabel, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getBrandLanguages, getBrandProgrammeMap, getContentTemplate, getContentTypeLabel, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
 import {
   AssetMatchesSection,
   AssemblySection,
@@ -76,6 +76,38 @@ function stepForMode(mode, current) {
 function programmeColor(story, settings) {
   const programme = getBrandProgrammeMap(settings)[story?.format];
   return programme?.color || "var(--border)";
+}
+
+function TemplateStrip({ story, settings }) {
+  const template = getContentTemplate(settings, story?.content_template_id);
+  if (!template) return null;
+  const chips = [
+    template.content_type,
+    story?.objective || template.objective,
+    story?.deliverable_type || template.deliverable_type,
+    story?.channel || story?.platform_target || template.channels?.[0],
+  ].filter(Boolean);
+  return (
+    <div style={{ padding: "10px 12px", borderRadius: 8, background: "var(--fill2)", border: "0.5px solid var(--border)", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 7 }}>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Template</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)" }}>{template.name}</div>
+        </div>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {chips.map(chip => <span key={chip} style={{ fontSize: 10, color: "var(--t2)", padding: "2px 7px", borderRadius: 99, background: "var(--card)", border: "0.5px solid var(--border)" }}>{chip}</span>)}
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div style={{ fontSize: 11, color: "var(--t3)", lineHeight: 1.5 }}>
+          <span style={{ color: "var(--t2)", fontWeight: 600 }}>Fields:</span> {(template.required_fields || []).join(", ") || "default"}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--t3)", lineHeight: 1.5 }}>
+          <span style={{ color: "var(--t2)", fontWeight: 600 }}>Workflow:</span> {(template.workflow_steps || []).join(" > ") || "default"}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings }) {
@@ -421,6 +453,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     <Pill active>{nextAction(selected, settings)}</Pill>
                   </div>
                   <PipelineProgress story={selected} />
+                  <TemplateStrip story={selected} settings={settings} />
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 6 }}>
                     {steps.map(step => {
                       const Icon = step.icon;

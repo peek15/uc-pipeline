@@ -4,7 +4,7 @@ import { Search, Check, X, Star, Plus, Play, Pause, Trash2 } from "lucide-react"
 import { suggestFormat } from "@/lib/constants";
 import { runPrompt } from "@/lib/ai/runner";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
-import { brandConfigForPrompt, getBrandTaxonomy, subjectText } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getContentTemplate, getBrandTaxonomy, subjectText } from "@/lib/brandConfig";
 
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null) return null;
@@ -34,6 +34,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
   const archetypes = brandTaxonomy.archetypes;
   const eras = brandTaxonomy.eras;
   const subjects = brandTaxonomy.subjects;
+  const contentTemplates = brandTaxonomy.content_templates || [];
   // Search params
   const [topic,     setTopic]     = useState("");
   const [count,     setCount]     = useState("8");
@@ -41,6 +42,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
   const [team,      setTeam]      = useState("");
   const [archetype, setArchetype] = useState("");
   const [format,    setFormat]    = useState("");
+  const [templateId, setTemplateId] = useState(contentTemplates[0]?.id || "narrative_story");
 
   // Results
   const [results,   setResults]   = useState([]);
@@ -55,6 +57,11 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
   const queueRef = useRef([]);
   queueRef.current = queue;
 
+  useEffect(() => {
+    if (!contentTemplates.length) return;
+    if (!contentTemplates.some(t => t.id === templateId)) setTemplateId(contentTemplates[0].id);
+  }, [contentTemplates, templateId]);
+
   // Apply prefill from ProductionAlert / Cmd+J
   useEffect(() => {
     if (!prefill) return;
@@ -62,6 +69,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
     if (prefill.era)       setEra(prefill.era);
     if (prefill.archetype) setArchetype(prefill.archetype);
     if (prefill.format)    setFormat(prefill.format);
+    if (prefill.content_template_id) setTemplateId(prefill.content_template_id);
     if (prefill.count)     setCount(String(prefill.count));
     if (onPrefillUsed) onPrefillUsed();
   }, [prefill, onPrefillUsed]);
@@ -72,6 +80,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
 
   const runSearch = useCallback(async (params) => {
     const n = Math.max(1, Math.min(30, parseInt(params.count)||8));
+    const template = getContentTemplate(settings, params.templateId);
     const { parsed } = await runPrompt({
       type: "research-stories",
       params: {
@@ -81,6 +90,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         team:           params.team,
         archetype:      params.archetype,
         format:         params.format,
+        content_template: template,
         existingTitles: getExisting(),
         batch:          batch + 1,
         brand_config:   brandConfigForPrompt(settings),
@@ -88,7 +98,16 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       maxTokens: Math.min(700 + n * 350, 8000),
     });
     if (!parsed || !Array.isArray(parsed)) throw new Error("Parse failed");
-    return parsed.filter(s => s && s.title);
+    return parsed.filter(s => s && s.title).map(s => ({
+      ...s,
+      content_template_id: s.content_template_id || template?.id || params.templateId || null,
+      content_type: s.content_type || template?.content_type || "narrative",
+      objective: s.objective || template?.objective || "",
+      audience: s.audience || template?.audience || "",
+      channel: s.channel || template?.channels?.[0] || "",
+      platform_target: s.platform_target || s.channel || template?.channels?.[0] || "",
+      deliverable_type: s.deliverable_type || template?.deliverable_type || "",
+    }));
   }, [batch, getExisting, settings]);
 
   // Single search
@@ -97,7 +116,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       // No params — just run with defaults
     }
     setError(null); setScores({});
-    const params = { topic, count, era, team, archetype, format };
+    const params = { topic, count, era, team, archetype, format, templateId };
     try {
       const fresh = await runSearch(params);
       const titles = new Set(stories.map(s=>s.title?.toLowerCase()));
@@ -123,18 +142,19 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         } catch {} finally { setScoring(false); }
       }
     } catch(err) { setError(err.message); }
-  }, [topic, count, era, team, archetype, format, runSearch, stories, settings]);
+  }, [topic, count, era, team, archetype, format, templateId, runSearch, stories, settings]);
 
   // Add to queue
   const addToQueue = () => {
     const label = [
       format ? programmeMap[format]?.label : null,
+      contentTemplates.find(t => t.id === templateId)?.name || null,
       archetype || null,
       era || null,
       topic || null,
     ].filter(Boolean).join(" · ") || "General search";
     const id = crypto.randomUUID();
-    setQueue(q => [...q, { id, label, params: { topic, count, era, team, archetype, format }, status:"pending" }]);
+    setQueue(q => [...q, { id, label, params: { topic, count, era, team, archetype, format, templateId }, status:"pending" }]);
   };
 
   // Run queue
@@ -193,6 +213,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         const normalized = {
           ...s,
           format: s.format || format || suggestFormat(s.era),
+          content_template_id: s.content_template_id || templateId,
           ...(sc ? { score_total: sc.total } : {}),
         };
         return { s: normalized, i, gate: auditStoryQuality(normalized, stories, settings), score: sc };
@@ -242,14 +263,15 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
     <div className="animate-fade-in">
 
       {/* Active filter pills */}
-      {(era||team||archetype||format) && (
+      {(era||team||archetype||format||templateId) && (
         <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
           <span style={{ fontSize:11, color:"var(--t3)" }}>Targeting:</span>
+          {templateId && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)", fontWeight:600 }}>{contentTemplates.find(t=>t.id===templateId)?.name || "Template"}</span>}
           {format && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:`${programmeMap[format]?.color}15`, color:programmeMap[format]?.color, border:`1px solid ${programmeMap[format]?.color}25`, fontWeight:600 }}>{programmeMap[format]?.label}</span>}
           {archetype && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{archetype}</span>}
           {era && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{era}</span>}
           {team && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:"var(--fill2)", color:"var(--t2)", border:"1px solid var(--border)" }}>{team}</span>}
-          <button onClick={()=>{setEra("");setTeam("");setArchetype("");setFormat("");}} style={{ fontSize:11, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer" }}>Clear ×</button>
+          <button onClick={()=>{setEra("");setTeam("");setArchetype("");setFormat("");setTemplateId(contentTemplates[0]?.id || "narrative_story");}} style={{ fontSize:11, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer" }}>Clear ×</button>
         </div>
       )}
 
@@ -279,6 +301,12 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
 
       {/* Filters — always visible */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:8, marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Template</div>
+          <select value={templateId} onChange={e=>setTemplateId(e.target.value)} style={{...selStyle,width:"100%"}}>
+            {contentTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
         <div>
           <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Programme</div>
           <select value={format} onChange={e=>setFormat(e.target.value)} style={{...selStyle,width:"100%"}}>
@@ -350,7 +378,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
               <div style={{ width:8, height:8, borderRadius:"50%", flexShrink:0, background:
                 item.status==="done"?"#4A9B7F":item.status==="running"?"#C49A3C":item.status==="error"?"#C0666A":"var(--t4)"
               }} />
-              <span style={{ fontSize:12, color:"var(--t2)", flex:1 }}>{item.label} · {item.params.count} stories</span>
+              <span style={{ fontSize:12, color:"var(--t2)", flex:1 }}>{item.label} · {item.params.count} ideas</span>
               <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{item.status}</span>
               {item.status==="pending" && (
                 <button onClick={()=>setQueue(q=>q.filter((_,idx)=>idx!==i))} style={{ width:18, height:18, borderRadius:4, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>

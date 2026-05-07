@@ -1,6 +1,6 @@
 # Content-Agnostic Audit
 
-Last updated: v3.17.8
+Last updated: v3.17.9
 
 ## Current Assessment
 
@@ -31,6 +31,14 @@ The product is now partly content-agnostic at the brand, provider, language, and
 - Settings now exposes a manual content template editor for name, type, objective, audience, channels, deliverable, required fields, and workflow steps.
 - Applying onboarding output normalizes template IDs and dedupes against existing templates before saving.
 
+## v3.17.9 Progress
+
+- Research can now target a specific content template and passes it into the ideation prompt.
+- New researched items save `content_template_id` plus template-derived `content_type`, `objective`, `audience`, `channel`, and `deliverable_type`.
+- Detail can edit the assigned template.
+- Create shows the assigned template, required fields, and workflow steps for the selected item.
+- Brief and assembly production agents receive the assigned template context before generating handoff output.
+
 ## Remaining Story Bias
 
 - Main table and UI still call items `stories` throughout navigation, schema, API sync, and agents.
@@ -54,7 +62,6 @@ To produce publicity and broader content types well, the app needs a content-obj
 
 ## Recommended Next Phases
 
-1. Make Research become Ideation, with prompts selected by content template.
-2. Make Create steps template-driven so publicity/ad flows do not require narrative-only assets.
-3. Add campaign calendar mode for flights and deliverable bundles.
-4. Introduce true `campaigns` / `deliverables` tables once UI semantics are stable.
+1. Make Create steps actually template-driven, not only template-aware, so publicity/ad flows can skip voice/video-only steps when appropriate.
+2. Add campaign calendar mode for flights and deliverable bundles.
+3. Introduce true `campaigns` / `deliverables` tables once UI semantics are stable.

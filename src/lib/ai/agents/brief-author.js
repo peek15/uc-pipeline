@@ -11,7 +11,7 @@
 import { runPrompt } from "@/lib/ai/runner";
 import { loadAgentContext, formatFeedbackContext, brandIdentityBlock,
          extractJson, hybridConfidence, logFeedback } from "./base";
-import { getStoryScript, subjectText } from "@/lib/brandConfig";
+import { getContentTemplate, getStoryScript, subjectText } from "@/lib/brandConfig";
 
 export const AGENT_NAME = "brief-author";
 
@@ -120,6 +120,7 @@ export function parseOutput(text) {
 function buildPrompt({ story, brand, feedback }) {
   const brandBlock    = brandIdentityBlock(brand);
   const feedbackBlock = formatFeedbackContext(feedback);
+  const template = getStoryTemplate(story, brand);
 
   return `You are the brief-author agent. Your job is to write a structured visual production brief for a single content piece.
 
@@ -136,7 +137,17 @@ Output EXACTLY this JSON structure (no markdown, no preamble):
 --- BRAND IDENTITY ---
 ${brandBlock}
 
---- STORY ---
+--- CONTENT TEMPLATE ---
+Name:             ${template?.name || "(default)"}
+Content type:     ${story.content_type || template?.content_type || "(unspecified)"}
+Objective:        ${story.objective || template?.objective || "(unspecified)"}
+Audience:         ${story.audience || template?.audience || "(unspecified)"}
+Channel:          ${story.channel || story.platform_target || template?.channels?.[0] || "(unspecified)"}
+Deliverable type: ${story.deliverable_type || template?.deliverable_type || "(unspecified)"}
+Required fields:  ${(template?.required_fields || []).join(", ") || "(none)"}
+Workflow:         ${(template?.workflow_steps || []).join(" > ") || "(default)"}
+
+--- CONTENT ITEM ---
 Title:        ${story.title || "(untitled)"}
 Format:       ${story.format || "(unspecified)"}
 Era:          ${story.era || "(unspecified)"}
@@ -150,6 +161,7 @@ ${feedbackBlock}
 
 RULES:
 - Scene must be specific and depictable, not abstract
+- Adapt the brief to the content template. Ads need product/proof/CTA clarity; publicity needs launch/newsworthiness; educational content needs clear teaching visuals; narrative content needs human tension.
 - Mood pulls from the brand's voice and the story's archetype
 - References should be visual culture (films, photographers, eras, palettes), never another brand's content
 - Avoid must reflect the brand's "avoid" guidance plus story-specific cliches
@@ -157,6 +169,21 @@ RULES:
 - Confidence should reflect: brief specificity, brand-fit, learning from corrections above
 
 JSON only.`;
+}
+
+function getStoryTemplate(story, brand) {
+  const settings = parseSettings(brand);
+  return getContentTemplate(settings, story?.content_template_id);
+}
+
+function parseSettings(brand) {
+  const raw = brand?.settings || brand?.brief_doc;
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+  if (raw.brand || raw.strategy) return raw;
+  return null;
 }
 
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }

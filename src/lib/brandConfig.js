@@ -61,6 +61,29 @@ export function getBrandProgrammeMap(settings) {
   return Object.fromEntries(getBrandProgrammes(settings).map(p => [p.key, p]));
 }
 
+export function getContentTemplates(settings) {
+  const configured = settings?.strategy?.content_templates;
+  if (Array.isArray(configured) && configured.length) return configured;
+  return [
+    {
+      id: "narrative_story",
+      name: "Narrative story",
+      content_type: "narrative",
+      objective: "community",
+      audience: "",
+      channels: ["TikTok", "Instagram Reels", "YouTube Shorts"],
+      deliverable_type: "short video",
+      required_fields: ["subject", "angle", "hook", "script"],
+      workflow_steps: ["research", "script", "translations", "brief", "assets", "review"],
+    },
+  ];
+}
+
+export function getContentTemplate(settings, id) {
+  const templates = getContentTemplates(settings);
+  return templates.find(t => t.id === id) || templates[0] || null;
+}
+
 export function getBrandArchetypes(settings) {
   const fromProgrammes = getBrandProgrammes(settings)
     .flatMap(p => p.angle_suggestions || [])
@@ -94,6 +117,7 @@ export function getBrandTaxonomy(settings) {
     avoid: getBrandAvoid(settings),
     programmes: getBrandProgrammes(settings),
     programme_map: getBrandProgrammeMap(settings),
+    content_templates: getContentTemplates(settings),
     archetypes: getBrandArchetypes(settings),
     languages: getBrandLanguages(settings),
     eras: settings?.taxonomy?.eras || ERAS,
@@ -112,6 +136,7 @@ export function brandConfigForPrompt(settings) {
     voice: cfg.voice,
     avoid: cfg.avoid,
     programmes: cfg.programmes.map(p => ({ id: p.key, name: p.label, role: p.role, desc: p.desc, angles: p.angle_suggestions })),
+    content_templates: cfg.content_templates,
     archetypes: cfg.archetypes,
     languages: cfg.languages.map(l => ({ key: l.key, label: l.label, name: l.name })),
     research_angles: cfg.research_angles,

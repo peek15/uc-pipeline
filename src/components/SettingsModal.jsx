@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
-import { FORMATS, FORMAT_MAP, ARCHETYPES, ERAS, RESEARCH_ANGLES, SCRIPT_SYSTEM, TEAMS } from "@/lib/constants";
+import { CONTENT_TYPES, FORMATS, FORMAT_MAP, ARCHETYPES, ERAS, RESEARCH_ANGLES, SCRIPT_SYSTEM, TEAMS } from "@/lib/constants";
 import { supabase } from "@/lib/db";
 import { runPrompt } from "@/lib/ai/runner";
 import ProvidersSection from "@/components/ProvidersSection";
@@ -48,6 +48,20 @@ const DEFAULT_SETTINGS = {
       { id:"classics",           name:"Classics",            color:"#4A9B7F", role:"community", weight:25, angle_suggestions:["sacrifice","legacy","brotherhood","loyalty"], custom_fields:[] },
       { id:"performance_special",name:"Performance Special", color:"#C0666A", role:"balanced",  weight:15, angle_suggestions:["shock","resilience","triumph"], custom_fields:[] },
       { id:"special_edition",    name:"Special Edition",     color:"#8B7EC8", role:"special",   weight:0,  angle_suggestions:[], custom_fields:[] },
+    ],
+    content_templates: [
+      {
+        id: "narrative_story",
+        name: "Narrative story",
+        content_type: "narrative",
+        objective: "community",
+        audience: "",
+        channels: ["TikTok", "Instagram Reels", "YouTube Shorts"],
+        deliverable_type: "short video",
+        required_fields: ["subject", "angle", "hook", "script"],
+        workflow_steps: ["research", "script", "translations", "brief", "assets", "review"],
+        distinct_reason: "Default narrative video workflow.",
+      },
     ],
   },
   taxonomy: {
@@ -157,6 +171,61 @@ function detectConflicts(rules) {
     }
   }
   return conflicts;
+}
+
+function slugifyTemplateId(value) {
+  const base = String(value || "content_template")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+  return base || `template_${Date.now()}`;
+}
+
+function normalizeTemplate(template, existing = []) {
+  const idBase = slugifyTemplateId(template?.id || template?.name);
+  const used = new Set(existing.map(t => t.id).filter(Boolean));
+  let id = idBase;
+  let n = 2;
+  while (used.has(id)) {
+    id = `${idBase}_${n}`;
+    n += 1;
+  }
+  return {
+    id,
+    name: template?.name || id.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+    content_type: template?.content_type || "narrative",
+    objective: template?.objective || "",
+    audience: template?.audience || "",
+    channels: Array.isArray(template?.channels) ? template.channels.filter(Boolean) : [],
+    deliverable_type: template?.deliverable_type || "",
+    required_fields: Array.isArray(template?.required_fields) ? template.required_fields.filter(Boolean) : [],
+    workflow_steps: Array.isArray(template?.workflow_steps) ? template.workflow_steps.filter(Boolean) : [],
+    distinct_reason: template?.distinct_reason || "",
+    created_by_agent: true,
+  };
+}
+
+function templateSimilarity(a, b) {
+  const fields = ["content_type", "objective", "audience", "deliverable_type"];
+  let same = fields.filter(k => String(a?.[k] || "").toLowerCase() && String(a?.[k] || "").toLowerCase() === String(b?.[k] || "").toLowerCase()).length;
+  const aChannels = new Set((a?.channels || []).map(c => String(c).toLowerCase()));
+  const bChannels = new Set((b?.channels || []).map(c => String(c).toLowerCase()));
+  if ([...aChannels].some(c => bChannels.has(c))) same += 1;
+  const aSteps = new Set((a?.workflow_steps || []).map(c => String(c).toLowerCase()));
+  const bSteps = new Set((b?.workflow_steps || []).map(c => String(c).toLowerCase()));
+  if ([...aSteps].some(c => bSteps.has(c))) same += 1;
+  return same;
+}
+
+function isDistinctTemplate(candidate, existing) {
+  const name = String(candidate?.name || "").trim().toLowerCase();
+  if (!name) return false;
+  return !(existing || []).some(t => {
+    if (String(t.name || "").trim().toLowerCase() === name) return true;
+    if (String(t.id || "").trim().toLowerCase() === String(candidate.id || "").trim().toLowerCase()) return true;
+    return templateSimilarity(candidate, t) >= 5;
+  });
 }
 
 // ── Rule builder ──
@@ -444,6 +513,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const fmtTotal = Object.values(settings.strategy?.format_mix||{}).reduce((a,b)=>a+b,0);
 
   const programmes = settings.strategy?.programmes || [];
+  const contentTemplates = settings.strategy?.content_templates || [];
 
   const runStratAudit = async () => {
     setStratRunning(true);
@@ -505,6 +575,29 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
 
   const delProg = (i) => {
     upd("strategy.programmes", programmes.filter((_,idx)=>idx!==i));
+  };
+
+  const addContentTemplate = (preset) => {
+    const template = normalizeTemplate(preset || {
+      name: "New template",
+      content_type: "narrative",
+      objective: "",
+      audience: "",
+      channels: [],
+      deliverable_type: "",
+      required_fields: [],
+      workflow_steps: ["brief", "copy", "assets", "review"],
+      distinct_reason: "",
+    }, contentTemplates);
+    upd("strategy.content_templates", [...contentTemplates, template]);
+  };
+
+  const updContentTemplate = (i, val) => {
+    upd("strategy.content_templates", contentTemplates.map((t, idx) => idx === i ? val : t));
+  };
+
+  const delContentTemplate = (i) => {
+    upd("strategy.content_templates", contentTemplates.filter((_, idx) => idx !== i));
   };
 
   const save = async () => {
@@ -634,11 +727,22 @@ ${fileText.slice(0,3000)}` : text };
 
     const history = newMessages.map(m => `${m.role==="user"?"User":"Assistant"}: ${m.text}`).join("\n\n");
     const currentBrand = JSON.stringify(settings.brand, null, 2);
+    const currentTemplates = JSON.stringify(contentTemplates, null, 2);
+    const brandMemory = assets
+      .filter(a => a.content_summary)
+      .slice(0, 8)
+      .map(a => `- ${a.file_name}: ${a.content_summary}`)
+      .join("\n");
 
     try {
       const { text: response, parsed } = await runPrompt({
         type:   "onboarding-chat",
-        params: { current_brand_json: currentBrand, history },
+        params: {
+          current_brand_json: currentBrand,
+          current_templates_json: currentTemplates,
+          brand_memory: brandMemory,
+          history,
+        },
       });
 
       // parsed = { clean_response, extracted } from onboarding-chat prompt
@@ -655,10 +759,19 @@ ${fileText.slice(0,3000)}` : text };
 
   const applyObDraft = () => {
     if (!obDraft) return;
+    const proposedTemplates = Array.isArray(obDraft.content_templates) ? obDraft.content_templates : [];
+    const distinctTemplates = proposedTemplates
+      .map(t => normalizeTemplate(t, contentTemplates))
+      .filter(t => isDistinctTemplate(t, contentTemplates));
+
     Object.entries(obDraft).forEach(([k,v]) => {
+      if (k === "content_templates") return;
       if (k === "locked_elements") upd("brand.locked_elements", v);
       else if (k in settings.brand) upd(`brand.${k}`, v);
     });
+    if (distinctTemplates.length) {
+      upd("strategy.content_templates", [...contentTemplates, ...distinctTemplates]);
+    }
     setObStep(null);
     setObDraft(null);
     setObMessages([]);
@@ -826,7 +939,9 @@ ${fileText.slice(0,3000)}` : text };
                       <div style={{ fontSize:11, color:"#4A9B7F", fontWeight:600, marginBottom:6 }}>✓ Extracted brand profile</div>
                       {Object.entries(obDraft).filter(([,v])=>v).map(([k,v])=>(
                         <div key={k} style={{ fontSize:11, color:"var(--t2)", marginBottom:2 }}>
-                          <span style={{ color:"var(--t4)" }}>{k}:</span> {Array.isArray(v)?v.join(", "):String(v)}
+                          <span style={{ color:"var(--t4)" }}>{k}:</span> {k === "content_templates" && Array.isArray(v)
+                            ? v.map(t => t.name || t.id).join(", ")
+                            : Array.isArray(v) ? v.join(", ") : String(v)}
                         </div>
                       ))}
                       <button onClick={applyObDraft} style={{ marginTop:8, padding:"5px 14px", borderRadius:6, fontSize:11, fontWeight:600, background:"#4A9B7F", color:"white", border:"none", cursor:"pointer" }}>
@@ -861,7 +976,8 @@ ${fileText.slice(0,3000)}` : text };
                 <div>
                   <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>Content type</div>
                   <select value={settings.brand.content_type||"narrative"} onChange={e=>upd("brand.content_type",e.target.value)} style={selStyle}>
-                    {["narrative","advertising","educational","product","custom"].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}
+                    {CONTENT_TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
+                    <option value="custom">Custom</option>
                   </select>
                 </div>
               </div>
@@ -978,6 +1094,52 @@ ${fileText.slice(0,3000)}` : text };
                       {["EN","FR","ES","PT","DE","IT"].map(l=><option key={l} value={l}>{l}</option>)}
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* Content templates */}
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em" }}>Content templates</div>
+                    <div style={{ fontSize:11, color:"var(--t4)", marginTop:2 }}>Onboarding can create these when brand memory shows a distinct content job.</div>
+                  </div>
+                  <button onClick={()=>addContentTemplate()} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, fontSize:11, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                    <Plus size={11}/> New template
+                  </button>
+                </div>
+                <div style={{ display:"grid", gap:8 }}>
+                  {contentTemplates.map((template, i) => (
+                    <div key={template.id || i} style={{ padding:"12px 14px", borderRadius:9, background:"var(--fill2)", border:"1px solid var(--border)" }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 150px 32px", gap:8, alignItems:"center", marginBottom:8 }}>
+                        <input value={template.name || ""} onChange={e=>updContentTemplate(i, { ...template, name:e.target.value, id: template.id || slugifyTemplateId(e.target.value) })} placeholder="Template name" style={{ ...inputStyle, fontSize:12, padding:"6px 8px" }}/>
+                        <select value={template.content_type || "narrative"} onChange={e=>updContentTemplate(i, { ...template, content_type:e.target.value })} style={{ ...selStyle, fontSize:12, padding:"6px 8px" }}>
+                          {CONTENT_TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
+                        </select>
+                        <button onClick={()=>delContentTemplate(i)} style={{ width:30, height:30, borderRadius:7, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          <Trash2 size={12} color="var(--t4)"/>
+                        </button>
+                      </div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+                        <input value={template.objective || ""} onChange={e=>updContentTemplate(i, { ...template, objective:e.target.value })} placeholder="Objective" style={{ ...inputStyle, fontSize:12, padding:"6px 8px" }}/>
+                        <input value={template.audience || ""} onChange={e=>updContentTemplate(i, { ...template, audience:e.target.value })} placeholder="Audience" style={{ ...inputStyle, fontSize:12, padding:"6px 8px" }}/>
+                        <input value={(template.channels || []).join(", ")} onChange={e=>updContentTemplate(i, { ...template, channels:e.target.value.split(",").map(s=>s.trim()).filter(Boolean) })} placeholder="Channels, comma separated" style={{ ...inputStyle, fontSize:12, padding:"6px 8px" }}/>
+                        <input value={template.deliverable_type || ""} onChange={e=>updContentTemplate(i, { ...template, deliverable_type:e.target.value })} placeholder="Deliverable type" style={{ ...inputStyle, fontSize:12, padding:"6px 8px" }}/>
+                        <input value={(template.required_fields || []).join(", ")} onChange={e=>updContentTemplate(i, { ...template, required_fields:e.target.value.split(",").map(s=>s.trim()).filter(Boolean) })} placeholder="Required fields" style={{ ...inputStyle, fontSize:12, padding:"6px 8px" }}/>
+                        <input value={(template.workflow_steps || []).join(", ")} onChange={e=>updContentTemplate(i, { ...template, workflow_steps:e.target.value.split(",").map(s=>s.trim()).filter(Boolean) })} placeholder="Workflow steps" style={{ ...inputStyle, fontSize:12, padding:"6px 8px" }}/>
+                      </div>
+                      {(template.distinct_reason || template.created_by_agent) && (
+                        <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.5 }}>
+                          {template.created_by_agent ? "Created by onboarding agent. " : ""}{template.distinct_reason}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {!contentTemplates.length && (
+                    <div style={{ textAlign:"center", padding:"22px 0", color:"var(--t4)", fontSize:12, borderRadius:9, border:"1px dashed var(--border)" }}>
+                      No templates yet. Start onboarding or add one manually.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

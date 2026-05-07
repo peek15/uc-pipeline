@@ -1,6 +1,6 @@
 # Content-Agnostic Audit
 
-Last updated: v3.17.7
+Last updated: v3.17.8
 
 ## Current Assessment
 
@@ -23,6 +23,13 @@ The product is now partly content-agnostic at the brand, provider, language, and
 - Pipeline is now labeled Content and can filter/search by content type, channel, objective, audience, campaign, and deliverable.
 - Detail modal can edit the new content metadata without changing the existing story table name.
 - CSV import/export now preserves content type, programme, objective, audience, channel, campaign, and deliverable fields.
+
+## v3.17.8 Progress
+
+- Onboarding can now propose `settings.strategy.content_templates` from the conversation plus uploaded brand-memory summaries.
+- The onboarding prompt audits existing templates and only proposes a new template when it differs enough in content type, objective, audience, channel, deliverable type, required fields, or workflow.
+- Settings now exposes a manual content template editor for name, type, objective, audience, channels, deliverable, required fields, and workflow steps.
+- Applying onboarding output normalizes template IDs and dedupes against existing templates before saving.
 
 ## Remaining Story Bias
 
@@ -47,8 +54,7 @@ To produce publicity and broader content types well, the app needs a content-obj
 
 ## Recommended Next Phases
 
-1. Add content templates in Settings: Narrative story, Ad concept, Product post, Educational explainer, Press/publicity asset.
-2. Make Research become Ideation, with prompts selected by content template.
-3. Make Create steps template-driven so publicity/ad flows do not require narrative-only assets.
-4. Add campaign calendar mode for flights and deliverable bundles.
-5. Introduce true `campaigns` / `deliverables` tables once UI semantics are stable.
+1. Make Research become Ideation, with prompts selected by content template.
+2. Make Create steps template-driven so publicity/ad flows do not require narrative-only assets.
+3. Add campaign calendar mode for flights and deliverable bundles.
+4. Introduce true `campaigns` / `deliverables` tables once UI semantics are stable.

@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.17.7
+- App badge/package target: v3.17.8
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.8: Onboarding can now propose distinct content templates from brand memory/current settings, dedupe them against existing templates, and save them into `settings.strategy.content_templates`; Settings exposes a manual template editor.
 - v3.17.7: Content-agnostic metadata foundation: `stories` rows now support content type, objective, audience, channel, campaign, and deliverable fields; Pipeline is labeled Content with new filters/search; Detail and CSV import/export preserve those fields.
 - v3.17.6: Programme color correction and content-agnostic audit: story queue left bars now use programme/format colors across Create, Produce, and Calendar; added `docs/content-agnostic-audit.md`.
 - v3.17.5: Phase 5 workspace/brand selector foundation: active tenant persists in UI storage, sidebar brand selector lists profiles in the workspace, new brand creation clones current settings into a fresh brand profile, and story/settings reloads follow the selected brand.
@@ -98,6 +99,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Story/card left bars are operational programme indicators and should use programme/format color, not emotional archetype color.
 - Content-agnostic audit lives in `docs/content-agnostic-audit.md`.
 - Content rows can now carry `content_type`, `objective`, `audience`, `channel`, `campaign_id`, `campaign_name`, and `deliverable_type`. Keep new UI copy content-first, while preserving table/agent compatibility until a deeper migration is planned.
+- Content templates live in `settings.strategy.content_templates`. Onboarding receives current templates plus brand-memory summaries and should only propose a new template when it differs meaningfully in content type, objective, audience, channel, deliverable, required fields, or workflow.
 
 ## UI System
 - Shared operational primitives live in `src/components/OperationalUI.jsx`.

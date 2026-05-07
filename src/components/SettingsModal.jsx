@@ -75,6 +75,9 @@ const DEFAULT_SETTINGS = {
 // even when initialSettings (loaded from Supabase) is partial or has a
 // stale shape. Prevents undefined-access crashes like settings.brand.name.
 function mergeSettings(incoming) {
+  if (typeof incoming === "string") {
+    try { incoming = JSON.parse(incoming); } catch { incoming = null; }
+  }
   if (!incoming || typeof incoming !== "object") return DEFAULT_SETTINGS;
   const merged = { ...DEFAULT_SETTINGS };
   for (const k of Object.keys(DEFAULT_SETTINGS)) {
@@ -517,7 +520,8 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
         goal_secondary: settings.brand.goal_secondary,
         language_primary: settings.brand.language_primary,
         languages_secondary: settings.brand.languages_secondary,
-        brief_doc: settings,
+        settings,
+        brief_doc: JSON.stringify(settings),
         // provider_config removed in v3.10.1 — provider credentials now
         // saved via /api/provider-config to the secure provider_secrets
         // table, not exposed in brand_profiles JSON.

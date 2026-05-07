@@ -221,7 +221,101 @@ CREATE TABLE IF NOT EXISTS brand_profiles (
 );
 
 ALTER TABLE brand_profiles
-  ADD COLUMN IF NOT EXISTS workspace_id UUID;
+  ADD COLUMN IF NOT EXISTS workspace_id UUID,
+  ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS identity_voice TEXT,
+  ADD COLUMN IF NOT EXISTS identity_avoid TEXT,
+  ADD COLUMN IF NOT EXISTS goal_primary TEXT,
+  ADD COLUMN IF NOT EXISTS goal_secondary TEXT,
+  ADD COLUMN IF NOT EXISTS language_primary TEXT,
+  ADD COLUMN IF NOT EXISTS languages_secondary TEXT[];
+
+INSERT INTO brand_profiles (
+  id,
+  workspace_id,
+  name,
+  identity_voice,
+  identity_avoid,
+  goal_primary,
+  goal_secondary,
+  language_primary,
+  languages_secondary,
+  settings,
+  brief_doc
+)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  '00000000-0000-0000-0000-000000000001',
+  'Uncle Carter',
+  'Calm, warm, slightly mischievous. Never reactive. Never loud.',
+  'Hot takes, highlight reels, cliches, exclamation marks',
+  'community',
+  'reach',
+  'EN',
+  ARRAY['FR','ES','PT'],
+  '{
+    "brand": {
+      "name": "Uncle Carter",
+      "voice": "Calm, warm, slightly mischievous. Never reactive. Never loud.",
+      "avoid": "Hot takes, highlight reels, cliches, exclamation marks",
+      "locked_elements": ["Because the score is never the whole story."],
+      "content_type": "narrative",
+      "goal_primary": "community",
+      "goal_secondary": "reach",
+      "language_primary": "EN",
+      "languages_secondary": ["FR", "ES", "PT"]
+    },
+    "strategy": {
+      "weekly_cadence": 4,
+      "format_mix": { "standard": 60, "classics": 25, "performance_special": 15, "special_edition": 0 },
+      "sequence_rules": {
+        "no_consecutive_classics": true,
+        "no_consecutive_performance_special": true,
+        "no_consecutive_same_format": false
+      },
+      "defaults": { "auto_translate": true, "auto_score": true, "default_language": "EN" }
+    },
+    "appearance": { "theme": "system", "density": "comfortable", "default_tab": "pipeline" }
+  }'::jsonb,
+  '{
+    "brand": {
+      "name": "Uncle Carter",
+      "voice": "Calm, warm, slightly mischievous. Never reactive. Never loud.",
+      "avoid": "Hot takes, highlight reels, cliches, exclamation marks",
+      "locked_elements": ["Because the score is never the whole story."],
+      "content_type": "narrative",
+      "goal_primary": "community",
+      "goal_secondary": "reach",
+      "language_primary": "EN",
+      "languages_secondary": ["FR", "ES", "PT"]
+    },
+    "strategy": {
+      "weekly_cadence": 4,
+      "format_mix": { "standard": 60, "classics": 25, "performance_special": 15, "special_edition": 0 },
+      "sequence_rules": {
+        "no_consecutive_classics": true,
+        "no_consecutive_performance_special": true,
+        "no_consecutive_same_format": false
+      },
+      "defaults": { "auto_translate": true, "auto_score": true, "default_language": "EN" }
+    },
+    "appearance": { "theme": "system", "density": "comfortable", "default_tab": "pipeline" }
+  }'
+)
+ON CONFLICT (id) DO UPDATE
+SET workspace_id = COALESCE(brand_profiles.workspace_id, EXCLUDED.workspace_id),
+    name = COALESCE(NULLIF(brand_profiles.name, ''), EXCLUDED.name),
+    identity_voice = COALESCE(brand_profiles.identity_voice, EXCLUDED.identity_voice),
+    identity_avoid = COALESCE(brand_profiles.identity_avoid, EXCLUDED.identity_avoid),
+    goal_primary = COALESCE(brand_profiles.goal_primary, EXCLUDED.goal_primary),
+    goal_secondary = COALESCE(brand_profiles.goal_secondary, EXCLUDED.goal_secondary),
+    language_primary = COALESCE(brand_profiles.language_primary, EXCLUDED.language_primary),
+    languages_secondary = COALESCE(brand_profiles.languages_secondary, EXCLUDED.languages_secondary),
+    settings = CASE
+      WHEN brand_profiles.settings IS NULL OR brand_profiles.settings = '{}'::jsonb THEN EXCLUDED.settings
+      ELSE brand_profiles.settings
+    END,
+    brief_doc = COALESCE(brand_profiles.brief_doc, EXCLUDED.brief_doc);
 
 UPDATE brand_profiles
 SET workspace_id = COALESCE(workspace_id, '00000000-0000-0000-0000-000000000001')

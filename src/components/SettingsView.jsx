@@ -246,8 +246,8 @@ export default function SettingsView({ stories, onSettingsChange, initialSetting
         goal_secondary: settings.brand.goal_secondary,
         language_primary:    settings.brand.language_primary,
         languages_secondary: settings.brand.languages_secondary,
-        brief_doc: settings,
-        provider_config: settings.providers,
+        settings,
+        brief_doc: JSON.stringify(settings),
       });
       if (onSettingsChange) onSettingsChange(settings);
       setSaved(true);
@@ -280,7 +280,7 @@ export default function SettingsView({ stories, onSettingsChange, initialSetting
       <Section title="Brand Profile">
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <Field label="Brand name">
-            <Input value={settings.brand.name} onChange={v=>updateBrand("name",v)} placeholder="Uncle Carter"/>
+            <Input value={settings.brand.name} onChange={v=>updateBrand("name",v)} placeholder="Brand name"/>
           </Field>
           <Field label="Content type">
             <Select value={settings.brand.content_type} onChange={v=>updateBrand("content_type",v)} options={[

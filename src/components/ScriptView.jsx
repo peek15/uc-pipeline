@@ -2,10 +2,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { FileText, ChevronRight, ChevronDown, RefreshCw, Copy, Check, Layers, Zap, X, ArrowRight, Search, SlidersHorizontal } from "lucide-react";
-import { LANGS, ACCENT } from "@/lib/constants";
+import { ACCENT } from "@/lib/constants";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { PageHeader, Panel } from "@/components/OperationalUI";
+import { brandConfigForPrompt, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
 
@@ -29,7 +30,7 @@ function ProgressSteps({ steps, current }) {
   );
 }
 
-export default function ScriptView({ stories, onUpdate, embedded = false }) {
+export default function ScriptView({ stories, onUpdate, embedded = false, settings = null }) {
   // ── All state first — before any useMemo ──
   const [focusedIdx,   setFocusedIdx]   = useState(0);
   const [expandedIds,  setExpandedIds]  = usePersistentState("script_expanded", new Set());
@@ -52,28 +53,26 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
   const [filterEra,   setFilterEra]   = usePersistentState("script_era",        "");
   const [sortBy,      setSortBy]      = usePersistentState("script_sort",       "date_desc");
   const [showFilters, setShowFilters] = usePersistentState("script_showfilt",   false);
+  const languages = useMemo(() => getBrandLanguages(settings), [settings]);
+  const secondaryLanguages = useMemo(() => languages.filter(l => l.key !== "en"), [languages]);
 
   // ── Derived state ──
   const allReady = stories.filter(s => ["approved","scripted"].includes(s.status));
 
   const ready = useMemo(() => {
     let list = allReady.filter(s => {
-      if (filterStatus === "unscripted" && s.script) return false;
-      if (filterStatus === "scripted"   && !s.script) return false;
+      if (filterStatus === "unscripted" && getStoryScript(s, "en")) return false;
+      if (filterStatus === "scripted"   && !getStoryScript(s, "en")) return false;
       if (filterArch && s.archetype !== filterArch) return false;
       if (filterEra  && s.era       !== filterEra)  return false;
       if (filterLang) {
-        const hasFr = !!(localLangs[s.id]?.fr ?? s.script_fr);
-        const hasEs = !!(localLangs[s.id]?.es ?? s.script_es);
-        const hasPt = !!(localLangs[s.id]?.pt ?? s.script_pt);
-        if (filterLang === "fr" && hasFr) return false;
-        if (filterLang === "es" && hasEs) return false;
-        if (filterLang === "pt" && hasPt) return false;
+        const hasLang = !!(localLangs[s.id]?.[filterLang] ?? getStoryScript(s, filterLang));
+        if (hasLang) return false;
       }
       if (search) {
         const q = search.toLowerCase();
-        const players = Array.isArray(s.players) ? s.players.join(" ") : (s.players||"");
-        if (![(s.title||""), players].some(f => f.toLowerCase().includes(q))) return false;
+        const subjects = subjectText(s);
+        if (![(s.title||""), subjects].some(f => f.toLowerCase().includes(q))) return false;
       }
       return true;
     });
@@ -95,13 +94,13 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
   // Get script text — check local cache first, then story props
   const getScript = (story, lang) => {
     if (!story) return null;
-    if (lang === "en") return streaming[story.id] !== undefined ? streaming[story.id] : story.script;
-    return localLangs[story.id]?.[lang] ?? story[`script_${lang}`] ?? null;
+    if (lang === "en") return streaming[story.id] !== undefined ? streaming[story.id] : getStoryScript(story, "en");
+    return localLangs[story.id]?.[lang] ?? getStoryScript(story, lang) ?? null;
   };
 
   // Get all available langs for a story
   const getAvailableLangs = (story) => {
-    return LANGS.filter(l => !!getScript(story, l.key));
+    return languages.filter(l => !!getScript(story, l.key));
   };
 
   // Keyboard navigation
@@ -126,7 +125,7 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
       // Alt+G = generate/rewrite focused story
       if (matches(e, SHORTCUTS.scriptGenerate.combo)) { e.preventDefault(); if (!loading) generate(focusedStory); }
       // Alt+T = translate all for focused story
-      if (matches(e, SHORTCUTS.scriptTranslate.combo)) { e.preventDefault(); if (!loading && focusedStory.script) translateAll(focusedStory); }
+      if (matches(e, SHORTCUTS.scriptTranslate.combo)) { e.preventDefault(); if (!loading && getStoryScript(focusedStory, "en")) translateAll(focusedStory); }
       // Cmd+C when expanded = copy current lang
       if (matches(e, SHORTCUTS.scriptCopy.combo) && expandedIds.has(focusedStory.id)) {
         const vl2 = getViewLang(focusedStory.id);
@@ -135,18 +134,18 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
       }
       // 1-4 keys = switch lang when expanded
       if (expandedIds.has(focusedStory.id)) {
-        const langMap = { "1":"en","2":"fr","3":"es","4":"pt" };
+        const langMap = Object.fromEntries(languages.slice(0, 9).map((l, i) => [String(i + 1), l.key]));
         if (langMap[e.key]) { const l = langMap[e.key]; if (getScript(focusedStory, l)) setViewLang(focusedStory.id, l); }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [focusedIdx, focusedStory, ready, loading, expandedIds, viewLangMap, localLangs, streaming]);
+  }, [focusedIdx, focusedStory, ready, loading, expandedIds, viewLangMap, localLangs, streaming, languages]);
 
   const translateLang = async (story, lang, scriptText) => {
     const { text } = await runPrompt({
       type:    "translate-script",
-      params:  { script: scriptText, lang_key: lang },
+      params:  { script: scriptText, lang_key: lang, brand_config: brandConfigForPrompt(settings) },
       context: { story_id: story.id },
       parse:   false,
     });
@@ -159,19 +158,19 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
     try {
       const { text: enText } = await runPromptStream({
         type:    "generate-script",
-        params:  { story },
+        params:  { story, brand_config: brandConfigForPrompt(settings) },
         context: { story_id: story.id },
         onChunk: (live) => setStreaming(s => ({ ...s, [story.id]: live })),
       });
       setStreaming(s => { const n = {...s}; delete n[story.id]; return n; });
-      await onUpdate(story.id, { script: enText, script_version: (story.script_version||0)+1, status: "scripted" });
+      await onUpdate(story.id, { ...storyScriptPatch("en", enText, story), script_version: (story.script_version||0)+1, status: "scripted" });
 
       // Auto-suggest reach score if not already set — non-blocking
       if (!story.reach_score) {
         try {
           const { parsed } = await runPrompt({
             type:    "reach-score",
-            params:  { story },
+            params:  { story, brand_config: brandConfigForPrompt(settings) },
             context: { story_id: story.id },
           });
           if (parsed?.reach_score != null) {
@@ -181,13 +180,14 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
       }
 
       if (withTranslate) {
-        const newLangs = {};
-        for (const lang of ["fr","es","pt"]) {
+        let storySnapshot = { ...story, ...storyScriptPatch("en", enText, story) };
+        for (const lang of secondaryLanguages.map(l => l.key)) {
           setLoading(`${lang}-${story.id}`);
           const translated = await translateLang(story, lang, enText);
-          newLangs[lang] = translated;
           setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id]||{}), [lang]: translated } }));
-          await onUpdate(story.id, { [`script_${lang}`]: translated });
+          const patch = storyScriptPatch(lang, translated, storySnapshot);
+          storySnapshot = { ...storySnapshot, ...patch };
+          await onUpdate(story.id, patch);
           await new Promise(r => setTimeout(r, 300));
         }
       }
@@ -195,7 +195,7 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
   };
 
   const generateAll = async () => {
-    const queue = ready.filter(s => !s.script);
+    const queue = ready.filter(s => !getStoryScript(s, "en"));
     setBatchMode(true); setBatchDone(0); setError(null);
     for (let i = 0; i < queue.length; i++) {
       const s = queue[i];
@@ -210,13 +210,16 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
   const translateAll = async (story) => {
     setError(null);
     try {
-      const scriptText = story.script;
-      for (const lang of ["fr","es","pt"]) {
+      const scriptText = getStoryScript(story, "en");
+      let storySnapshot = story;
+      for (const lang of secondaryLanguages.map(l => l.key)) {
         if (getScript(story, lang)) continue;
         setLoading(`${lang}-${story.id}`);
         const translated = await translateLang(story, lang, scriptText);
         setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id]||{}), [lang]: translated } }));
-        await onUpdate(story.id, { [`script_${lang}`]: translated });
+        const patch = storyScriptPatch(lang, translated, storySnapshot);
+        storySnapshot = { ...storySnapshot, ...patch };
+        await onUpdate(story.id, patch);
         await new Promise(r => setTimeout(r, 300));
       }
     } catch (err) { setError(err.message); } finally { setLoading(null); }
@@ -226,16 +229,16 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
     const slug = story.title.slice(0,30).replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
     const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
-    LANGS.forEach(l => {
+    languages.forEach(l => {
       const sc = getScript(story, l.key);
-      if (sc) zip.file(`UC-${slug}_${l.key}.txt`, sc);
+      if (sc) zip.file(`${slug}_${l.key}.txt`, sc);
     });
     const blob = await zip.generateAsync({ type:"blob" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `UC-${slug}-voice-pack.zip`; a.click();
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${slug}-voice-pack.zip`; a.click();
   };
 
-  const unscripted = ready.filter(s => !s.script);
-  const STEPS = autoTranslate ? ["EN","FR","ES","PT"] : ["EN"];
+  const unscripted = ready.filter(s => !getStoryScript(s, "en"));
+  const STEPS = autoTranslate ? languages.map(l => l.key.toUpperCase()) : ["EN"];
 
   if (!ready.length) return (
     <div className="animate-fade-in">
@@ -258,7 +261,7 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
       {!embedded && (
         <PageHeader
           title="Write"
-          description="Generate English scripts, translate into target languages, and export voice packs."
+          description="Generate primary-language scripts, translate into target languages, and export voice packs."
           meta={`${ready.length} ready · ${unscripted.length} unscripted`}
         />
       )}
@@ -295,7 +298,7 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
       <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:8, marginBottom:12, alignItems:"center" }}>
         <div style={{ position:"relative" }}>
           <Search size={13} style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--t3)", pointerEvents:"none" }} />
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title or player..."
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title or subject..."
             style={{ width:"100%", padding:"8px 12px 8px 32px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", fontSize:13, outline:"none" }} />
         </div>
         <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ padding:"8px 10px", borderRadius:8, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
@@ -336,9 +339,7 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
             <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:5 }}>Missing lang</div>
             <select value={filterLang} onChange={e=>setFilterLang(e.target.value)} style={{ width:"100%", padding:"6px 8px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
               <option value="">Any</option>
-              <option value="fr">Missing FR</option>
-              <option value="es">Missing ES</option>
-              <option value="pt">Missing PT</option>
+              {secondaryLanguages.map(lang => <option key={lang.key} value={lang.key}>Missing {lang.label}</option>)}
             </select>
           </div>
           {/* Archetype */}
@@ -376,11 +377,10 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
           const availLangs  = getAvailableLangs(s);
           const ac          = ACCENT[s.archetype] || "var(--border)";
           const isLoadingEn  = loading === `en-${s.id}`;
-          const isLoadingFr  = loading === `fr-${s.id}`;
-          const isLoadingEs  = loading === `es-${s.id}`;
-          const isLoadingPt  = loading === `pt-${s.id}`;
-          const isLoadingThis = isLoadingEn || isLoadingFr || isLoadingEs || isLoadingPt;
-          const currentStep  = isLoadingEn ? 0 : isLoadingFr ? 1 : isLoadingEs ? 2 : isLoadingPt ? 3 : -1;
+          const loadingLang = languages.findIndex(l => loading === `${l.key}-${s.id}`);
+          const isLoadingThis = isLoadingEn || loadingLang >= 0;
+          const currentStep  = isLoadingEn ? 0 : loadingLang;
+          const primaryScript = getStoryScript(s, "en");
 
           return (
             <div key={s.id} id={`script-${s.id}`}
@@ -403,7 +403,7 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
                   <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--t3)", flexWrap:"wrap" }}>
                     <span style={{ color:ac, fontWeight:500 }}>{s.archetype}</span>
                     {s.era && <><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
-                    {s.script && <><span style={{color:"var(--t4)"}}>·</span><span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:11}}>v{s.script_version||1} · {wc(s.script)}w</span></>}
+                    {primaryScript && <><span style={{color:"var(--t4)"}}>·</span><span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:11}}>v{s.script_version||1} · {wc(primaryScript)}w</span></>}
                     {isLoadingThis
                       ? <ProgressSteps steps={STEPS} current={currentStep} />
                       : availLangs.map(l => (
@@ -423,7 +423,7 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
                     }}
                     onMouseEnter={e=>{e.currentTarget.style.background="var(--t1)";e.currentTarget.style.color="var(--bg)";}}
                     onMouseLeave={e=>{e.currentTarget.style.background="var(--fill2)";e.currentTarget.style.color="var(--t2)";}}>
-                      <RefreshCw size={11} /> {s.script ? "Rewrite" : "Generate"}
+                      <RefreshCw size={11} /> {primaryScript ? "Rewrite" : "Generate"}
                     </button>
                   )}
                   {isExpanded ? <ChevronDown size={15} color="var(--t4)" /> : <ChevronRight size={15} color="var(--t4)" />}
@@ -436,9 +436,9 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
                   {s.angle && <div style={{ fontSize:13, color:"var(--t3)", lineHeight:1.6, margin:"10px 0 8px" }}>{s.angle}</div>}
 
                   {/* Lang tabs */}
-                  {s.script && (
+                  {primaryScript && (
                     <div style={{ display:"flex", gap:4, marginBottom:10 }}>
-                      {LANGS.map((l, li) => {
+                      {languages.map((l, li) => {
                         const has       = !!getScript(s, l.key);
                         const isLoading = loading === `${l.key}-${s.id}`;
                         const vl        = getViewLang(s.id);
@@ -482,11 +482,11 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
                       display:"flex", alignItems:"center", justifyContent:"center", gap:5,
                     }}>
                       <RefreshCw size={12} />
-                      {isLoadingEn ? "Writing..." : s.script ? "Rewrite EN" : "Generate"}
+                      {isLoadingEn ? "Writing..." : primaryScript ? "Rewrite" : "Generate"}
                       {autoTranslate && !isLoadingThis && <span style={{fontSize:10,opacity:0.6}}>+ all langs</span>}
                     </button>
 
-                    {s.script && availLangs.length < 4 && (
+                    {primaryScript && availLangs.length < languages.length && (
                       <button onClick={()=>translateAll(s)} disabled={!!loading} style={{
                         padding:"8px 14px", borderRadius:7, fontSize:12, fontWeight:600,
                         background:"var(--fill2)", color:"var(--t1)",
@@ -494,7 +494,7 @@ export default function ScriptView({ stories, onUpdate, embedded = false }) {
                         display:"flex", alignItems:"center", gap:5,
                       }}>
                         <Layers size={12} />
-                        {isLoadingFr||isLoadingEs||isLoadingPt ? "Translating..." : "Translate missing"}
+                        {loadingLang > 0 ? "Translating..." : "Translate missing"}
                       </button>
                     )}
 

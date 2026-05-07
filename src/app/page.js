@@ -21,7 +21,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.17.3";
+const VERSION = "3.17.4";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -93,12 +93,14 @@ export default function Home() {
         }
       } catch {}
       // Then sync from Supabase (source of truth)
-      supabase.from("brand_profiles").select("brief_doc").eq("id", tenant.brand_profile_id).single()
+      supabase.from("brand_profiles").select("brief_doc,settings").eq("id", tenant.brand_profile_id).single()
         .then(({ data, error }) => {
-          if (data?.brief_doc) {
-            setAppSettings(data.brief_doc);
-            localStorage.setItem(tenantStorageKey("settings", tenant), JSON.stringify(data.brief_doc));
-            applyTheme(data.brief_doc?.appearance?.theme || "system");
+          const rawSettings = data?.settings && Object.keys(data.settings || {}).length ? data.settings : data?.brief_doc;
+          const loadedSettings = typeof rawSettings === "string" ? JSON.parse(rawSettings) : rawSettings;
+          if (loadedSettings) {
+            setAppSettings(loadedSettings);
+            localStorage.setItem(tenantStorageKey("settings", tenant), JSON.stringify(loadedSettings));
+            applyTheme(loadedSettings?.appearance?.theme || "system");
           }
         }).catch(() => {});
     }
@@ -244,9 +246,7 @@ export default function Home() {
     toast("↗ Jumped to Research");
   }, [stories, setTab, setResearchPrefill]);
 
-  // Auto-produce: generate script for a story by ID
-  // ScriptView handles the actual generation — we trigger it via a shared ref or
-  // by moving the story to scripted status after calling the API directly
+  // Auto-produce: generate and translate a story directly from calendar/alerts.
   const handleProduce = useCallback(async (storyId) => {
     const story = stories.find(s => s.id === storyId);
     if (!story || getStoryScript(story, "en")) return;

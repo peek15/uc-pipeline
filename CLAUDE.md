@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.17.3
+- App badge/package target: v3.17.4
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.4: Seed-preserving cleanup: app now prefers `brand_profiles.settings` JSONB while reading legacy `brief_doc`, Settings saves both formats safely, schema seeds/migrates Uncle Carter settings so no re-onboarding is required, and legacy Write/Settings components were cleaned to use configured language/script helpers.
 - v3.17.3: SaaS Phase 4 brand-facing hardening: dynamic app chrome, generic login/metadata copy, configured-language CSV import/export, dynamic story/detail readiness, generic Airtable subject/script fields, and settings workspace copy cleanup.
 - v3.17.2: SaaS Phase 3 brand-agnostic workflow layer: scripts JSONB adapter, configured-language Create/Produce/Calendar readiness, brand-aware quality gate terms, agent prompt subject language, and generic pipeline agent context.
 - v3.17.1: SaaS Phase 2 brand-config engine: brand taxonomy helper, brand-aware Research prompt/options, brand-aware script/scoring/translation/reach prompts, taxonomy/prompt defaults in settings.
@@ -69,10 +70,12 @@ scheduling, provider operations, quality gates, and analytics.
 - Story DB helpers in `src/lib/db.js` now accept tenant context and inject/scope `workspace_id` + `brand_profile_id`.
 - `supabase-schema.sql` includes Phase 1 workspace tables, `workspace_members`, `is_workspace_member()`, tenant indexes, and transitional RLS policies.
 - The default workspace is intentionally migration-compatible; generated future workspaces should require membership policies only.
+- The default Uncle Carter brand profile is inserted/upgraded into the newer `brand_profiles.settings` JSONB shape; do not force existing users through onboarding again.
 
 ## Brand Config Engine
 - Helper: `src/lib/brandConfig.js`
 - Uncle Carter values are now treated as seed defaults, not the only product model.
+- Load settings from `brand_profiles.settings` first; `brief_doc` is legacy fallback and may be a JSON string.
 - Script language access should go through `getStoryScript()`, `storyScriptPatch()`, `hasAllConfiguredScripts()`, and `getBrandLanguages()`.
 - `storyScriptPatch()` writes legacy columns only for EN/FR/ES/PT and writes every language to `stories.scripts` JSONB for SaaS brands with custom language sets.
 - Brand settings can provide:

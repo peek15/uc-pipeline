@@ -1,6 +1,6 @@
 # Content-Agnostic Audit
 
-Last updated: v3.18.0
+Last updated: v3.18.1
 
 ## Current Assessment
 
@@ -48,6 +48,17 @@ The product is now partly content-agnostic at the brand, provider, language, and
 - Review/progress now reflects only the steps required by the selected template.
 - Script/copy generation now adapts output to the selected template's content type, objective, audience, channel, deliverable type, and required fields.
 
+## v3.18.1 Progress
+
+- Quality Gate now selects a profile from the assigned content template/content type.
+- Narrative content still checks story fit: subject, archetype, era, human tension, hook, and factual anchor.
+- Ads check objective, audience, channel, deliverable, CTA, and proof.
+- Publicity checks news value and factual/news anchors.
+- Product posts check audience, deliverable, and benefit/use-case clarity.
+- Educational content checks lesson/takeaway clarity.
+- Community content checks participation prompts.
+- Gate output now records `profile`, `template_id`, and `content_type`.
+
 ## Remaining Story Bias
 
 - Main table and UI still call items `stories` throughout navigation, schema, API sync, and agents.
@@ -73,4 +84,4 @@ To produce publicity and broader content types well, the app needs a content-obj
 
 1. Add campaign calendar mode for flights and deliverable bundles.
 2. Introduce true `campaigns` / `deliverables` tables once UI semantics are stable.
-3. Add template-specific quality gate profiles.
+3. Add Settings controls for custom gate rules per template.

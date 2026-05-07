@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.18.0
+- App badge/package target: v3.18.1
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.18.1: Template-specific Quality Gate profiles: narrative, ad, publicity, product, educational, community, and generic content now use different checks for objective/audience/channel/deliverable/factual anchor/CTA/proof/news value/teaching point/participation prompt; gate output includes profile/template metadata.
 - v3.18.0: Deeper content-agnostic Create workflow: selected template workflow steps now drive the Create step list/progress/review; non-video templates can omit voice/visual/assembly steps; custom workflow steps render as notes/checkoff panels; generate-script now adapts copy/script output to the selected template.
 - v3.17.9: Research/Create production now use content templates: Research can target a template and saves `content_template_id` plus type/objective/audience/channel/deliverable metadata; Detail can edit the template; Create shows template fields/workflow; brief and assembly agents receive template context.
 - v3.17.8: Onboarding can now propose distinct content templates from brand memory/current settings, dedupe them against existing templates, and save them into `settings.strategy.content_templates`; Settings exposes a manual template editor.
@@ -104,6 +105,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Content templates live in `settings.strategy.content_templates`. Onboarding receives current templates plus brand-memory summaries and should only propose a new template when it differs meaningfully in content type, objective, audience, channel, deliverable, required fields, or workflow.
 - Research should pass the selected template into `research-stories`; generated content should save `content_template_id` and template-derived metadata. Production agents should read the story template before generating visual briefs or assembly plans.
 - Create workflows are template-driven through `settings.strategy.content_templates[].workflow_steps`. Known tokens map to existing tools (`script/copy`, `translations`, `brief`, `assets`, `visuals`, `voice`, `assembly`, `review`); unknown tokens become custom note/checkoff steps stored under `story.metadata.template_progress`.
+- Quality Gate profiles live in `src/lib/qualityGate.js` and are selected from the story's assigned content template/content type. Do not judge ad/publicity/product/educational/community content with narrative-only requirements.
 
 ## UI System
 - Shared operational primitives live in `src/components/OperationalUI.jsx`.

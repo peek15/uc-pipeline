@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Loader2, Plus, X, Eye, EyeOff, RefreshCw, Download } from "lucide-react";
+import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Loader2, Plus, X, Eye, EyeOff, RefreshCw, Download, Clipboard } from "lucide-react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { loadProviderConfig, saveProviderConfig, testProviderConnection } from "@/lib/providers/config-loader";
 import { normalizeTenant } from "@/lib/brand";
+import { supabase } from "@/lib/db";
 import { getAiCalls } from "@/lib/ai/audit";
 import { formatCost } from "@/lib/ai/costs";
 import { PageHeader, buttonStyle } from "@/components/OperationalUI";
@@ -22,6 +23,18 @@ function exportCsv(filename, rows) {
     ...rows.map(row => headers.map(h => csvEscape(row[h])).join(",")),
   ].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function downloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -822,6 +835,238 @@ function ProviderHealth({ configs, onReload, brandProfileId }) {
   );
 }
 
+const SCHEMA_PROBES = [
+  { key: "stories_core", label: "Stories core", table: "stories", select: "id,workspace_id,brand_profile_id,status,created_at" },
+  { key: "stories_content", label: "Content metadata", table: "stories", select: "content_type,content_template_id,objective,audience,channel,campaign_name,deliverable_type,metadata" },
+  { key: "stories_quality", label: "Quality gate columns", table: "stories", select: "quality_gate,quality_gate_status,quality_gate_blockers,quality_gate_warnings,quality_gate_checked_at" },
+  { key: "scripts_jsonb", label: "Scripts JSONB", table: "stories", select: "scripts" },
+  { key: "brand_settings", label: "Brand settings", table: "brand_profiles", select: "id,workspace_id,name,settings,brief_doc" },
+  { key: "ai_calls", label: "AI call log", table: "ai_calls", select: "id,created_at,type,provider_name,cost_estimate,success,error_message" },
+  { key: "audit_log", label: "Audit log", table: "audit_log", select: "id,created_at,action,entity_type,entity_id" },
+  { key: "assets", label: "Asset library", table: "asset_library", select: "id,brand_profile_id,type,name,active" },
+  { key: "visual_assets", label: "Visual assets", table: "visual_assets", select: "id,story_id,brand_profile_id,source,asset_type,file_url" },
+  { key: "agent_feedback", label: "Agent feedback", table: "agent_feedback", select: "id,agent_name,brand_profile_id,story_id,correction_type" },
+];
+
+function schemaHint(message) {
+  const text = String(message || "").toLowerCase();
+  if (text.includes("content_template_id")) return "Run the latest supabase-schema.sql. The app can fall back, but template assignment will not persist correctly.";
+  if (text.includes("scripts")) return "Run the schema migration that adds stories.scripts JSONB for configurable languages.";
+  if (text.includes("ai_calls")) return "Run supabase-audit-log.sql or the full schema so AI usage, cost alerts, and diagnostics can read call history.";
+  if (text.includes("permission") || text.includes("row-level security")) return "Check RLS policies or authentication. The diagnostic probe could not read this table with the current user.";
+  if (text.includes("does not exist") || text.includes("schema cache")) return "Run the latest Supabase schema and refresh the Supabase schema cache if needed.";
+  return "Check Supabase schema/RLS and rerun diagnostics.";
+}
+
+function buildDiagnostics({ probes, configs, calls, tenant, appVersion }) {
+  const providerRowsList = providerRows(configs);
+  const failures = calls.filter(call => !call.success).slice(0, 20);
+  const recentCost = sumCallCost(callsSince(calls, 30));
+  const providerFailures = providerRowsList.filter(row => row.config?.last_test_ok === false);
+  const missingProviders = providerRowsList.filter(row => !row.config);
+  const failingProbes = probes.filter(p => p.status !== "ok");
+  const warnings = [];
+  if (failingProbes.length) warnings.push(`${failingProbes.length} schema/data probe${failingProbes.length === 1 ? "" : "s"} failing.`);
+  if (providerFailures.length) warnings.push(`${providerFailures.length} provider health check${providerFailures.length === 1 ? "" : "s"} failing.`);
+  if (failures.length) warnings.push(`${failures.length} recent AI/provider failure${failures.length === 1 ? "" : "s"} loaded.`);
+  if (missingProviders.length) warnings.push(`${missingProviders.length} provider slot${missingProviders.length === 1 ? "" : "s"} not configured.`);
+
+  return {
+    generated_at: new Date().toISOString(),
+    app: {
+      version: appVersion,
+      user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      language: typeof navigator !== "undefined" ? navigator.language : null,
+      online: typeof navigator !== "undefined" ? navigator.onLine : null,
+      url: typeof window !== "undefined" ? window.location.href : null,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
+    tenant,
+    summary: {
+      status: failingProbes.length || providerFailures.length || failures.length ? "attention" : "healthy",
+      warnings,
+      schema_failures: failingProbes.length,
+      provider_failures: providerFailures.length,
+      missing_providers: missingProviders.length,
+      recent_ai_failures_loaded: failures.length,
+      loaded_30d_cost_estimate: recentCost,
+    },
+    schema_probes: probes,
+    providers: providerRowsList.map(row => ({
+      type: row.type,
+      label: row.label,
+      configured: !!row.config,
+      provider_name: row.config?.provider_name || null,
+      last_test_ok: row.config?.last_test_ok ?? null,
+      last_test_at: row.config?.last_test_at || null,
+      last_test_error: row.config?.last_test_error || null,
+    })),
+    ai_usage: {
+      loaded_calls: calls.length,
+      failures: failures.map(call => ({
+        created_at: call.created_at,
+        type: call.type,
+        provider_name: call.provider_name,
+        model_version: call.model_version,
+        error_type: call.error_type,
+        error_message: call.error_message,
+        duration_ms: call.duration_ms,
+      })),
+      by_provider: groupProviderSpend(calls).map(row => ({
+        provider: row.provider,
+        calls: row.calls,
+        failed: row.failed,
+        cost: row.cost,
+        avg_latency_ms: row.durationCount ? Math.round(row.durationTotal / row.durationCount) : null,
+      })),
+    },
+  };
+}
+
+function DiagnosticsPanel({ configs, calls, tenant, appVersion, onReload }) {
+  const [running, setRunning] = useState(false);
+  const [probes, setProbes] = useState([]);
+  const [copied, setCopied] = useState(false);
+
+  const runDiagnostics = useCallback(async () => {
+    setRunning(true);
+    const next = [];
+    for (const probe of SCHEMA_PROBES) {
+      const t0 = Date.now();
+      try {
+        let query = supabase.from(probe.table).select(probe.select).limit(1);
+        if (probe.table === "stories" && tenant?.workspace_id) query = query.eq("workspace_id", tenant.workspace_id);
+        if (["stories", "asset_library", "visual_assets", "agent_feedback"].includes(probe.table) && tenant?.brand_profile_id) {
+          query = query.eq("brand_profile_id", tenant.brand_profile_id);
+        }
+        if (probe.table === "brand_profiles" && tenant?.brand_profile_id) query = query.eq("id", tenant.brand_profile_id);
+        if (probe.table === "ai_calls" && tenant?.brand_profile_id) query = query.eq("brand_profile_id", tenant.brand_profile_id);
+        const { error, count } = await query;
+        next.push({
+          key: probe.key,
+          label: probe.label,
+          table: probe.table,
+          status: error ? "error" : "ok",
+          duration_ms: Date.now() - t0,
+          error: error?.message || null,
+          hint: error ? schemaHint(`${error.message} ${probe.select}`) : null,
+          count,
+        });
+      } catch (e) {
+        next.push({
+          key: probe.key,
+          label: probe.label,
+          table: probe.table,
+          status: "error",
+          duration_ms: Date.now() - t0,
+          error: e?.message || String(e),
+          hint: schemaHint(e?.message || String(e)),
+        });
+      }
+    }
+    setProbes(next);
+    setRunning(false);
+  }, [tenant?.workspace_id, tenant?.brand_profile_id]);
+
+  useEffect(() => { runDiagnostics(); }, [runDiagnostics]);
+
+  const bundle = useMemo(() => buildDiagnostics({ probes, configs, calls, tenant, appVersion }), [probes, configs, calls, tenant, appVersion]);
+  const failingProbes = probes.filter(p => p.status !== "ok");
+  const providerIssues = providerRows(configs).filter(row => row.config?.last_test_ok === false);
+  const recentFailures = calls.filter(call => !call.success).slice(0, 8);
+
+  const copyAgentContext = async () => {
+    const text = `Diagnostics summary for in-app agent:\n${JSON.stringify(bundle.summary, null, 2)}\n\nTop schema/provider issues:\n${[
+      ...failingProbes.map(p => `- ${p.label}: ${p.error} Suggested fix: ${p.hint}`),
+      ...providerIssues.map(row => `- ${row.label}: ${row.config?.last_test_error || "Provider health check failed"}`),
+      ...recentFailures.slice(0, 5).map(call => `- ${call.type}: ${call.error_message || call.error_type || "AI call failed"}`),
+    ].join("\n") || "- None"}`;
+    try {
+      await navigator.clipboard?.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch (e) {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5, maxWidth: 640 }}>
+          Diagnostics checks schema readiness, provider state, recent AI failures, and client context. Export the bundle when debugging or when the in-app agent needs hard facts.
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={async () => { await onReload?.(); await runDiagnostics(); }} disabled={running} style={btnSecondary}><RefreshCw size={12}/>{running ? "Running..." : "Run checks"}</button>
+          <button onClick={copyAgentContext} style={btnSecondary}><Clipboard size={12}/>{copied ? "Copied" : "Copy for agent"}</button>
+          <button onClick={() => downloadJson(`content-pipeline-debug-bundle-${new Date().toISOString().slice(0, 10)}.json`, bundle)} style={btnPrimary}><Download size={12}/> Export bundle</button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+        {[
+          ["Overall", bundle.summary.status],
+          ["Schema issues", bundle.summary.schema_failures],
+          ["Provider issues", bundle.summary.provider_failures],
+          ["AI failures", bundle.summary.recent_ai_failures_loaded],
+          ["30d cost", formatCost(bundle.summary.loaded_30d_cost_estimate)],
+        ].map(([label, value]) => (
+          <div key={label} style={{ padding: "12px 14px", borderRadius: 9, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+            <div style={labelStyle}>{label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", color: label === "Overall" && value !== "healthy" ? "var(--warning)" : "var(--t1)" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+        <div style={{ ...labelStyle, marginBottom: 10 }}>Recommended fixes</div>
+        {bundle.summary.warnings.length || failingProbes.length || providerIssues.length || recentFailures.length ? (
+          <div style={{ display: "grid", gap: 7 }}>
+            {failingProbes.map(p => (
+              <div key={p.key} style={{ fontSize: 12, color: "var(--t2)", lineHeight: 1.45 }}>
+                <strong style={{ color: "var(--error)" }}>{p.label}:</strong> {p.error} <span style={{ color: "var(--t4)" }}>{p.hint}</span>
+              </div>
+            ))}
+            {providerIssues.map(row => (
+              <div key={row.type} style={{ fontSize: 12, color: "var(--t2)", lineHeight: 1.45 }}>
+                <strong style={{ color: "var(--error)" }}>{row.label}:</strong> {row.config?.last_test_error || "Provider health check failed."}
+              </div>
+            ))}
+            {recentFailures.slice(0, 5).map(call => (
+              <div key={call.id} style={{ fontSize: 12, color: "var(--t2)", lineHeight: 1.45 }}>
+                <strong style={{ color: "var(--warning)" }}>{call.type}:</strong> {call.error_message || call.error_type || "AI call failed."}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "var(--t4)" }}>No obvious issues from loaded diagnostics.</div>
+        )}
+      </div>
+
+      <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+        <div style={{ ...labelStyle, marginBottom: 10 }}>Schema probes</div>
+        {probes.length ? probes.map(p => (
+          <div key={p.key} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, alignItems: "center", padding: "8px 0", borderTop: "0.5px solid var(--border2)", fontSize: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: "var(--t1)", fontWeight: 600 }}>{p.label}</div>
+              <div style={{ color: p.error ? "var(--error)" : "var(--t4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.error || p.table}</div>
+            </div>
+            <span style={{ color: p.status === "ok" ? "var(--success)" : "var(--error)", fontWeight: 700 }}>{p.status}</span>
+            <span style={{ color: "var(--t4)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", textAlign: "right" }}>{p.duration_ms}ms</span>
+          </div>
+        )) : <div style={{ fontSize: 12, color: "var(--t4)" }}>{running ? "Running schema probes..." : "No probes run yet."}</div>}
+      </div>
+
+      <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "0.5px solid var(--border)" }}>
+        <div style={{ ...labelStyle, marginBottom: 10 }}>Debug bundle preview</div>
+        <pre style={{ margin: 0, maxHeight: 260, overflow: "auto", padding: 12, borderRadius: 8, background: "var(--fill2)", border: "0.5px solid var(--border)", color: "var(--t2)", fontSize: 11, lineHeight: 1.5 }}>
+{JSON.stringify(bundle.summary, null, 2)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 function AIUsage({ tenant }) {
   const [calls, setCalls] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -987,7 +1232,7 @@ function AIUsage({ tenant }) {
 
 // ─── Main ────────────────────────────────────────────────
 
-export default function ProvidersSection({ tenant }) {
+export default function ProvidersSection({ tenant, version = "" }) {
   const activeTenant = useMemo(() => normalizeTenant(tenant), [tenant]);
   const brandProfileId = activeTenant.brand_profile_id;
   const [configs, setConfigs] = useState({});
@@ -1010,7 +1255,7 @@ export default function ProvidersSection({ tenant }) {
       setCalls(usage);
     } catch (e) { setError(e?.message || String(e)); }
     finally    { setLoading(false); }
-  }, [brandProfileId]);
+  }, [activeTenant.workspace_id, brandProfileId]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -1036,6 +1281,7 @@ export default function ProvidersSection({ tenant }) {
           ["configure", "Configure"],
           ["health", "Health"],
           ["usage", "AI Usage"],
+          ["diagnostics", "Diagnostics"],
         ].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} style={buttonStyle(tab === key ? "primary" : "ghost", {
             padding: "6px 14px",
@@ -1062,6 +1308,7 @@ export default function ProvidersSection({ tenant }) {
       {!loading && tab === "overview" && <ProviderOverview configs={configs} calls={calls} />}
       {!loading && tab === "health" && <ProviderHealth configs={configs} onReload={reload} brandProfileId={brandProfileId} />}
       {!loading && tab === "usage" && <AIUsage tenant={activeTenant} />}
+      {!loading && tab === "diagnostics" && <DiagnosticsPanel configs={configs} calls={calls} tenant={activeTenant} appVersion={version} onReload={reload} />}
 
       {!loading && tab === "configure" && (
         <>

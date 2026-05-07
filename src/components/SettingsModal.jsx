@@ -1472,7 +1472,7 @@ ${fileText.slice(0,3000)}` : text };
 
           {/* ── Providers ── */}
           {section==="providers" && (
-          <ProvidersSection tenant={activeTenant} />
+          <ProvidersSection tenant={activeTenant} version={VERSION_NUM} />
           )}
 
           {/* ── Intelligence ── */}

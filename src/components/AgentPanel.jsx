@@ -123,7 +123,7 @@ function Bubble({ m, streaming }) {
 }
 
 // ── Main component ────────────────────────────────────────
-export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory, onUpdateStory }) {
+export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory, onUpdateStory, tenant }) {
   const [messages,  setMessages]  = useState([]);
   const [input,     setInput]     = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -150,7 +150,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   useEffect(() => {
     if (!isOpen || metrics) return;
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    getAiCalls({ limit: 500 }).then(calls => {
+    getAiCalls({ limit: 500, workspaceId: tenant?.workspace_id, brandProfileId: tenant?.brand_profile_id }).then(calls => {
       const recent = calls.filter(c => c.created_at && new Date(c.created_at).getTime() >= cutoff);
       const cost   = recent.reduce((s, c) => s + (Number(c.cost_estimate) || 0), 0);
       const byType = Object.entries(
@@ -158,7 +158,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
       ).sort((a,b) => b[1]-a[1]).slice(0,5).map(([k,n]) => `${k}×${n}`).join(", ");
       setMetrics({ calls: recent.length, cost: formatCost(cost), failed: recent.filter(c=>!c.success).length, byType: byType || "none" });
     }).catch(() => {});
-  }, [isOpen, metrics]);
+  }, [isOpen, metrics, tenant?.workspace_id, tenant?.brand_profile_id]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;

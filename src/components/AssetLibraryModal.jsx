@@ -7,9 +7,7 @@ import {
   uploadLibraryAsset, listLibraryAssets, deleteLibraryAsset, setAssetActive,
   ASSET_LIB_TYPES, POSITION_INTENT_OPTIONS,
 } from "@/lib/assetLibrary";
-import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
-
-const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
+import { DEFAULT_BRAND_PROFILE_ID, DEFAULT_WORKSPACE_ID } from "@/lib/brand";
 
 const FILE_ACCEPT = "video/mp4,video/quicktime,video/webm,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,image/jpeg,image/png,image/webp";
 
@@ -125,7 +123,7 @@ function AssetRow({ asset, onToggle, onDelete }) {
   );
 }
 
-function UploadForm({ onUploaded }) {
+function UploadForm({ onUploaded, brandProfileId, workspaceId }) {
   const [file, setFile]     = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError]   = useState(null);
@@ -164,7 +162,8 @@ function UploadForm({ onUploaded }) {
       const tags = meta.tags.split(",").map(t => t.trim()).filter(Boolean);
       await uploadLibraryAsset({
         file,
-        brandProfileId: UNCLE_CARTER_PROFILE_ID,
+        brandProfileId,
+        workspaceId,
         meta: { ...meta, tags },
       });
       setFile(null); setDone(true);
@@ -259,7 +258,7 @@ function UploadForm({ onUploaded }) {
   );
 }
 
-export default function AssetLibraryModal({ isOpen, onClose }) {
+export default function AssetLibraryModal({ isOpen, onClose, brandProfileId = DEFAULT_BRAND_PROFILE_ID, workspaceId = DEFAULT_WORKSPACE_ID }) {
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter]  = useState("all");
@@ -278,7 +277,7 @@ export default function AssetLibraryModal({ isOpen, onClose }) {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await listLibraryAssets(UNCLE_CARTER_PROFILE_ID);
+      const data = await listLibraryAssets(brandProfileId, workspaceId);
       setAssets(data);
     } catch {}
     finally { setLoading(false); }
@@ -345,7 +344,7 @@ export default function AssetLibraryModal({ isOpen, onClose }) {
           {/* Right: upload form */}
           <div style={{ ...s.pane, width: "45%" }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", marginBottom: 14 }}>Upload new asset</div>
-            <UploadForm onUploaded={load} />
+            <UploadForm onUploaded={load} brandProfileId={brandProfileId} workspaceId={workspaceId} />
           </div>
         </div>
       </div>

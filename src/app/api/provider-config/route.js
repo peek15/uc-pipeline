@@ -60,6 +60,19 @@ function filterEmpty(obj) {
   return out;
 }
 
+async function resolveWorkspaceId(svc, brandProfileId) {
+  try {
+    const { data } = await svc
+      .from("brand_profiles")
+      .select("workspace_id")
+      .eq("id", brandProfileId)
+      .maybeSingle();
+    return data?.workspace_id || process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE_ID || "00000000-0000-0000-0000-000000000001";
+  } catch {
+    return process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE_ID || "00000000-0000-0000-0000-000000000001";
+  }
+}
+
 export async function POST(request) {
   const user = await authenticate(request);
   if (!user) return err("Unauthorized", 401);
@@ -67,11 +80,12 @@ export async function POST(request) {
   let body;
   try { body = await request.json(); } catch { return err("Invalid JSON"); }
 
-  const { action, brand_profile_id, provider_type, provider_name, secrets, config } = body || {};
+  const { action, brand_profile_id, workspace_id, provider_type, provider_name, secrets, config } = body || {};
   if (!action) return err("Missing action");
   if (!brand_profile_id) return err("Missing brand_profile_id");
 
   const svc = serviceClient();
+  const rowWorkspaceId = workspace_id || await resolveWorkspaceId(svc, brand_profile_id);
 
   if (action === "load") {
     if (!provider_type) return err("Missing provider_type");
@@ -132,7 +146,7 @@ export async function POST(request) {
     const { data, error } = await svc
       .from("provider_secrets")
       .insert({
-        brand_profile_id, provider_type, provider_name,
+        workspace_id: rowWorkspaceId, brand_profile_id, provider_type, provider_name,
         secrets: mergedSecrets, config: mergedConfig, active: true,
       })
       .select("provider_name, secrets, config, active")

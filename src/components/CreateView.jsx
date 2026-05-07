@@ -20,7 +20,6 @@ import {
   matchesProductionFilter,
 } from "@/components/ProductionView";
 
-const BRAND_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 
 function wc(text) {
   return (text || "").trim().split(/\s+/).filter(Boolean).length;
@@ -237,7 +236,9 @@ function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, stre
   );
 }
 
-export default function CreateView({ stories, onUpdate, mode, onModeChange }) {
+export default function CreateView({ stories, onUpdate, mode, onModeChange, tenant }) {
+  const brandProfileId = tenant?.brand_profile_id || DEFAULT_BRAND_PROFILE_ID;
+  const workspaceId = tenant?.workspace_id;
   const [selectedId, setSelectedId] = usePersistentState("create_selected_story", null);
   const [activeStep, setActiveStep] = usePersistentState("create_active_step", stepForMode(mode, "script"));
   const [queueFilter, setQueueFilter] = usePersistentState("create_queue_filter", "all");
@@ -320,7 +321,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange }) {
 
   return (
     <div className="animate-fade-in">
-      <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} />
+      <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} brandProfileId={brandProfileId} workspaceId={workspaceId} />
       <PageHeader
         title="Create"
         description="One selected story moves through script, translations, production assets, assembly, and review."
@@ -431,11 +432,11 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange }) {
                 {["brief", "assets", "voice", "visuals", "assembly", "review"].includes(activeStep) && <ReadinessStrip story={selected} />}
                 {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} />}
                 {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} />}
-                {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={BRAND_PROFILE_ID} onSaved={saveProductionUpdate} />}
-                {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={BRAND_PROFILE_ID} />}
-                {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={BRAND_PROFILE_ID} onSaved={saveProductionUpdate} />}
-                {activeStep === "visuals" && <VisualSection story={selected} brand_profile_id={BRAND_PROFILE_ID} onSaved={saveProductionUpdate} />}
-                {activeStep === "assembly" && <AssemblySection story={selected} brand_profile_id={BRAND_PROFILE_ID} onSaved={saveProductionUpdate} />}
+                {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
+                {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
+                {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
+                {activeStep === "visuals" && <VisualSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
+                {activeStep === "assembly" && <AssemblySection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
                 {activeStep === "review" && (
                   <div style={{ display: "grid", gap: 12 }}>
                     <ReadinessStrip story={selected} />

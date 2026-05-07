@@ -1,15 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Loader2, Plus, X, Eye, EyeOff, RefreshCw, Download } from "lucide-react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { loadProviderConfig, saveProviderConfig, testProviderConnection } from "@/lib/providers/config-loader";
-import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
+import { normalizeTenant } from "@/lib/brand";
 import { getAiCalls } from "@/lib/ai/audit";
 import { formatCost } from "@/lib/ai/costs";
 import { PageHeader, buttonStyle } from "@/components/OperationalUI";
-
-const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 
 function csvEscape(value) {
   const text = value == null ? "" : String(value);
@@ -747,7 +745,7 @@ function CostAlerts({ settings, onChange, cost7, cost30, byProvider30 }) {
   );
 }
 
-function ProviderHealth({ configs, onReload }) {
+function ProviderHealth({ configs, onReload, brandProfileId }) {
   const [testing, setTesting] = useState(null);
   const [testingAll, setTestingAll] = useState(false);
   const rows = providerRows(configs);
@@ -758,7 +756,7 @@ function ProviderHealth({ configs, onReload }) {
   const test = async (type) => {
     setTesting(type);
     try {
-      await testProviderConnection(UNCLE_CARTER_PROFILE_ID, type);
+      await testProviderConnection(brandProfileId, type);
       await onReload();
     } finally {
       setTesting(null);
@@ -770,7 +768,7 @@ function ProviderHealth({ configs, onReload }) {
     try {
       for (const row of rows.filter(r => r.config)) {
         setTesting(row.type);
-        await testProviderConnection(UNCLE_CARTER_PROFILE_ID, row.type).catch(() => null);
+        await testProviderConnection(brandProfileId, row.type).catch(() => null);
       }
       await onReload();
     } finally {
@@ -824,7 +822,7 @@ function ProviderHealth({ configs, onReload }) {
   );
 }
 
-function AIUsage() {
+function AIUsage({ tenant }) {
   const [calls, setCalls] = useState([]);
   const [loading, setLoading] = useState(false);
   const [alertSettings, setAlertSettings] = usePersistentState("providers_cost_alerts", {
@@ -835,9 +833,9 @@ function AIUsage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setCalls(await getAiCalls({ limit: 1000 })); }
+    try { setCalls(await getAiCalls({ limit: 1000, workspaceId: tenant?.workspace_id, brandProfileId: tenant?.brand_profile_id })); }
     finally { setLoading(false); }
-  }, []);
+  }, [tenant?.workspace_id, tenant?.brand_profile_id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -989,7 +987,9 @@ function AIUsage() {
 
 // ─── Main ────────────────────────────────────────────────
 
-export default function ProvidersSection() {
+export default function ProvidersSection({ tenant }) {
+  const activeTenant = useMemo(() => normalizeTenant(tenant), [tenant]);
+  const brandProfileId = activeTenant.brand_profile_id;
   const [configs, setConfigs] = useState({});
   const [calls, setCalls] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1001,8 +1001,8 @@ export default function ProvidersSection() {
     try {
       const types = ["voice", "storage", "visual_atmospheric", "visual_licensed", "llm_openai", "llm_anthropic"];
       const [results, usage] = await Promise.all([
-        Promise.all(types.map(t => loadProviderConfig(UNCLE_CARTER_PROFILE_ID, t))),
-        getAiCalls({ limit: 1000 }),
+        Promise.all(types.map(t => loadProviderConfig(brandProfileId, t))),
+        getAiCalls({ limit: 1000, workspaceId: activeTenant.workspace_id, brandProfileId }),
       ]);
       const map = {};
       types.forEach((t, i) => { map[t] = results[i]; });
@@ -1010,7 +1010,7 @@ export default function ProvidersSection() {
       setCalls(usage);
     } catch (e) { setError(e?.message || String(e)); }
     finally    { setLoading(false); }
-  }, []);
+  }, [brandProfileId]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -1060,15 +1060,15 @@ export default function ProvidersSection() {
       )}
 
       {!loading && tab === "overview" && <ProviderOverview configs={configs} calls={calls} />}
-      {!loading && tab === "health" && <ProviderHealth configs={configs} onReload={reload} />}
-      {!loading && tab === "usage" && <AIUsage />}
+      {!loading && tab === "health" && <ProviderHealth configs={configs} onReload={reload} brandProfileId={brandProfileId} />}
+      {!loading && tab === "usage" && <AIUsage tenant={activeTenant} />}
 
       {!loading && tab === "configure" && (
         <>
           <ProviderCard id="llm_openai" title="Language Model — OpenAI" defaultExpanded={true}
             description="GPT-4o and GPT-4o mini. Add your key here to enable OpenAI models in the agent panel."
             status={status(configs.llm_openai)}>
-            <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="llm_openai"
+            <ProviderForm brandId={brandProfileId} providerType="llm_openai"
               providers={LLM_OPENAI_PROVIDERS} initial={configs.llm_openai} onSaved={reload}
               renderFields={(p) => <LLMOpenAIFields {...p} />} />
           </ProviderCard>
@@ -1076,7 +1076,7 @@ export default function ProvidersSection() {
           <ProviderCard id="llm_anthropic" title="Language Model — Anthropic (override)"
             description="Optional per-tenant Anthropic key. Leave unconfigured to use the server environment key."
             status={status(configs.llm_anthropic)}>
-            <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="llm_anthropic"
+            <ProviderForm brandId={brandProfileId} providerType="llm_anthropic"
               providers={LLM_ANTHROPIC_PROVIDERS} initial={configs.llm_anthropic} onSaved={reload}
               renderFields={(p) => <LLMAnthropicFields {...p} />} />
           </ProviderCard>
@@ -1084,7 +1084,7 @@ export default function ProvidersSection() {
           <ProviderCard id="voice" title="Voice"
             description="Text-to-speech for English, French, Spanish, Portuguese (and any language you add)."
             status={status(configs.voice)}>
-            <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="voice"
+            <ProviderForm brandId={brandProfileId} providerType="voice"
               providers={VOICE_PROVIDERS} initial={configs.voice} onSaved={reload}
               renderFields={(p) => <VoiceFields {...p} />} />
           </ProviderCard>
@@ -1092,7 +1092,7 @@ export default function ProvidersSection() {
           <ProviderCard id="atmospheric" title="Visual — atmospheric"
             description="AI-generated images: scenes, moods, atmosphere. Used for cinematic shots."
             status={status(configs.visual_atmospheric)}>
-            <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="visual_atmospheric"
+            <ProviderForm brandId={brandProfileId} providerType="visual_atmospheric"
               providers={ATMOSPHERIC_PROVIDERS} initial={configs.visual_atmospheric} onSaved={reload}
               renderFields={(p) => <AtmosphericFields {...p} />} />
           </ProviderCard>
@@ -1100,7 +1100,7 @@ export default function ProvidersSection() {
           <ProviderCard id="licensed" title="Visual — licensed"
             description="Real photos with cleared rights. Used for player faces, real moments."
             status={status(configs.visual_licensed)}>
-            <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="visual_licensed"
+            <ProviderForm brandId={brandProfileId} providerType="visual_licensed"
               providers={LICENSED_PROVIDERS} initial={configs.visual_licensed} onSaved={reload}
               renderFields={(p) => <LicensedFields {...p} />} />
           </ProviderCard>
@@ -1108,7 +1108,7 @@ export default function ProvidersSection() {
           <ProviderCard id="storage" title="Storage"
             description="Where generated audio, visuals, and asset library files are stored."
             status={status(configs.storage)}>
-            <ProviderForm brandId={UNCLE_CARTER_PROFILE_ID} providerType="storage"
+            <ProviderForm brandId={brandProfileId} providerType="storage"
               providers={STORAGE_PROVIDERS} initial={configs.storage} onSaved={reload}
               renderFields={(p) => <StorageFields {...p} />} />
           </ProviderCard>

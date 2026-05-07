@@ -3,9 +3,10 @@ import { useState, useEffect } from "react";
 import { Check, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
 import { supabase } from "@/lib/db";
-import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
+import { DEFAULT_BRAND_PROFILE_ID, DEFAULT_WORKSPACE_ID } from "@/lib/brand";
 
-const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
+const ACTIVE_BRAND_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
+const ACTIVE_WORKSPACE_ID = DEFAULT_WORKSPACE_ID;
 
 const DEFAULT_SETTINGS = {
   brand: {
@@ -236,7 +237,8 @@ export default function SettingsView({ stories, onSettingsChange, initialSetting
     setSaving(true);
     try {
       await supabase.from("brand_profiles").upsert({
-        id:           UNCLE_CARTER_PROFILE_ID,
+        id:           ACTIVE_BRAND_PROFILE_ID,
+        workspace_id: ACTIVE_WORKSPACE_ID,
         name:         settings.brand.name,
         identity_voice: settings.brand.voice,
         identity_avoid: settings.brand.avoid,

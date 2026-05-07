@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 const ALLOWED_DOMAIN    = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
-const BRAND_PROFILE_ID  = "00000000-0000-0000-0000-000000000001";
+const BRAND_PROFILE_ID  = process.env.NEXT_PUBLIC_DEFAULT_BRAND_PROFILE_ID || "00000000-0000-0000-0000-000000000001";
 
 async function authenticate(request) {
   const authHeader = request.headers.get("authorization");

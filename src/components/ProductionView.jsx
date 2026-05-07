@@ -14,7 +14,6 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 
-const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
 const LANG_LABELS = { en: "English", fr: "French", es: "Spanish", pt: "Portuguese", de: "German", it: "Italian", ja: "Japanese", zh: "Chinese" };
 
 // ─── Format border colors ───
@@ -826,7 +825,7 @@ export function AssetMatchesSection({ story, brand_profile_id }) {
 
 // ─── Main ───────────────────────────────────────────────
 
-export default function ProductionView({ stories, onUpdate, embedded = false }) {
+export default function ProductionView({ stories, onUpdate, embedded = false, brandProfileId = DEFAULT_BRAND_PROFILE_ID, workspaceId = null }) {
   const queue = useMemo(() => (stories || []).filter(isInProductionQueue), [stories]);
   const [selectedId, setSelectedId] = usePersistentState("production_selected", queue[0]?.id || null);
   const [queueFilter, setQueueFilter] = usePersistentState("production_queue_filter", "all");
@@ -898,7 +897,7 @@ export default function ProductionView({ stories, onUpdate, embedded = false }) 
 
   return (
     <div>
-      <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} />
+      <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} brandProfileId={brandProfileId} workspaceId={workspaceId} />
 
       {!embedded && (
         <PageHeader
@@ -976,11 +975,11 @@ export default function ProductionView({ stories, onUpdate, embedded = false }) 
                 ))}
               </div>
 
-              {activeSection === "brief" && <BriefSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
-              {activeSection === "assets" && <AssetMatchesSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} />}
-              {activeSection === "visuals" && <VisualSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
-              {activeSection === "voice" && <VoiceSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
-              {activeSection === "assembly" && <AssemblySection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
+              {activeSection === "visuals" && <VisualSection story={selected} brand_profile_id={brandProfileId} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "assembly" && <AssemblySection story={selected} brand_profile_id={brandProfileId} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
               {activeSection === "review" && (
                 <div style={{ display:"grid", gap:12 }}>
                   <ReadinessStrip story={selected} />

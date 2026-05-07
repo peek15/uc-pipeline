@@ -6,6 +6,83 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ═══════════════════════════════════════════
+-- WORKSPACES / TENANCY
+-- Phase 1 SaaS foundation. The all-zero UUID keeps the existing Uncle
+-- Carter workspace stable while new SaaS workspaces can use generated IDs.
+-- ═══════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS workspaces (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  name TEXT NOT NULL,
+  owner_user_id UUID
+);
+
+CREATE TABLE IF NOT EXISTS workspace_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id UUID,
+  email TEXT,
+  role TEXT DEFAULT 'member',
+  UNIQUE (workspace_id, user_id),
+  UNIQUE (workspace_id, email)
+);
+
+INSERT INTO workspaces (id, name)
+VALUES ('00000000-0000-0000-0000-000000000001', 'Uncle Carter')
+ON CONFLICT (id) DO NOTHING;
+
+CREATE OR REPLACE FUNCTION is_workspace_member(workspace_uuid UUID)
+RETURNS BOOLEAN
+LANGUAGE SQL
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM workspace_members wm
+    WHERE wm.workspace_id = workspace_uuid
+      AND (
+        wm.user_id = auth.uid()
+        OR lower(wm.email) = lower(auth.email())
+      )
+  );
+$$;
+
+-- Bootstrap note:
+-- Before making the default workspace private, add yourself as owner:
+-- INSERT INTO workspace_members (workspace_id, user_id, email, role)
+-- VALUES ('00000000-0000-0000-0000-000000000001', auth.uid(), auth.email(), 'owner');
+--
+-- The policies below keep the default workspace readable/writable by
+-- authenticated users during migration. New generated workspaces require
+-- workspace_members membership.
+
+ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Workspace members read workspaces" ON workspaces;
+CREATE POLICY "Workspace members read workspaces"
+  ON workspaces FOR SELECT
+  TO authenticated
+  USING (id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(id));
+
+DROP POLICY IF EXISTS "Workspace owners update workspaces" ON workspaces;
+CREATE POLICY "Workspace owners update workspaces"
+  ON workspaces FOR UPDATE
+  TO authenticated
+  USING (is_workspace_member(id))
+  WITH CHECK (is_workspace_member(id));
+
+ALTER TABLE workspace_members ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Workspace members read members" ON workspace_members;
+CREATE POLICY "Workspace members read members"
+  ON workspace_members FOR SELECT
+  TO authenticated
+  USING (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
+
+-- ═══════════════════════════════════════════
 -- STORIES
 -- ═══════════════════════════════════════════
 
@@ -94,13 +171,19 @@ ALTER TABLE stories
   ADD COLUMN IF NOT EXISTS quality_gate_warnings INT DEFAULT 0,
   ADD COLUMN IF NOT EXISTS quality_gate_checked_at TIMESTAMPTZ;
 
+UPDATE stories
+SET workspace_id = COALESCE(workspace_id, '00000000-0000-0000-0000-000000000001'),
+    brand_profile_id = COALESCE(brand_profile_id, '00000000-0000-0000-0000-000000000001')
+WHERE workspace_id IS NULL OR brand_profile_id IS NULL;
+
 ALTER TABLE stories ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated users full access" ON stories;
-CREATE POLICY "Authenticated users full access"
+DROP POLICY IF EXISTS "Tenant stories access" ON stories;
+CREATE POLICY "Tenant stories access"
   ON stories FOR ALL
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 
 CREATE INDEX IF NOT EXISTS idx_stories_status ON stories (status);
 CREATE INDEX IF NOT EXISTS idx_stories_scheduled ON stories (scheduled_date);
@@ -116,18 +199,27 @@ CREATE TABLE IF NOT EXISTS brand_profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
+  workspace_id UUID,
   name TEXT NOT NULL,
   brief_doc TEXT,
   settings JSONB DEFAULT '{}'::jsonb
 );
 
+ALTER TABLE brand_profiles
+  ADD COLUMN IF NOT EXISTS workspace_id UUID;
+
+UPDATE brand_profiles
+SET workspace_id = COALESCE(workspace_id, '00000000-0000-0000-0000-000000000001')
+WHERE workspace_id IS NULL;
+
 ALTER TABLE brand_profiles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated users full access brand profiles" ON brand_profiles;
-CREATE POLICY "Authenticated users full access brand profiles"
+DROP POLICY IF EXISTS "Tenant brand profiles access" ON brand_profiles;
+CREATE POLICY "Tenant brand profiles access"
   ON brand_profiles FOR ALL
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 
 -- ═══════════════════════════════════════════
 -- AUDIT LOG
@@ -147,24 +239,32 @@ CREATE TABLE IF NOT EXISTS audit_log (
 ALTER TABLE audit_log
   ADD COLUMN IF NOT EXISTS entity_type TEXT,
   ADD COLUMN IF NOT EXISTS entity_id UUID,
-  ADD COLUMN IF NOT EXISTS performed_by TEXT;
+  ADD COLUMN IF NOT EXISTS performed_by TEXT,
+  ADD COLUMN IF NOT EXISTS workspace_id UUID;
 ALTER TABLE audit_log ALTER COLUMN user_email DROP NOT NULL;
+
+UPDATE audit_log
+SET workspace_id = COALESCE(workspace_id, '00000000-0000-0000-0000-000000000001')
+WHERE workspace_id IS NULL;
 
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated read audit" ON audit_log;
-CREATE POLICY "Authenticated read audit"
+DROP POLICY IF EXISTS "Tenant read audit" ON audit_log;
+CREATE POLICY "Tenant read audit"
   ON audit_log FOR SELECT
   TO authenticated
-  USING (true);
+  USING (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 DROP POLICY IF EXISTS "Authenticated insert audit" ON audit_log;
-CREATE POLICY "Authenticated insert audit"
+DROP POLICY IF EXISTS "Tenant insert audit" ON audit_log;
+CREATE POLICY "Tenant insert audit"
   ON audit_log FOR INSERT
   TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_story ON audit_log (story_id);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log (entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_workspace ON audit_log (workspace_id);
 
 -- ═══════════════════════════════════════════
 -- AI CALL COST / HEALTH LOG
@@ -191,20 +291,23 @@ CREATE TABLE IF NOT EXISTS ai_calls (
 
 ALTER TABLE ai_calls ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated read ai calls" ON ai_calls;
-CREATE POLICY "Authenticated read ai calls"
+DROP POLICY IF EXISTS "Tenant read ai calls" ON ai_calls;
+CREATE POLICY "Tenant read ai calls"
   ON ai_calls FOR SELECT
   TO authenticated
-  USING (true);
+  USING (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 DROP POLICY IF EXISTS "Authenticated insert ai calls" ON ai_calls;
-CREATE POLICY "Authenticated insert ai calls"
+DROP POLICY IF EXISTS "Tenant insert ai calls" ON ai_calls;
+CREATE POLICY "Tenant insert ai calls"
   ON ai_calls FOR INSERT
   TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 
 CREATE INDEX IF NOT EXISTS idx_ai_calls_created ON ai_calls (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_calls_story ON ai_calls (story_id);
 CREATE INDEX IF NOT EXISTS idx_ai_calls_brand ON ai_calls (brand_profile_id);
 CREATE INDEX IF NOT EXISTS idx_ai_calls_type ON ai_calls (type);
+CREATE INDEX IF NOT EXISTS idx_ai_calls_workspace ON ai_calls (workspace_id);
 
 -- ═══════════════════════════════════════════
 -- PROVIDER SECRETS
@@ -216,6 +319,7 @@ CREATE TABLE IF NOT EXISTS provider_secrets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
+  workspace_id UUID,
   brand_profile_id UUID,
   provider_type TEXT NOT NULL,
   provider_name TEXT NOT NULL,
@@ -227,7 +331,15 @@ CREATE TABLE IF NOT EXISTS provider_secrets (
   last_test_error TEXT
 );
 
+ALTER TABLE provider_secrets
+  ADD COLUMN IF NOT EXISTS workspace_id UUID;
+
+UPDATE provider_secrets
+SET workspace_id = COALESCE(workspace_id, '00000000-0000-0000-0000-000000000001')
+WHERE workspace_id IS NULL;
+
 ALTER TABLE provider_secrets ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_provider_secrets_workspace ON provider_secrets (workspace_id);
 CREATE INDEX IF NOT EXISTS idx_provider_secrets_brand_type ON provider_secrets (brand_profile_id, provider_type);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_secrets_active_unique
   ON provider_secrets (brand_profile_id, provider_type)
@@ -251,14 +363,16 @@ CREATE TABLE IF NOT EXISTS story_documents (
 
 ALTER TABLE story_documents ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated users full access story documents" ON story_documents;
-CREATE POLICY "Authenticated users full access story documents"
+DROP POLICY IF EXISTS "Tenant story documents access" ON story_documents;
+CREATE POLICY "Tenant story documents access"
   ON story_documents FOR ALL
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 
 CREATE INDEX IF NOT EXISTS idx_story_documents_story ON story_documents (story_id);
 CREATE INDEX IF NOT EXISTS idx_story_documents_brand ON story_documents (brand_profile_id);
+CREATE INDEX IF NOT EXISTS idx_story_documents_workspace ON story_documents (workspace_id);
 
 -- ═══════════════════════════════════════════
 -- ASSET LIBRARY
@@ -268,6 +382,7 @@ CREATE TABLE IF NOT EXISTS asset_library (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at TIMESTAMPTZ DEFAULT now(),
   brand_profile_id UUID,
+  workspace_id UUID,
   type TEXT NOT NULL,
   name TEXT NOT NULL,
   file_url TEXT,
@@ -283,15 +398,24 @@ CREATE TABLE IF NOT EXISTS asset_library (
   reuse_count INT DEFAULT 0
 );
 
+ALTER TABLE asset_library
+  ADD COLUMN IF NOT EXISTS workspace_id UUID;
+
+UPDATE asset_library
+SET workspace_id = COALESCE(workspace_id, '00000000-0000-0000-0000-000000000001')
+WHERE workspace_id IS NULL;
+
 ALTER TABLE asset_library ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated users full access asset library" ON asset_library;
-CREATE POLICY "Authenticated users full access asset library"
+DROP POLICY IF EXISTS "Tenant asset library access" ON asset_library;
+CREATE POLICY "Tenant asset library access"
   ON asset_library FOR ALL
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 
 CREATE INDEX IF NOT EXISTS idx_asset_library_brand ON asset_library (brand_profile_id);
+CREATE INDEX IF NOT EXISTS idx_asset_library_workspace ON asset_library (workspace_id);
 CREATE INDEX IF NOT EXISTS idx_asset_library_active ON asset_library (active);
 CREATE INDEX IF NOT EXISTS idx_asset_library_type ON asset_library (type);
 
@@ -325,14 +449,16 @@ CREATE TABLE IF NOT EXISTS visual_assets (
 
 ALTER TABLE visual_assets ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated users full access visual assets" ON visual_assets;
-CREATE POLICY "Authenticated users full access visual assets"
+DROP POLICY IF EXISTS "Tenant visual assets access" ON visual_assets;
+CREATE POLICY "Tenant visual assets access"
   ON visual_assets FOR ALL
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 
 CREATE INDEX IF NOT EXISTS idx_visual_assets_story ON visual_assets (story_id);
 CREATE INDEX IF NOT EXISTS idx_visual_assets_brand ON visual_assets (brand_profile_id);
+CREATE INDEX IF NOT EXISTS idx_visual_assets_workspace ON visual_assets (workspace_id);
 CREATE INDEX IF NOT EXISTS idx_visual_assets_selected ON visual_assets (was_selected);
 
 -- ═══════════════════════════════════════════
@@ -357,15 +483,17 @@ CREATE TABLE IF NOT EXISTS agent_feedback (
 
 ALTER TABLE agent_feedback ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Authenticated users full access agent feedback" ON agent_feedback;
-CREATE POLICY "Authenticated users full access agent feedback"
+DROP POLICY IF EXISTS "Tenant agent feedback access" ON agent_feedback;
+CREATE POLICY "Tenant agent feedback access"
   ON agent_feedback FOR ALL
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
 
 CREATE INDEX IF NOT EXISTS idx_agent_feedback_agent ON agent_feedback (agent_name);
 CREATE INDEX IF NOT EXISTS idx_agent_feedback_story ON agent_feedback (story_id);
 CREATE INDEX IF NOT EXISTS idx_agent_feedback_brand ON agent_feedback (brand_profile_id);
+CREATE INDEX IF NOT EXISTS idx_agent_feedback_workspace ON agent_feedback (workspace_id);
 
 -- ═══════════════════════════════════════════
 -- GOOGLE AUTH SETUP (Dashboard, not SQL):

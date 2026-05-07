@@ -7,6 +7,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { supabase } from "./db";
+import { DEFAULT_WORKSPACE_ID } from "@/lib/brand";
 
 const BUCKET = "asset-library";
 
@@ -43,10 +44,11 @@ export const POSITION_INTENT_OPTIONS = [
  * @param {object} opts
  * @param {File}   opts.file
  * @param {string} opts.brandProfileId
+ * @param {string} [opts.workspaceId]
  * @param {object} opts.meta — { name, type, tags, format_scope, era_scope, position_intent, language }
  * @returns {Promise<object>} — inserted asset_library row
  */
-export async function uploadLibraryAsset({ file, brandProfileId, meta }) {
+export async function uploadLibraryAsset({ file, brandProfileId, workspaceId = DEFAULT_WORKSPACE_ID, meta }) {
   if (!file) throw new Error("No file provided");
   if (!ALLOWED_MIME[file.type]) throw new Error(`File type not supported: ${file.type}`);
   if (file.size > 100 * 1024 * 1024) throw new Error("File too large — max 100 MB");
@@ -66,6 +68,7 @@ export async function uploadLibraryAsset({ file, brandProfileId, meta }) {
 
   const row = {
     brand_profile_id:  brandProfileId,
+    workspace_id:      workspaceId,
     type:              meta.type              || "broll",
     name:              (meta.name || file.name).slice(0, 200),
     file_url,
@@ -98,12 +101,14 @@ export async function uploadLibraryAsset({ file, brandProfileId, meta }) {
 /**
  * List all library assets for a brand, newest first.
  */
-export async function listLibraryAssets(brandProfileId) {
-  const { data, error } = await supabase
+export async function listLibraryAssets(brandProfileId, workspaceId = DEFAULT_WORKSPACE_ID) {
+  let query = supabase
     .from("asset_library")
     .select("*")
     .eq("brand_profile_id", brandProfileId)
     .order("created_at", { ascending: false });
+  if (workspaceId) query = query.eq("workspace_id", workspaceId);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data || [];
 }

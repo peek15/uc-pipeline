@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { Layers, Search, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot } from "lucide-react";
 import { STAGES } from "@/lib/constants";
@@ -18,9 +18,9 @@ import ProductionAlert from "@/components/ProductionAlert";
 import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
-import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
+import { defaultTenant, tenantStorageKey } from "@/lib/brand";
 
-const VERSION = "3.16.9";
+const VERSION = "3.17.0";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -31,6 +31,7 @@ const TABS = [
 ];
 
 export default function Home() {
+  const tenant = useMemo(() => defaultTenant(), []);
   const [user, setUser]               = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError]     = useState(null);
@@ -77,13 +78,13 @@ export default function Home() {
     if (user) {
       setLoading(true);
       // Load stories
-      getStories().then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
+      getStories(tenant).then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
       // Load saved settings from brand profile
 // Load appearance from localStorage immediately (fast, no network)
       // NOTE: default_tab from settings is no longer applied here — last-used
       // tab is persisted via usePersistentState("tab") and wins on reload.
       try {
-        const cached = localStorage.getItem("uc_settings");
+        const cached = localStorage.getItem(tenantStorageKey("settings", tenant));
         if (cached) {
           const parsed = JSON.parse(cached);
           setAppSettings(parsed);
@@ -91,36 +92,36 @@ export default function Home() {
         }
       } catch {}
       // Then sync from Supabase (source of truth)
-      supabase.from("brand_profiles").select("brief_doc").eq("id", DEFAULT_BRAND_PROFILE_ID).single()
+      supabase.from("brand_profiles").select("brief_doc").eq("id", tenant.brand_profile_id).single()
         .then(({ data, error }) => {
           if (data?.brief_doc) {
             setAppSettings(data.brief_doc);
-            localStorage.setItem("uc_settings", JSON.stringify(data.brief_doc));
+            localStorage.setItem(tenantStorageKey("settings", tenant), JSON.stringify(data.brief_doc));
             applyTheme(data.brief_doc?.appearance?.theme || "system");
           }
         }).catch(() => {});
     }
     else setLoading(false);
-  }, [user]);
+  }, [user, tenant]);
 
   const handleSignIn  = async () => { setAuthLoading(true); setAuthError(null); try { await signInWithGoogle(); } catch (err) { setAuthError(err.message); setAuthLoading(false); } };
   const handleSignOut = async () => { await signOut(); setUser(null); setStories([]); setShowUserMenu(false); };
 
   const addStories = useCallback(async (n) => {
-    const saved = await bulkUpsertStories(n);
+    const saved = await bulkUpsertStories(n, tenant);
     if (saved) {
       setStories(p => [...saved, ...p]);
       for (const s of saved) syncToAirtable(s).catch(() => {});
       toast(`${saved.length} ${saved.length === 1 ? "story" : "stories"} added to Pipeline`);
     }
-  }, []);
+  }, [tenant]);
 
   const updateStory = useCallback(async (id, c) => {
     const story = storiesRef.current.find(s => s.id === id);
     if (!story) return;
-    const saved = await upsertStory({ ...story, ...c });
+    const saved = await upsertStory({ ...story, ...c }, tenant);
     if (saved) { setStories(p => p.map(s => s.id === id ? saved : s)); syncToAirtable(saved).catch(() => {}); }
-  }, []);
+  }, [tenant]);
 
   const stageChange = useCallback(async (id, st) => {
     const story = storiesRef.current.find(s => s.id === id);
@@ -132,13 +133,13 @@ export default function Home() {
 
   const bulkAction = useCallback(async (from, to) => {
     const up = stories.filter(s => s.status === from).map(s => ({ ...s, status: to }));
-    const saved = await bulkUpsertStories(up);
+    const saved = await bulkUpsertStories(up, tenant);
     if (saved) {
       const ids = new Set(saved.map(s => s.id));
       setStories(p => p.map(s => ids.has(s.id) ? saved.find(x => x.id === s.id) : s));
       toast(`${saved.length} stories approved`);
     }
-  }, [stories]);
+  }, [stories, tenant]);
 
   const bulkReject = useCallback(async (ids) => {
     const prev = ids.map(id => ({ id, status: storiesRef.current.find(s=>s.id===id)?.status }));
@@ -148,16 +149,16 @@ export default function Home() {
   }, [updateStory]);
 
   const bulkDelete = useCallback(async (ids) => {
-    await Promise.all(ids.map(id => dbDelete(id)));
+    await Promise.all(ids.map(id => dbDelete(id, tenant)));
     setStories(p => p.filter(s => !ids.includes(s.id)));
     toast(`${ids.length} ${ids.length===1?"story":"stories"} deleted`, "error");
-  }, []);
+  }, [tenant]);
 
   const handleDelete = useCallback(async (id) => {
-    await dbDelete(id);
+    await dbDelete(id, tenant);
     setStories(p => p.filter(s => s.id !== id));
     toast("Story deleted", "error");
-  }, []);
+  }, [tenant]);
 
   const handleUndo = useCallback(async () => {
     if (!undoStack.length) return;
@@ -575,7 +576,7 @@ export default function Home() {
               <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} />
             </div>
             <div style={{ display: tab==="create" || tab==="script" || tab==="production" ? "block" : "none" }}>
-              <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} />
+              <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={tenant} />
             </div>
             <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
             <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} /></div>
@@ -596,11 +597,12 @@ export default function Home() {
         }}
         onOpenStory={setSelected}
         onUpdateStory={updateStory}
+        tenant={tenant}
       />
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem("uc_settings", JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", tenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={tenant} />
       <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
       <ToastContainer />
     </div>

@@ -118,13 +118,15 @@ export async function extractTextFromFile(file) {
 }
 
 // ── List assets for a brand profile ──
-export async function listAssets(brandProfileId) {
-  const { data, error } = await supabase
+export async function listAssets(brandProfileId, workspaceId = null) {
+  let query = supabase
     .from("story_documents")
     .select("*")
     .eq("brand_profile_id", brandProfileId)
     .is("story_id", null)
     .order("created_at", { ascending: false });
+  if (workspaceId) query = query.eq("workspace_id", workspaceId);
+  const { data, error } = await query;
 
   if (error) throw new Error(error.message);
   return data || [];

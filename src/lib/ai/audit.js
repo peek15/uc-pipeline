@@ -151,10 +151,12 @@ export async function logProviderCost({
 /**
  * Query recent AI calls for the Analyze tab and cost-per-video reporting.
  */
-export async function getAiCalls({ limit = 100, storyId = null, type = null } = {}) {
+export async function getAiCalls({ limit = 100, storyId = null, type = null, workspaceId = null, brandProfileId = null } = {}) {
   let q = supabase.from("ai_calls").select("*").order("created_at", { ascending: false }).limit(limit);
   if (storyId) q = q.eq("story_id", storyId);
   if (type)    q = q.eq("type", type);
+  if (workspaceId) q = q.eq("workspace_id", workspaceId);
+  if (brandProfileId) q = q.eq("brand_profile_id", brandProfileId);
   const { data, error } = await q;
   if (error) return [];
   return data || [];

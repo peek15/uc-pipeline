@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { normalizeTenant } from "@/lib/brand";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -13,34 +14,49 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 
 // ─── STORIES (Supabase direct — protected by RLS) ───
 
-export async function getStories() {
-  const { data, error } = await supabase
+export async function getStories(tenant) {
+  const t = normalizeTenant(tenant);
+  let query = supabase
     .from("stories")
     .select("*")
     .order("created_at", { ascending: false });
+  if (t.workspace_id) query = query.eq("workspace_id", t.workspace_id);
+  if (t.brand_profile_id) query = query.eq("brand_profile_id", t.brand_profile_id);
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }
 
-export async function upsertStory(story) {
+export async function upsertStory(story, tenant) {
+  const t = normalizeTenant(tenant || story);
   const { data, error } = await supabase
     .from("stories")
-    .upsert(story, { onConflict: "id" })
+    .upsert({ ...story, workspace_id: story.workspace_id || t.workspace_id, brand_profile_id: story.brand_profile_id || t.brand_profile_id }, { onConflict: "id" })
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function deleteStory(id) {
-  const { error } = await supabase.from("stories").delete().eq("id", id);
+export async function deleteStory(id, tenant) {
+  const t = normalizeTenant(tenant);
+  let query = supabase.from("stories").delete().eq("id", id);
+  if (t.workspace_id) query = query.eq("workspace_id", t.workspace_id);
+  if (t.brand_profile_id) query = query.eq("brand_profile_id", t.brand_profile_id);
+  const { error } = await query;
   if (error) throw error;
 }
 
-export async function bulkUpsertStories(stories) {
+export async function bulkUpsertStories(stories, tenant) {
+  const t = normalizeTenant(tenant);
+  const rows = (stories || []).map(story => ({
+    ...story,
+    workspace_id: story.workspace_id || t.workspace_id,
+    brand_profile_id: story.brand_profile_id || t.brand_profile_id,
+  }));
   const { data, error } = await supabase
     .from("stories")
-    .upsert(stories, { onConflict: "id" })
+    .upsert(rows, { onConflict: "id" })
     .select();
   if (error) throw error;
   return data;

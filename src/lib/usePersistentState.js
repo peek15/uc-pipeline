@@ -78,7 +78,7 @@ export function clearPersistentState(key) {
 }
 
 /**
- * Clear all UI state (keeps `uc_settings` and other non-UI prefs).
+ * Clear all UI state (keeps tenant-scoped settings and other non-UI prefs).
  */
 export function clearAllPersistentUI() {
   if (typeof window === "undefined") return;

@@ -1,7 +1,7 @@
 # Uncle Carter Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.16.9
+- App badge/package target: v3.17.0
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.0: SaaS Phase 1 tenant foundation: workspace tables/RLS scaffold, tenant-scoped story reads/writes, tenant-scoped settings/provider/assets/AI usage wiring.
 - v3.16.9: Create V2 unified workflow: shared story queue, persistent selected-story workspace, Script-to-Review step tabs, and smoother Write/Produce transition.
 - v3.16.8: Create mode switcher harmonized; Shift+Option/Alt+Arrow switches Write/Produce inside Create.
 - v3.16.7: Create tab merges Write and Produce modes; Calendar auto-fill shortcut remapped to Option/Alt+P.
@@ -57,6 +58,14 @@ scheduling, provider operations, quality gates, and analytics.
   - raw calls: `uc-ai-calls.csv`
   - summary: `uc-ai-usage-summary.csv`
 - Cost alerts are based on `ai_calls.cost_estimate`; direct provider billing sync is provider-specific and not universally available.
+
+## SaaS Tenancy
+- Tenant helper: `src/lib/brand.js`
+- Active tenant shape: `{ workspace_id, brand_profile_id }`.
+- Default fallback IDs remain `00000000-0000-0000-0000-000000000001` for the existing Uncle Carter workspace.
+- Story DB helpers in `src/lib/db.js` now accept tenant context and inject/scope `workspace_id` + `brand_profile_id`.
+- `supabase-schema.sql` includes Phase 1 workspace tables, `workspace_members`, `is_workspace_member()`, tenant indexes, and transitional RLS policies.
+- The default workspace is intentionally migration-compatible; generated future workspaces should require membership policies only.
 
 ## UI System
 - Shared operational primitives live in `src/components/OperationalUI.jsx`.

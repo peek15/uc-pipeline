@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
 import { FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
@@ -8,9 +8,7 @@ import { runPrompt } from "@/lib/ai/runner";
 import ProvidersSection from "@/components/ProvidersSection";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
-import { DEFAULT_BRAND_PROFILE_ID, DEFAULT_WORKSPACE_ID } from "@/lib/brand";
-
-const UNCLE_CARTER_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
+import { normalizeTenant, tenantStorageKey } from "@/lib/brand";
 
 const DEFAULT_SETTINGS = {
   brand: {
@@ -339,7 +337,7 @@ function ProgDiscuss({ programme, brandName }) {
   );
 }
 
-export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="" }) {
+export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant }) {
   const VERSION_NUM = version;
   const [section,  setSection]  = usePersistentState("settings_section", "brand");
   const [settings, setSettings] = useState(mergeSettings(initialSettings));
@@ -385,13 +383,14 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [assetError,    setAssetError]    = useState(null);
   const [dragOver,      setDragOver]      = useState(false);
 
-  const BRAND_PROFILE_ID = DEFAULT_BRAND_PROFILE_ID;
-  const WORKSPACE_ID     = DEFAULT_WORKSPACE_ID;
+  const activeTenant = useMemo(() => normalizeTenant(tenant), [tenant]);
+  const BRAND_PROFILE_ID = activeTenant.brand_profile_id;
+  const WORKSPACE_ID     = activeTenant.workspace_id;
 
   useEffect(() => {
     if (section === "brand" && isOpen && assets.length === 0) {
       setAssetsLoading(true);
-      listAssets(BRAND_PROFILE_ID)
+      listAssets(BRAND_PROFILE_ID, WORKSPACE_ID)
         .then(data => setAssets(data||[]))
         .catch(() => setAssets([]))
         .finally(() => setAssetsLoading(false));
@@ -497,7 +496,8 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     setSaving(true);
     try {
       await supabase.from("brand_profiles").upsert({
-        id: UNCLE_CARTER_PROFILE_ID,
+        id: BRAND_PROFILE_ID,
+        workspace_id: WORKSPACE_ID,
         name: settings.brand.name,
         identity_voice: settings.brand.voice,
         identity_avoid: settings.brand.avoid,
@@ -511,7 +511,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
         // table, not exposed in brand_profiles JSON.
       });
       if (onSettingsChange) onSettingsChange(settings);
-      try { localStorage.setItem("uc_settings", JSON.stringify(settings)); } catch {}
+      try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(settings)); } catch {}
       setSaved(true);
       setTimeout(()=>setSaved(false), 2000);
     } catch(e) { console.error(e); }
@@ -1294,7 +1294,7 @@ ${fileText.slice(0,3000)}` : text };
 
           {/* ── Providers ── */}
           {section==="providers" && (
-            <ProvidersSection />
+          <ProvidersSection tenant={activeTenant} />
           )}
 
           {/* ── Intelligence ── */}
@@ -1383,7 +1383,7 @@ ${fileText.slice(0,3000)}` : text };
               <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
                 {[
                   { label:"Workspace", value:"Uncle Carter Pipeline", editable:false },
-                  { label:"Workspace ID",   value:DEFAULT_WORKSPACE_ID, editable:false, mono:true },
+                  { label:"Workspace ID",   value:WORKSPACE_ID, editable:false, mono:true },
                   { label:"Plan",           value:"Peek Studios — Internal", editable:false },
                 ].map(({label,value,editable,mono})=>(
                   <div key={label} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" }}>
@@ -1426,7 +1426,7 @@ ${fileText.slice(0,3000)}` : text };
                 These actions are irreversible. Take care.
               </div>
               {[
-                { label:"Reset all settings", hint:"Restore all settings to default values. Your stories and scripts are not affected.", action:"Reset settings", color:"var(--t3)", onClick:()=>{ setSettings(DEFAULT_SETTINGS); try{localStorage.removeItem("uc_settings");}catch{}; } },
+                { label:"Reset all settings", hint:"Restore all settings to default values. Your stories and scripts are not affected.", action:"Reset settings", color:"var(--t3)", onClick:()=>{ setSettings(DEFAULT_SETTINGS); try{localStorage.removeItem(tenantStorageKey("settings", activeTenant));}catch{}; } },
                 { label:"Clear dismissed alerts", hint:"Restore all dismissed production alerts.", action:"Clear alerts", color:"var(--t3)", onClick:()=>{ try{localStorage.removeItem("uc_dismissed_alerts");}catch{}; } },
                 { label:"Export all stories", hint:"Download all stories and scripts as a CSV file.", action:"Export", color:"var(--t2)", onClick:()=>{ if(typeof window!=="undefined"){const d=encodeURIComponent(JSON.stringify(stories,null,2));const a=document.createElement("a");a.href="data:application/json;charset=utf-8,"+d;a.download="uncle-carter-stories.json";a.click();} } },
               ].map(({label,hint,action,color,onClick})=>(

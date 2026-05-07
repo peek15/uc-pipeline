@@ -1,7 +1,7 @@
 # Uncle Carter Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.16.5
+- App badge/package target: v3.16.6
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.16.6: Phase 2 UI interactions: Calendar drag/drop scheduling, auto-fill plan preview, and Produce agent-step tabs.
 - v3.16.5: Phase 1.5 UI convergence: shared page headers/buttons/panels across Stories, Write, Insights, and Providers.
 - v3.16.4: Phase 1 UI audit upgrades: shared operational UI primitives, Calendar planner board, Produce queue filters/readiness strip.
 - v3.16.3: Provider cost alerts in AI Usage using rolling ai_calls cost estimates and persisted local budgets.

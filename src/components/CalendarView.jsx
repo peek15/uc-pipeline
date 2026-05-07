@@ -153,6 +153,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
   const [weekOffset,  setWeekOffset]  = useState(0);
   const [showAssign,  setShowAssign]  = useState(null); // day index
   const [platform,    setPlatform]    = useState("All");
+  const [planPreview, setPlanPreview] = useState(null);
 
   // Read from settings — fall back to defaults
   const cadence   = settings?.strategy?.weekly_cadence || DEFAULT_CADENCE;
@@ -192,6 +193,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
       platform_target: plt !== "All" ? plt : null,
     });
     setShowAssign(null);
+    setPlanPreview(null);
   };
 
   const weekLabel = () => {
@@ -280,13 +282,13 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
   }, [days, stories, ready, cadence, formatMix, seqRules]);
 
   // Auto-fill week respecting cadence + format mix + sequence rules
-  const autoFillWeek = ({ safeOnly=false } = {}) => {
+  const buildAutoFillPlan = ({ safeOnly=false } = {}) => {
     const futureDays = days.filter(d => !isPast(d) && getForDay(d).length === 0);
     // Respect weekly cadence — only fill up to target
     const alreadyScheduled = days.filter(d => !isPast(d) && getForDay(d).length > 0).length;
     const slotsToFill = Math.max(0, cadence - alreadyScheduled);
     const emptyFuture = futureDays.slice(0, slotsToFill);
-    if (!emptyFuture.length) return;
+    if (!emptyFuture.length) return [];
 
     // Calculate target count per format this week based on mix percentages
     const targets = {};
@@ -330,12 +332,30 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
       const pick = candidates[0] || available.sort((a,b) => ((b.score_total||0)+(b.reach_score||0)) - ((a.score_total||0)+(a.reach_score||0)))[0];
 
       if (pick) {
-        onUpdate(pick.id, { scheduled_date: fmt(d) });
+        placed.push({ story: pick, date: fmt(d), platform_target: platform !== "All" ? platform : null });
         fmtCounts[pick.format||"standard"] = (fmtCounts[pick.format||"standard"]||0)+1;
         lastFormat = pick.format||"standard";
         available = available.filter(s => s.id !== pick.id);
       }
     }
+    return placed;
+  };
+
+  const previewAutoFill = ({ safeOnly=false } = {}) => {
+    setPlanPreview({ safeOnly, placements: buildAutoFillPlan({ safeOnly }) });
+  };
+
+  const applyPlanPreview = async () => {
+    const placements = planPreview?.placements || [];
+    for (const p of placements) {
+      await onUpdate(p.story.id, { scheduled_date: p.date, platform_target: p.platform_target });
+    }
+    setPlanPreview(null);
+  };
+
+  const autoFillWeek = ({ safeOnly=false } = {}) => {
+    const placements = buildAutoFillPlan({ safeOnly });
+    placements.forEach(p => onUpdate(p.story.id, { scheduled_date: p.date, platform_target: p.platform_target }));
   };
 
   // Alt+F = auto-fill week
@@ -344,7 +364,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
       if (matches(e, SHORTCUTS.calendarAutoFill.combo)) {
         if (shouldIgnoreFromInput()) return;
         e.preventDefault();
-        autoFillWeek();
+        previewAutoFill();
       }
     };
     window.addEventListener("keydown", handler);
@@ -415,10 +435,50 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
         <CoverageSummary stories={stories} weekOffset={weekOffset} cadence={cadence} />
         <CalendarAuditPanel
           audit={weekAudit}
-          onAutoFill={() => autoFillWeek()}
-          onSafeFill={() => autoFillWeek({ safeOnly:true })}
+          onAutoFill={() => previewAutoFill()}
+          onSafeFill={() => previewAutoFill({ safeOnly:true })}
         />
       </div>
+
+      {planPreview && (
+        <Panel style={{ marginBottom:14, border:"0.5px solid var(--warning)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, flexWrap:"wrap", marginBottom:10 }}>
+            <div>
+              <div style={{ fontSize:12, fontWeight:700, color:"var(--t1)", marginBottom:3 }}>
+                {planPreview.safeOnly ? "Safe auto-fill preview" : "Auto-fill preview"}
+              </div>
+              <div style={{ fontSize:11, color:"var(--t3)" }}>
+                Review the proposed schedule before committing dates to stories.
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button onClick={applyPlanPreview} disabled={!planPreview.placements.length} style={buttonStyle("primary", { opacity:planPreview.placements.length ? 1 : 0.45 })}>
+                Apply plan
+              </button>
+              <button onClick={()=>setPlanPreview(null)} style={buttonStyle("ghost")}>Discard</button>
+            </div>
+          </div>
+          {planPreview.placements.length ? (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:8 }}>
+              {planPreview.placements.map(p => {
+                const d = new Date(p.date);
+                const fmtObj = FORMAT_MAP[p.story.format];
+                return (
+                  <div key={`${p.story.id}-${p.date}`} style={{ padding:"9px 10px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", borderLeft:`3px solid ${fmtObj?.color || "var(--border)"}` }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>
+                      {d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" })}
+                    </div>
+                    <div style={{ fontSize:12, fontWeight:600, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.story.title}</div>
+                    <div style={{ fontSize:10, color:"var(--t4)", marginTop:3 }}>{fmtObj?.label || p.story.format || "No format"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize:12, color:"var(--t4)" }}>No eligible empty future slots or ready stories for this week.</div>
+          )}
+        </Panel>
+      )}
 
       {/* Auto-produce banner */}
       {needsScript > 0 && (
@@ -458,8 +518,8 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
         </div>
 
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          <button onClick={autoFillWeek} style={buttonStyle("secondary", { padding:"5px 12px" })}>
-            ⌘F Auto-fill week
+          <button onClick={() => previewAutoFill()} style={buttonStyle("secondary", { padding:"5px 12px" })}>
+            ⌘F Preview auto-fill
           </button>
         </div>
         {/* Platform filter */}
@@ -495,7 +555,13 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
               minHeight:220,
               display:"flex",
               flexDirection:"column",
-            }}>
+            }}
+              onDragOver={(e)=>{ if (!past) e.preventDefault(); }}
+              onDrop={(e)=>{
+                if (past) return;
+                const id = e.dataTransfer.getData("text/story-id");
+                if (id) assignToDay(id, d, platform);
+              }}>
               {/* Day header */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -524,9 +590,9 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                     const ac     = fmtObj ? fmtObj.color : (ACCENT[s.archetype]||"var(--border)");
                     const ready4 = [!!s.script, !!s.script_fr, !!s.script_es, !!s.script_pt].filter(Boolean).length;
                     return (
-                      <div key={s.id} style={{
+                      <div key={s.id} draggable={!past} onDragStart={(e)=>e.dataTransfer.setData("text/story-id", s.id)} style={{
                         display:"flex", alignItems:"center", gap:8, padding:"var(--card-padding-y, 8px) var(--card-padding-x, 10px)", borderRadius:7, marginBottom:"var(--card-gap, 3px)",
-                        background:"var(--card)", borderLeft:`3px solid ${ac}`,
+                        background:"var(--card)", borderLeft:`3px solid ${ac}`, cursor:past ? "default" : "grab",
                       }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
@@ -620,19 +686,36 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
         {!ready.length ? (
           <div style={{ fontSize:12, color:"var(--t4)" }}>No stories ready. Approve or script stories in the Pipeline.</div>
         ) : (
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-            {FORMATS.filter(f=>f.key!=="special_edition").map(f => {
-              const count = ready.filter(s=>s.format===f.key).length;
-              return (
-                <span key={f.key} style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:`${f.color}15`, color:f.color, border:`1px solid ${f.color}25`, fontWeight:600 }}>
-                  {f.label} · {count}
+          <>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:6, marginBottom:12 }}>
+              {ready.slice(0, 12).map(s => {
+                const fmtObj = FORMAT_MAP[s.format];
+                const ac = fmtObj?.color || ACCENT[s.archetype] || "var(--border)";
+                return (
+                  <div key={s.id} draggable onDragStart={(e)=>e.dataTransfer.setData("text/story-id", s.id)} style={{ padding:"8px 10px", borderRadius:7, background:"var(--card)", border:"0.5px solid var(--border)", borderLeft:`3px solid ${ac}`, cursor:"grab" }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
+                    <div style={{ display:"flex", gap:6, alignItems:"center", marginTop:3, fontSize:10, color:"var(--t4)" }}>
+                      <span>{fmtObj?.label || "No format"}</span>
+                      {s.score_total && <span style={{ fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{s.score_total}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {FORMATS.filter(f=>f.key!=="special_edition").map(f => {
+                const count = ready.filter(s=>s.format===f.key).length;
+                return (
+                  <span key={f.key} style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:`${f.color}15`, color:f.color, border:`1px solid ${f.color}25`, fontWeight:600 }}>
+                    {f.label} · {count}
+                  </span>
+                );
+              })}
+              <span style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", color:"var(--t3)", border:"0.5px solid var(--border)" }}>
+                No format · {ready.filter(s=>!s.format).length}
                 </span>
-              );
-            })}
-            <span style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", color:"var(--t3)", border:"0.5px solid var(--border)" }}>
-              No format · {ready.filter(s=>!s.format).length}
-            </span>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -830,6 +830,7 @@ export default function ProductionView({ stories, onUpdate }) {
   const queue = useMemo(() => (stories || []).filter(isInProductionQueue), [stories]);
   const [selectedId, setSelectedId] = usePersistentState("production_selected", queue[0]?.id || null);
   const [queueFilter, setQueueFilter] = usePersistentState("production_queue_filter", "all");
+  const [activeSection, setActiveSection] = usePersistentState("production_active_section", "brief");
   const [showLibrary, setShowLibrary] = useState(false);
   const filteredQueue = useMemo(() => queue.filter(story => matchesProductionFilter(story, queueFilter)), [queue, queueFilter]);
 
@@ -868,6 +869,14 @@ export default function ProductionView({ stories, onUpdate }) {
   }, [filteredQueue, selectedId, setSelectedId]);
 
   const selected = queue.find(s => s.id === selectedId);
+  const stepOptions = [
+    { key: "brief", label: "Brief" },
+    { key: "assets", label: "Assets" },
+    { key: "visuals", label: "Visuals" },
+    { key: "voice", label: "Voice" },
+    { key: "assembly", label: "Assembly" },
+    { key: "review", label: "Review" },
+  ];
   const filterOptions = [
     { key: "all", label: "All", count: queue.length },
     { key: "needs_brief", label: "Needs brief", count: queue.filter(s => matchesProductionFilter(s, "needs_brief")).length },
@@ -947,12 +956,33 @@ export default function ProductionView({ stories, onUpdate }) {
 
               <ReadinessStrip story={selected} />
               <PipelineProgress story={selected} />
-              <BriefSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
-              <AssetMatchesSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} />
-              <VisualSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
-              <VoiceSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
+              <div style={{ display:"flex", gap:4, flexWrap:"wrap", margin:"0 0 12px" }}>
+                {stepOptions.map(step => (
+                  <button key={step.key} onClick={() => setActiveSection(step.key)} style={buttonStyle(activeSection === step.key ? "primary" : "ghost", {
+                    padding:"6px 14px",
+                    border: activeSection === step.key ? "0.5px solid var(--t1)" : "0.5px solid transparent",
+                  })}>
+                    {step.label}
+                  </button>
+                ))}
+              </div>
 
-              <AssemblySection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />
+              {activeSection === "brief" && <BriefSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "assets" && <AssetMatchesSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} />}
+              {activeSection === "visuals" && <VisualSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "voice" && <VoiceSection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "assembly" && <AssemblySection story={selected} brand_profile_id={UNCLE_CARTER_PROFILE_ID} onSaved={(upd) => onUpdate?.(selected.id, upd || {})} />}
+              {activeSection === "review" && (
+                <div style={{ display:"grid", gap:12 }}>
+                  <ReadinessStrip story={selected} />
+                  <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--card)", border:"0.5px solid var(--border)" }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:"var(--t1)", marginBottom:6 }}>Production review</div>
+                    <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.5 }}>
+                      Use this pass to confirm the story has its approved brief, selected visuals, voice references, and assembly notes before export.
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

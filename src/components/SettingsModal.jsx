@@ -1364,7 +1364,7 @@ ${fileText.slice(0,3000)}` : text };
               <div>
                 <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Default tab on load</div>
                 <select value={settings.appearance?.default_tab||"pipeline"} onChange={e=>upd("appearance.default_tab",e.target.value)} style={selStyle}>
-                  {["pipeline","research","script","calendar","analyze"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                  {["pipeline","research","create","calendar","analyze"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
                 </select>
               </div>
 

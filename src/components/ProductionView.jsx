@@ -826,7 +826,7 @@ function AssetMatchesSection({ story, brand_profile_id }) {
 
 // ─── Main ───────────────────────────────────────────────
 
-export default function ProductionView({ stories, onUpdate }) {
+export default function ProductionView({ stories, onUpdate, embedded = false }) {
   const queue = useMemo(() => (stories || []).filter(isInProductionQueue), [stories]);
   const [selectedId, setSelectedId] = usePersistentState("production_selected", queue[0]?.id || null);
   const [queueFilter, setQueueFilter] = usePersistentState("production_queue_filter", "all");
@@ -900,16 +900,25 @@ export default function ProductionView({ stories, onUpdate }) {
     <div>
       <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} />
 
-      <PageHeader
-        title="Produce"
-        description="Pick a story, check its production readiness, then run the agents for brief, assets, voice, visuals, and assembly."
-        meta={`${queue.length} in flight`}
-        action={
+      {!embedded && (
+        <PageHeader
+          title="Produce"
+          description="Pick a story, check its production readiness, then run the agents for brief, assets, voice, visuals, and assembly."
+          meta={`${queue.length} in flight`}
+          action={
+            <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
+              <Library size={12} /> Asset library
+            </button>
+          }
+        />
+      )}
+      {embedded && (
+        <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
           <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
             <Library size={12} /> Asset library
           </button>
-        }
-      />
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 14, alignItems: "start" }}>
         <div style={{ background: "var(--bg2)", borderRadius: 10, border: "0.5px solid var(--border)", padding: 8, position: "sticky", top: 16 }}>

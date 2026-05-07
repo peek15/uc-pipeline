@@ -43,8 +43,9 @@ Stories:
 ${snapshot || "(none yet)"}
 
 Navigation actions — embed in your response to trigger them:
-  [[nav:pipeline]]  [[nav:research]]  [[nav:script]]
-  [[nav:production]]  [[nav:calendar]]  [[nav:analyze]]
+  [[nav:pipeline]]  [[nav:research]]  [[nav:create]]
+  [[nav:script]] and [[nav:production]] open Create in the relevant mode
+  [[nav:calendar]]  [[nav:analyze]]
   [[story:STORY_ID]]   — open a story detail panel
 
 Write actions — embed ONLY when the user explicitly asks you to make a change:

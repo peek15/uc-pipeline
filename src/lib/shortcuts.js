@@ -116,13 +116,12 @@ export const SHORTCUTS = {
   sidebarToggle:      { combo: { mod: true, key: "\\" },          description: "Collapse / expand sidebar",      group: "Global" },
   agentToggle:        { combo: { mod: true, alt: true, key: "a" }, description: "Toggle agent panel",            group: "Global" },
 
-  // Navigation — Ctrl+1–6 in Chrome (Cmd is intercepted for browser tabs)
+  // Navigation — Ctrl+1–5 in Chrome (Cmd is intercepted for browser tabs)
   tabPipeline:   { combo: { mod: true, key: "1" }, description: "Go to Stories",  hint: "Ctrl+1 in Chrome", group: "Navigation" },
   tabResearch:   { combo: { mod: true, key: "2" }, description: "Go to Research", hint: "Ctrl+2 in Chrome", group: "Navigation" },
-  tabScript:     { combo: { mod: true, key: "3" }, description: "Go to Write",    hint: "Ctrl+3 in Chrome", group: "Navigation" },
-  tabProduction: { combo: { mod: true, key: "4" }, description: "Go to Produce",  hint: "Ctrl+4 in Chrome", group: "Navigation" },
-  tabCalendar:   { combo: { mod: true, key: "5" }, description: "Go to Schedule", hint: "Ctrl+5 in Chrome", group: "Navigation" },
-  tabAnalyze:    { combo: { mod: true, key: "6" }, description: "Go to Insights", hint: "Ctrl+6 in Chrome", group: "Navigation" },
+  tabCreate:     { combo: { mod: true, key: "3" }, description: "Go to Create",   hint: "Ctrl+3 in Chrome", group: "Navigation" },
+  tabCalendar:   { combo: { mod: true, key: "4" }, description: "Go to Schedule", hint: "Ctrl+4 in Chrome", group: "Navigation" },
+  tabAnalyze:    { combo: { mod: true, key: "5" }, description: "Go to Insights", hint: "Ctrl+5 in Chrome", group: "Navigation" },
 
   // Section cycling
   tabPrev: { combo: { alt: true, key: "ArrowLeft" },  description: "Previous section", group: "Navigation" },
@@ -160,7 +159,7 @@ export const SHORTCUTS = {
   productionApprove: { combo: { mod: true, key: "Enter" },          description: "Approve current section", group: "Production" },
 
   // Calendar
-  calendarAutoFill: { combo: { alt: true, key: "f" }, description: "Auto-fill calendar slots", group: "Calendar" },
+  calendarAutoFill: { combo: { alt: true, key: "p" }, description: "Preview auto-fill calendar slots", group: "Calendar" },
 
   // Detail Modal
   detailPrev:  { combo: { key: "ArrowLeft" },  description: "Previous story",  group: "Detail Modal" },

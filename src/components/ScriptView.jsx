@@ -29,7 +29,7 @@ function ProgressSteps({ steps, current }) {
   );
 }
 
-export default function ScriptView({ stories, onUpdate }) {
+export default function ScriptView({ stories, onUpdate, embedded = false }) {
   // ── All state first — before any useMemo ──
   const [focusedIdx,   setFocusedIdx]   = useState(0);
   const [expandedIds,  setExpandedIds]  = usePersistentState("script_expanded", new Set());
@@ -239,11 +239,13 @@ export default function ScriptView({ stories, onUpdate }) {
 
   if (!ready.length) return (
     <div className="animate-fade-in">
-      <PageHeader
-        title="Write"
-        description="Generate scripts, translations, and voice packs for approved stories."
-        meta="0 ready"
-      />
+      {!embedded && (
+        <PageHeader
+          title="Write"
+          description="Generate scripts, translations, and voice packs for approved stories."
+          meta="0 ready"
+        />
+      )}
       <div style={{ textAlign:"center", padding:"80px 0", color:"var(--t4)" }}>
         <FileText size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }} />
         <div style={{ fontSize:13 }}>Approve stories to start scripting</div>
@@ -253,11 +255,13 @@ export default function ScriptView({ stories, onUpdate }) {
 
   return (
     <div className="animate-fade-in">
-      <PageHeader
-        title="Write"
-        description="Generate English scripts, translate into target languages, and export voice packs."
-        meta={`${ready.length} ready · ${unscripted.length} unscripted`}
-      />
+      {!embedded && (
+        <PageHeader
+          title="Write"
+          description="Generate English scripts, translate into target languages, and export voice packs."
+          meta={`${ready.length} ready · ${unscripted.length} unscripted`}
+        />
+      )}
 
       {/* Options + batch bar */}
       <Panel style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, padding:"10px 14px", flexWrap:"wrap", gap:10 }}>

@@ -519,7 +519,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
 
         <div style={{ display:"flex", gap:6, alignItems:"center" }}>
           <button onClick={() => previewAutoFill()} style={buttonStyle("secondary", { padding:"5px 12px" })}>
-            ⌘F Preview auto-fill
+            ⌥P Preview auto-fill
           </button>
         </div>
         {/* Platform filter */}

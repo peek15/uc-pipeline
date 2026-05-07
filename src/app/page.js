@@ -1,15 +1,14 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { Layers, Search, FileText, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot } from "lucide-react";
+import { Layers, Search, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot } from "lucide-react";
 import { STAGES } from "@/lib/constants";
 import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable } from "@/lib/db";
 import { signInWithGoogle, signOut, isEmailAllowed } from "@/lib/auth";
 import PipelineView from "@/components/PipelineView";
 import ResearchView from "@/components/ResearchView";
-import ScriptView from "@/components/ScriptView";
 import CalendarView from "@/components/CalendarView";
-import ProductionView from "@/components/ProductionView";
+import CreateView from "@/components/CreateView";
 import AnalyzeView from "@/components/AnalyzeView";
 import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
@@ -21,13 +20,12 @@ import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 
-const VERSION = "3.16.6";
+const VERSION = "3.16.7";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
   { key: "research",   label: "Research", Icon: Search },
-  { key: "script",     label: "Write",    Icon: FileText },
-  { key: "production", label: "Produce",  Icon: Wrench },
+  { key: "create",     label: "Create",   Icon: Wrench },
   { key: "calendar",   label: "Schedule", Icon: Clock },
   { key: "analyze",    label: "Insights", Icon: BarChart3 },
 ];
@@ -41,6 +39,7 @@ export default function Home() {
   const storiesRef = useRef([]);
   useEffect(() => { storiesRef.current = stories; }, [stories]);
   const [tab, setTab]                 = usePersistentState("tab", "pipeline");
+  const [createMode, setCreateMode]   = usePersistentState("create_mode", "write");
   const [sidebarOpen, setSidebarOpen] = usePersistentState("sidebar_open", true);
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
@@ -52,6 +51,11 @@ export default function Home() {
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
   const [agentOpen,       setAgentOpen]       = useState(false);
+
+  useEffect(() => {
+    if (tab === "script") { setCreateMode("write"); setTab("create"); }
+    if (tab === "production") { setCreateMode("produce"); setTab("create"); }
+  }, [tab, setCreateMode, setTab]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -270,7 +274,7 @@ export default function Home() {
  // v3.11.4 — Global keyboard shortcuts driven by SHORTCUTS registry.
   // Cross-platform (metaKey || ctrlKey).
   useEffect(() => {
-    const TAB_KEYS = ["pipeline","research","script","production","calendar","analyze"];
+    const TAB_KEYS = ["pipeline","research","create","calendar","analyze"];
     const handler = (e) => {
       if (shouldIgnoreFromInput()) return;
 
@@ -284,11 +288,10 @@ export default function Home() {
       if (matches(e, SHORTCUTS.undo.combo))               { e.preventDefault(); handleUndo();                       return; }
       if (matches(e, SHORTCUTS.productionShortcut.combo)) { e.preventDefault(); handleProductionShortcut();         return; }
 
-      // Tab jumps Cmd+1..6
+      // Tab jumps Cmd+1..5
       if (matches(e, SHORTCUTS.tabPipeline.combo))   { e.preventDefault(); setTab("pipeline");   return; }
       if (matches(e, SHORTCUTS.tabResearch.combo))   { e.preventDefault(); setTab("research");   return; }
-      if (matches(e, SHORTCUTS.tabScript.combo))     { e.preventDefault(); setTab("script");     return; }
-      if (matches(e, SHORTCUTS.tabProduction.combo)) { e.preventDefault(); setTab("production"); return; }
+      if (matches(e, SHORTCUTS.tabCreate.combo))     { e.preventDefault(); setTab("create");     return; }
       if (matches(e, SHORTCUTS.tabCalendar.combo))   { e.preventDefault(); setTab("calendar");   return; }
       if (matches(e, SHORTCUTS.tabAnalyze.combo))    { e.preventDefault(); setTab("analyze");    return; }
 
@@ -571,8 +574,9 @@ export default function Home() {
             <div style={{ display: tab==="research"   ? "block" : "none" }}>
               <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} />
             </div>
-            <div style={{ display: tab==="script"     ? "block" : "none" }}><ScriptView     stories={stories} onUpdate={updateStory} /></div>
-            <div style={{ display: tab==="production" ? "block" : "none" }}><ProductionView stories={stories} onUpdate={updateStory} /></div>
+            <div style={{ display: tab==="create" || tab==="script" || tab==="production" ? "block" : "none" }}>
+              <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} />
+            </div>
             <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
             <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} /></div>
 
@@ -585,7 +589,11 @@ export default function Home() {
         onClose={() => setAgentOpen(false)}
         stories={stories}
         tab={tab}
-        onNavigate={setTab}
+        onNavigate={(next) => {
+          if (next === "script" || next === "write") { setCreateMode("write"); setTab("create"); return; }
+          if (next === "production" || next === "produce") { setCreateMode("produce"); setTab("create"); return; }
+          setTab(next);
+        }}
         onOpenStory={setSelected}
         onUpdateStory={updateStory}
       />

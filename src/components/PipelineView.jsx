@@ -138,7 +138,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       // (plain Alt+Arrow is global tab cycling, defined in page.js)
       if (e.altKey && e.shiftKey && (e.key==="ArrowRight"||e.key==="ArrowLeft")) {
         e.preventDefault();
-        const TABS = ["pipeline","research","script","calendar","analyze"];
+        const TABS = ["pipeline","research","create","calendar","analyze"];
         setActiveTab(prev => { const i=TABS.indexOf(prev); return e.key==="ArrowRight"?TABS[Math.min(i+1,4)]:TABS[Math.max(i-1,0)]; });
         return;
       }

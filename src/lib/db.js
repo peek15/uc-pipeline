@@ -62,6 +62,45 @@ export async function bulkUpsertStories(stories, tenant) {
   return data;
 }
 
+// ─── BRAND PROFILES ───
+
+export async function getBrandProfiles(tenant) {
+  const t = normalizeTenant(tenant);
+  let query = supabase
+    .from("brand_profiles")
+    .select("id,workspace_id,name,settings,brief_doc,created_at,updated_at")
+    .order("created_at", { ascending: true });
+  if (t.workspace_id) query = query.eq("workspace_id", t.workspace_id);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createBrandProfile({ name, settings }, tenant) {
+  const t = normalizeTenant(tenant);
+  const id = crypto.randomUUID();
+  const safeSettings = {
+    ...(settings && typeof settings === "object" ? settings : {}),
+    brand: {
+      ...(settings?.brand || {}),
+      name,
+    },
+  };
+  const { data, error } = await supabase
+    .from("brand_profiles")
+    .insert({
+      id,
+      workspace_id: t.workspace_id,
+      name,
+      settings: safeSettings,
+      brief_doc: JSON.stringify(safeSettings),
+    })
+    .select("id,workspace_id,name,settings,brief_doc,created_at,updated_at")
+    .single();
+  if (error) throw error;
+  return data || { id, workspace_id: t.workspace_id, name, settings: safeSettings };
+}
+
 // ─── Helper to get auth token ───
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession();

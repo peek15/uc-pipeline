@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { Layers, Search, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot } from "lucide-react";
 import { STAGES } from "@/lib/constants";
-import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable } from "@/lib/db";
+import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile } from "@/lib/db";
 import { signInWithGoogle, signOut, isEmailAllowed } from "@/lib/auth";
 import PipelineView from "@/components/PipelineView";
 import ResearchView from "@/components/ResearchView";
@@ -18,10 +18,10 @@ import ProductionAlert from "@/components/ProductionAlert";
 import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import AgentPanel from "@/components/AgentPanel";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
-import { defaultTenant, tenantStorageKey } from "@/lib/brand";
+import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.17.4";
+const VERSION = "3.17.5";
 
 const TABS = [
   { key: "pipeline",   label: "Stories",  Icon: Layers },
@@ -32,7 +32,8 @@ const TABS = [
 ];
 
 export default function Home() {
-  const tenant = useMemo(() => defaultTenant(), []);
+  const [tenant, setTenant] = usePersistentState("active_tenant", defaultTenant());
+  const activeTenant = useMemo(() => normalizeTenant(tenant), [tenant]);
   const [user, setUser]               = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError]     = useState(null);
@@ -48,6 +49,7 @@ export default function Home() {
   const [undoStack,       setUndoStack]       = useState([]);
   const [researchState,   setResearchState]   = useState(null);
   const [appSettings,     setAppSettings]     = useState(null);
+  const [brandProfiles,   setBrandProfiles]   = useState([]);
   const [showSettings,    setShowSettings]    = useState(false); // persisted across tab switches
   const [showShortcuts,   setShowShortcuts]   = useState(false); // v3.11.4
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
@@ -78,14 +80,17 @@ export default function Home() {
   useEffect(() => {
     if (user) {
       setLoading(true);
+      setSelected(null);
+      setStories([]);
       // Load stories
-      getStories(tenant).then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
+      getStories(activeTenant).then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
+      getBrandProfiles(activeTenant).then(rows => setBrandProfiles(rows)).catch(() => setBrandProfiles([]));
       // Load saved settings from brand profile
 // Load appearance from localStorage immediately (fast, no network)
       // NOTE: default_tab from settings is no longer applied here — last-used
       // tab is persisted via usePersistentState("tab") and wins on reload.
       try {
-        const cached = localStorage.getItem(tenantStorageKey("settings", tenant));
+        const cached = localStorage.getItem(tenantStorageKey("settings", activeTenant));
         if (cached) {
           const parsed = JSON.parse(cached);
           setAppSettings(parsed);
@@ -93,38 +98,49 @@ export default function Home() {
         }
       } catch {}
       // Then sync from Supabase (source of truth)
-      supabase.from("brand_profiles").select("brief_doc,settings").eq("id", tenant.brand_profile_id).single()
+      supabase.from("brand_profiles").select("brief_doc,settings").eq("id", activeTenant.brand_profile_id).single()
         .then(({ data, error }) => {
           const rawSettings = data?.settings && Object.keys(data.settings || {}).length ? data.settings : data?.brief_doc;
           const loadedSettings = typeof rawSettings === "string" ? JSON.parse(rawSettings) : rawSettings;
           if (loadedSettings) {
             setAppSettings(loadedSettings);
-            localStorage.setItem(tenantStorageKey("settings", tenant), JSON.stringify(loadedSettings));
+            localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(loadedSettings));
             applyTheme(loadedSettings?.appearance?.theme || "system");
           }
         }).catch(() => {});
     }
     else setLoading(false);
-  }, [user, tenant]);
+  }, [user, activeTenant]);
 
   const handleSignIn  = async () => { setAuthLoading(true); setAuthError(null); try { await signInWithGoogle(); } catch (err) { setAuthError(err.message); setAuthLoading(false); } };
   const handleSignOut = async () => { await signOut(); setUser(null); setStories([]); setShowUserMenu(false); };
 
+  const createBrand = useCallback(async () => {
+    const name = window.prompt("New brand name");
+    if (!name?.trim()) return;
+    const profile = await createBrandProfile({ name: name.trim(), settings: appSettings || {} }, activeTenant);
+    setBrandProfiles(prev => [...prev.filter(p => p.id !== profile.id), profile]);
+    const nextTenant = { workspace_id: profile.workspace_id || activeTenant.workspace_id, brand_profile_id: profile.id };
+    setTenant(nextTenant);
+    setAppSettings(profile.settings || { ...(appSettings || {}), brand: { ...(appSettings?.brand || {}), name: name.trim() } });
+    toast(`Created ${name.trim()}`);
+  }, [activeTenant, appSettings, setTenant]);
+
   const addStories = useCallback(async (n) => {
-    const saved = await bulkUpsertStories(n, tenant);
+    const saved = await bulkUpsertStories(n, activeTenant);
     if (saved) {
       setStories(p => [...saved, ...p]);
       for (const s of saved) syncToAirtable(s).catch(() => {});
       toast(`${saved.length} ${saved.length === 1 ? "story" : "stories"} added to Pipeline`);
     }
-  }, [tenant]);
+  }, [activeTenant]);
 
   const updateStory = useCallback(async (id, c) => {
     const story = storiesRef.current.find(s => s.id === id);
     if (!story) return;
-    const saved = await upsertStory({ ...story, ...c }, tenant);
+    const saved = await upsertStory({ ...story, ...c }, activeTenant);
     if (saved) { setStories(p => p.map(s => s.id === id ? saved : s)); syncToAirtable(saved).catch(() => {}); }
-  }, [tenant]);
+  }, [activeTenant]);
 
   const stageChange = useCallback(async (id, st) => {
     const story = storiesRef.current.find(s => s.id === id);
@@ -136,13 +152,13 @@ export default function Home() {
 
   const bulkAction = useCallback(async (from, to) => {
     const up = stories.filter(s => s.status === from).map(s => ({ ...s, status: to }));
-    const saved = await bulkUpsertStories(up, tenant);
+    const saved = await bulkUpsertStories(up, activeTenant);
     if (saved) {
       const ids = new Set(saved.map(s => s.id));
       setStories(p => p.map(s => ids.has(s.id) ? saved.find(x => x.id === s.id) : s));
       toast(`${saved.length} stories approved`);
     }
-  }, [stories, tenant]);
+  }, [stories, activeTenant]);
 
   const bulkReject = useCallback(async (ids) => {
     const prev = ids.map(id => ({ id, status: storiesRef.current.find(s=>s.id===id)?.status }));
@@ -152,16 +168,16 @@ export default function Home() {
   }, [updateStory]);
 
   const bulkDelete = useCallback(async (ids) => {
-    await Promise.all(ids.map(id => dbDelete(id, tenant)));
+    await Promise.all(ids.map(id => dbDelete(id, activeTenant)));
     setStories(p => p.filter(s => !ids.includes(s.id)));
     toast(`${ids.length} ${ids.length===1?"story":"stories"} deleted`, "error");
-  }, [tenant]);
+  }, [activeTenant]);
 
   const handleDelete = useCallback(async (id) => {
-    await dbDelete(id, tenant);
+    await dbDelete(id, activeTenant);
     setStories(p => p.filter(s => s.id !== id));
     toast("Story deleted", "error");
-  }, [tenant]);
+  }, [activeTenant]);
 
   const handleUndo = useCallback(async () => {
     if (!undoStack.length) return;
@@ -391,6 +407,7 @@ export default function Home() {
   for (const s of stories) counts[s.status] = (counts[s.status]||0)+1;
   const bankSize = stories.filter(s=>["approved","scripted","produced"].includes(s.status)).length;
   const brandName = getBrandName(appSettings);
+  const currentBrandLabel = brandProfiles.find(p => p.id === activeTenant.brand_profile_id)?.name || brandName;
 
   const Spinner = () => (
     <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -426,9 +443,23 @@ export default function Home() {
           {/* Brand — hidden in icon-only mode */}
           {sidebarOpen
             ? <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{brandName}</span>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentBrandLabel}</span>
                   <span style={{ fontSize:9, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 26px", gap:5 }}>
+                  <select
+                    value={activeTenant.brand_profile_id}
+                    onChange={(e) => setTenant({ ...activeTenant, brand_profile_id: e.target.value })}
+                    title="Brand profile"
+                    style={{ minWidth:0, width:"100%", height:26, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t2)", fontSize:11, fontFamily:"inherit", padding:"0 6px", outline:"none" }}
+                  >
+                    {brandProfiles.length === 0 && <option value={activeTenant.brand_profile_id}>{currentBrandLabel}</option>}
+                    {brandProfiles.map(profile => (
+                      <option key={profile.id} value={profile.id}>{profile.name || "Untitled brand"}</option>
+                    ))}
+                  </select>
+                  <button onClick={createBrand} title="Create brand" style={{ height:26, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t3)", cursor:"pointer", fontSize:16, lineHeight:"20px", padding:0 }}>+</button>
                 </div>
               </div>
             : <div style={{ height:16, flexShrink:0 }} />
@@ -592,7 +623,7 @@ export default function Home() {
               <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} />
             </div>
             <div style={{ display: tab==="create" || tab==="script" || tab==="production" ? "block" : "none" }}>
-              <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={tenant} settings={appSettings} />
+              <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={activeTenant} settings={appSettings} />
             </div>
             <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
             <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} /></div>
@@ -613,13 +644,13 @@ export default function Home() {
         }}
         onOpenStory={setSelected}
         onUpdateStory={updateStory}
-        tenant={tenant}
+        tenant={activeTenant}
         settings={appSettings}
       />
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} settings={appSettings} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", tenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={tenant} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} />
       <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
       <ToastContainer />
     </div>

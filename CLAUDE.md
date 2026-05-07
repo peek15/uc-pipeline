@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.17.4
+- App badge/package target: v3.17.5
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.17.5: Phase 5 workspace/brand selector foundation: active tenant persists in UI storage, sidebar brand selector lists profiles in the workspace, new brand creation clones current settings into a fresh brand profile, and story/settings reloads follow the selected brand.
 - v3.17.4: Seed-preserving cleanup: app now prefers `brand_profiles.settings` JSONB while reading legacy `brief_doc`, Settings saves both formats safely, schema seeds/migrates Uncle Carter settings so no re-onboarding is required, and legacy Write/Settings components were cleaned to use configured language/script helpers.
 - v3.17.3: SaaS Phase 4 brand-facing hardening: dynamic app chrome, generic login/metadata copy, configured-language CSV import/export, dynamic story/detail readiness, generic Airtable subject/script fields, and settings workspace copy cleanup.
 - v3.17.2: SaaS Phase 3 brand-agnostic workflow layer: scripts JSONB adapter, configured-language Create/Produce/Calendar readiness, brand-aware quality gate terms, agent prompt subject language, and generic pipeline agent context.
@@ -66,6 +67,7 @@ scheduling, provider operations, quality gates, and analytics.
 ## SaaS Tenancy
 - Tenant helper: `src/lib/brand.js`
 - Active tenant shape: `{ workspace_id, brand_profile_id }`.
+- Active tenant is persisted under `uc_ui_active_tenant`; the sidebar brand selector updates it.
 - Default fallback IDs remain `00000000-0000-0000-0000-000000000001` for the existing Uncle Carter workspace.
 - Story DB helpers in `src/lib/db.js` now accept tenant context and inject/scope `workspace_id` + `brand_profile_id`.
 - `supabase-schema.sql` includes Phase 1 workspace tables, `workspace_members`, `is_workspace_member()`, tenant indexes, and transitional RLS policies.

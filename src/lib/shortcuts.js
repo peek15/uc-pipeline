@@ -127,6 +127,10 @@ export const SHORTCUTS = {
   tabPrev: { combo: { alt: true, key: "ArrowLeft" },  description: "Previous section", group: "Navigation" },
   tabNext: { combo: { alt: true, key: "ArrowRight" }, description: "Next section",     group: "Navigation" },
 
+  // Create modes
+  createModePrev: { combo: { alt: true, shift: true, key: "ArrowLeft" },  description: "Previous Create mode", group: "Create" },
+  createModeNext: { combo: { alt: true, shift: true, key: "ArrowRight" }, description: "Next Create mode",     group: "Create" },
+
   // Pipeline (no-modifier nav, plus modified actions)
   pipelineDown:      { combo: { key: "ArrowDown" },                          description: "Next story",                 group: "Pipeline" },
   pipelineUp:        { combo: { key: "ArrowUp" },                            description: "Previous story",             group: "Pipeline" },
@@ -182,6 +186,6 @@ export function getGroupedShortcuts() {
       label: renderCombo(def.combo),
     });
   }
-  const order = ["Global", "Navigation", "Pipeline", "Script", "Production", "Calendar", "Detail Modal"];
+  const order = ["Global", "Navigation", "Create", "Pipeline", "Script", "Production", "Calendar", "Detail Modal"];
   return order.filter(g => groups[g]).map(g => ({ group: g, items: groups[g] }));
 }

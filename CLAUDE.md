@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.18.3
+- App badge/package target: v3.18.4
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.18.4: Intelligence Phase 2 foundation: `intelligence_insights` table added to `supabase-schema.sql`, `write-insight` tool implemented as a safe scoped insert helper, Settings Intelligence reads insight counts, and Provider Diagnostics probes the new table.
 - v3.18.3: Intelligence Phase 1 dashboard in Settings: replaces aspirational copy with live module status for Research, Quality Gate, Calendar, Production Agents, Performance, Prediction, Durable Memory, and Debug intelligence; shows signal counts, maturity, readiness, and next build steps.
 - v3.18.2: Provider Diagnostics tab: schema probes, provider health issue summary, recent AI failure summary, client/app context, copy-for-agent text, and redacted JSON debug bundle export for support/agent troubleshooting. Provider secrets must never be included in diagnostics output.
 - v3.18.1: Template-specific Quality Gate profiles: narrative, ad, publicity, product, educational, community, and generic content now use different checks for objective/audience/channel/deliverable/factual anchor/CTA/proof/news value/teaching point/participation prompt; gate output includes profile/template metadata.
@@ -73,6 +74,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Cost alerts are based on `ai_calls.cost_estimate`; direct provider billing sync is provider-specific and not universally available.
 - Diagnostics runs client-side Supabase schema probes against key SaaS tables/columns, summarizes provider and AI call failures, and exports a redacted debug bundle. Keep it useful for the in-app agent, but do not add raw keys, env values, provider secret JSON, full user lists, or unnecessary story/script content.
 - Intelligence-layer audit and recommended roadmap live in `docs/intelligence-layer-audit.md`.
+- Durable intelligence findings should go to `intelligence_insights` through `src/lib/ai/tools/write-insight.js`; never let an agent mutate strategy/scoring/content directly when a reviewable insight row is enough.
 
 ## SaaS Tenancy
 - Tenant helper: `src/lib/brand.js`
@@ -182,6 +184,7 @@ scheduling, provider operations, quality gates, and analytics.
   - `asset_library`
   - `visual_assets`
   - `agent_feedback`
+  - `intelligence_insights`
 
 ## Typography/UI
 - Fonts are loaded through `next/font` in `src/app/layout.js`.

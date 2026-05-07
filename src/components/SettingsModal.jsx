@@ -247,7 +247,7 @@ function statusTone(status) {
   return { label: "Missing", color: "var(--t4)", bg: "var(--fill2)" };
 }
 
-function intelligenceModules(stories, settings, conflicts) {
+function intelligenceModules(stories, settings, conflicts, insightCount = 0) {
   const published = stories.filter(s => s.status === "published");
   const withMetrics = stories.filter(storyHasMetrics);
   const withScore = stories.filter(s => s.score_total != null);
@@ -316,11 +316,11 @@ function intelligenceModules(stories, settings, conflicts) {
     {
       key: "memory",
       name: "Durable memory",
-      status: "stub",
-      signal: "tools stubbed",
-      source: "agent_feedback + future intelligence_insights",
-      detail: "Correction rows are captured, but insight writing and memory summarization are not implemented.",
-      next: "Create intelligence_insights and implement write-insight.",
+      status: insightCount > 0 ? "partial" : "partial",
+      signal: `${insightCount} insight${insightCount === 1 ? "" : "s"}`,
+      source: "agent_feedback + intelligence_insights",
+      detail: "Insight writing is now available as a safe durable memory layer; summarizers and agents can record findings without mutating strategy.",
+      next: "Add feedback/performance summarizers that automatically create and review insight rows.",
     },
     {
       key: "debug",
@@ -334,8 +334,8 @@ function intelligenceModules(stories, settings, conflicts) {
   ];
 }
 
-function IntelligenceDashboard({ stories, settings, conflicts, appName, version }) {
-  const modules = intelligenceModules(stories, settings, conflicts);
+function IntelligenceDashboard({ stories, settings, conflicts, appName, version, insightCount = 0 }) {
+  const modules = intelligenceModules(stories, settings, conflicts, insightCount);
   const active = modules.filter(m => m.status === "active").length;
   const partial = modules.filter(m => m.status === "partial").length;
   const stub = modules.filter(m => m.status === "stub").length;
@@ -630,6 +630,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [stratContext,  setStratContext]  = useState("");
   const [progAudit,     setProgAudit]     = useState(null);
   const [progRunning,   setProgRunning]   = useState(false);
+  const [insightCount,  setInsightCount]  = useState(0);
   const appName = getAppName(settings);
   const languageSummary = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join(" → ");
 
@@ -659,6 +660,22 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const activeTenant = useMemo(() => normalizeTenant(tenant), [tenant]);
   const BRAND_PROFILE_ID = activeTenant.brand_profile_id;
   const WORKSPACE_ID     = activeTenant.workspace_id;
+
+  useEffect(() => {
+    if (!isOpen || section !== "intelligence") return;
+    let cancelled = false;
+    let query = supabase
+      .from("intelligence_insights")
+      .select("id", { count: "exact", head: true });
+    if (WORKSPACE_ID) query = query.eq("workspace_id", WORKSPACE_ID);
+    if (BRAND_PROFILE_ID) query = query.eq("brand_profile_id", BRAND_PROFILE_ID);
+    query.then(({ count, error }) => {
+      if (!cancelled) setInsightCount(error ? 0 : (count || 0));
+    }).catch(() => {
+      if (!cancelled) setInsightCount(0);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen, section, WORKSPACE_ID, BRAND_PROFILE_ID]);
 
   useEffect(() => {
     if (section === "brand" && isOpen && assets.length === 0) {
@@ -1672,6 +1689,7 @@ ${fileText.slice(0,3000)}` : text };
               conflicts={conflicts}
               appName={appName}
               version={VERSION_NUM}
+              insightCount={insightCount}
             />
           )}
 

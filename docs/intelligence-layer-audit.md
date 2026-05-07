@@ -4,6 +4,7 @@ Date: 2026-05-08
 App baseline: v3.18.2
 
 Update: v3.18.3 ships Phase 1, replacing the static Settings Intelligence copy with a live module-status dashboard.
+Update: v3.18.4 ships the Phase 2 foundation: `intelligence_insights` schema, safe `write-insight` tool, dashboard insight count, and diagnostics probe.
 
 ## Executive Summary
 
@@ -252,6 +253,8 @@ Why first:
 
 Goal: create the durable memory layer.
 
+Status: foundation shipped in v3.18.4. The table and safe write helper exist; automatic insight producers are still next.
+
 Add `intelligence_insights`:
 - `id`
 - `created_at`
@@ -266,7 +269,7 @@ Add `intelligence_insights`:
 - `confidence`
 - `status`
 
-Then implement `write-insight.js`.
+Then implement `write-insight.js`. Done in v3.18.4.
 
 First insight producers:
 - agent feedback summarizer

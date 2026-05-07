@@ -616,6 +616,48 @@ CREATE INDEX IF NOT EXISTS idx_agent_feedback_brand ON agent_feedback (brand_pro
 CREATE INDEX IF NOT EXISTS idx_agent_feedback_workspace ON agent_feedback (workspace_id);
 
 -- ═══════════════════════════════════════════
+-- INTELLIGENCE INSIGHTS
+-- Durable findings written by agents, diagnostics, and pattern analyzers.
+-- These rows are recommendations/memory candidates, not direct mutations
+-- to strategy, scoring weights, or content.
+-- ═══════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS intelligence_insights (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  workspace_id UUID,
+  brand_profile_id UUID,
+  agent_name TEXT,
+  source TEXT NOT NULL,
+  category TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id UUID,
+  summary TEXT NOT NULL,
+  payload JSONB DEFAULT '{}'::jsonb,
+  confidence NUMERIC DEFAULT 0,
+  status TEXT DEFAULT 'open',
+  dismissed_at TIMESTAMPTZ,
+  applied_at TIMESTAMPTZ
+);
+
+ALTER TABLE intelligence_insights ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Tenant intelligence insights access" ON intelligence_insights;
+CREATE POLICY "Tenant intelligence insights access"
+  ON intelligence_insights FOR ALL
+  TO authenticated
+  USING (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
+
+CREATE INDEX IF NOT EXISTS idx_intelligence_insights_created ON intelligence_insights (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_intelligence_insights_workspace ON intelligence_insights (workspace_id);
+CREATE INDEX IF NOT EXISTS idx_intelligence_insights_brand ON intelligence_insights (brand_profile_id);
+CREATE INDEX IF NOT EXISTS idx_intelligence_insights_source ON intelligence_insights (source);
+CREATE INDEX IF NOT EXISTS idx_intelligence_insights_category ON intelligence_insights (category);
+CREATE INDEX IF NOT EXISTS idx_intelligence_insights_status ON intelligence_insights (status);
+CREATE INDEX IF NOT EXISTS idx_intelligence_insights_entity ON intelligence_insights (entity_type, entity_id);
+
+-- ═══════════════════════════════════════════
 -- GOOGLE AUTH SETUP (Dashboard, not SQL):
 --
 -- Authentication → Providers → Google

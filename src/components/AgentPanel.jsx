@@ -4,6 +4,7 @@ import { X, Send, Trash2, Bot, Paperclip, ChevronDown, Database } from "lucide-r
 import { supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { getAiCalls } from "@/lib/ai/audit";
+import { auditRead } from "@/lib/ai/tools/audit-read";
 import { formatCost } from "@/lib/ai/costs";
 import { getBrandName, getContentType, contentObjective, contentChannel } from "@/lib/brandConfig";
 
@@ -350,11 +351,29 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
         // Already have stories in props — just flag to use them all
         data = true;
       } else if (key === "debug") {
-        const calls = metrics?.raw || await getAiCalls({ limit: 200 });
-        const failures = calls.filter(c => !c.success).slice(0, 10);
-        data = failures.length
+        // AI call failures via audit-read (real implementation)
+        const rawCalls = metrics?.raw?.length
+          ? metrics.raw
+          : await auditRead({ source: "ai_calls", failures_only: false, limit: 100, workspace_id: tenant?.workspace_id, brand_profile_id: tenant?.brand_profile_id });
+        const failures = rawCalls.filter(c => !c.success).slice(0, 10);
+        const failureBlock = failures.length
           ? failures.map(c => `  [${c.type}] ${c.error_message || c.error_type || "unknown"} (${c.created_at ? new Date(c.created_at).toLocaleDateString() : "?"})`).join("\n")
-          : "(no recent failures)";
+          : "(no recent AI failures)";
+
+        // Durable debug insights written by agents/tools
+        const { data: insights } = await supabase
+          .from("intelligence_insights")
+          .select("summary,status,created_at,agent_name")
+          .eq("category", "debug")
+          .eq("brand_profile_id", tenant?.brand_profile_id || "")
+          .in("status", ["open", "reviewed"])
+          .order("created_at", { ascending: false })
+          .limit(5);
+        const insightBlock = insights?.length
+          ? insights.map(i => `  [insight·${i.status}] ${i.summary} (${new Date(i.created_at).toLocaleDateString()})`).join("\n")
+          : "";
+
+        data = [failureBlock, insightBlock].filter(Boolean).join("\n") || "(no debug data)";
       } else if (key === "cost_detail") {
         const calls = metrics?.raw || await getAiCalls({ limit: 500 });
         const byWorkflow = Object.entries(

@@ -10,6 +10,7 @@ import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/sh
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 import AssetLibraryModal from "@/components/AssetLibraryModal";
 import { brandConfigForPrompt, getBrandLanguages, getBrandProgrammeMap, getContentTemplate, getContentTypeLabel, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
+import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import {
   AssetMatchesSection,
   AssemblySection,
@@ -236,7 +237,7 @@ function TemplateTaskSection({ story, step, onUpdate }) {
   );
 }
 
-function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings, stepLabel = "Script" }) {
+function ScriptWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, streaming, setStreaming, settings, stepLabel = "Script" }) {
   const languages = getBrandLanguages(settings);
   const secondaryLanguages = languages.filter(l => l.key !== "en");
   const template = getContentTemplate(settings, story?.content_template_id);
@@ -301,6 +302,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
           await onUpdate(story.id, patch);
         }
       }
+      onSaved?.(story.id, storySnapshot);
     } catch (err) {
       setError(err?.message || String(err));
       setStreaming(prev => { const next = { ...prev }; delete next[story.id]; return next; });
@@ -315,6 +317,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
       const patch = storyScriptPatch("en", localScript, story);
       await onUpdate(story.id, patch);
       setLocalScript(null);
+      onSaved?.(story.id, { ...story, ...patch });
     } catch (err) {
       setError(err?.message || String(err));
     }
@@ -475,7 +478,7 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
   );
 }
 
-function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, settings }) {
+function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, settings }) {
   const languages          = getBrandLanguages(settings);
   const secondaryLanguages = languages.filter(l => l.key !== "en");
   const enScript           = getStoryScript(story, "en") || "";
@@ -499,6 +502,7 @@ function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, sett
     setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id] || {}), [langKey]: text } }));
     const patch = storyScriptPatch(langKey, text, story);
     await onUpdate(story.id, patch);
+    onSaved?.(story.id, { ...story, ...patch });
   };
 
   const retranslate = async (langKey) => {
@@ -786,6 +790,15 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
     }
   }, [selectedSteps, setActiveStep]);
 
+  // Re-run the quality gate after any script or translation save
+  const rerunGate = useCallback(async (storyId, patch) => {
+    const base = stories.find(s => s.id === storyId);
+    if (!base) return;
+    const updated = { ...base, ...patch };
+    const gate = auditStoryQuality(updated, stories, settings);
+    await onUpdate(storyId, qualityGatePatch(gate));
+  }, [stories, settings, onUpdate]);
+
   return (
     <div className="animate-fade-in">
       <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} brandProfileId={brandProfileId} workspaceId={workspaceId} />
@@ -901,8 +914,8 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                 </div>
 
                 {["brief", "assets", "voice", "visuals", "assembly"].includes(activeStep) && <ReadinessStrip story={selected} />}
-                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} stepLabel={steps.find(step => step.key === "script")?.label || "Script"} />}
-                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} settings={settings} />}
+                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} stepLabel={steps.find(step => step.key === "script")?.label || "Script"} />}
+                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} settings={settings} />}
                 {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} onApproved={handleBriefApproved} />}
                 {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
                 {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} languages={getBrandLanguages(settings)} onSaved={saveProductionUpdate} />}

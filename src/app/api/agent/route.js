@@ -253,7 +253,7 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
 }
 
-async function callOpenAI({ model, system, messages, maxTokens, key }) {
+async function callOpenAI({ model, system, messages, maxTokens, key, profileId, userEmail }) {
   if (!key) throw new Error("OpenAI API key not configured");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -264,6 +264,7 @@ async function callOpenAI({ model, system, messages, maxTokens, key }) {
       messages: transformMessagesForOpenAI(messages, system),
       max_tokens: maxTokens,
       stream: true,
+      stream_options: { include_usage: true },
     }),
   });
   if (!res.ok) {
@@ -279,6 +280,12 @@ async function callOpenAI({ model, system, messages, maxTokens, key }) {
   let buf = "";
 
   (async () => {
+    const t0 = Date.now();
+    let promptTokens     = 0;
+    let completionTokens = 0;
+    let resolvedModel    = model;
+    let succeeded = false;
+
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -292,13 +299,36 @@ async function callOpenAI({ model, system, messages, maxTokens, key }) {
           if (raw === "[DONE]") continue;
           try {
             const ev = JSON.parse(raw);
+            if (ev.model)           resolvedModel    = ev.model;
+            if (ev.usage?.prompt_tokens)     promptTokens     = ev.usage.prompt_tokens;
+            if (ev.usage?.completion_tokens) completionTokens = ev.usage.completion_tokens;
             const text = ev.choices?.[0]?.delta?.content;
             if (text) await writer.write(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
           } catch {}
         }
       }
+      succeeded = true;
       await writer.write(encoder.encode("data: [DONE]\n\n"));
-    } catch {} finally { await writer.close(); }
+    } catch {} finally {
+      await writer.close();
+      try {
+        const duration_ms = Date.now() - t0;
+        // OpenAI pricing via estimateCost falls back to DEFAULT (Sonnet rates); close enough for tracking
+        await serviceClient().from("ai_calls").insert({
+          type:             "agent-call",
+          provider_name:    "openai",
+          model_version:    resolvedModel,
+          tokens_input:     promptTokens     || null,
+          tokens_output:    completionTokens || null,
+          cost_estimate:    estimateCost(resolvedModel, promptTokens, completionTokens),
+          brand_profile_id: profileId,
+          workspace_id:     null,
+          user_email:       userEmail || null,
+          success:          succeeded,
+          duration_ms,
+        });
+      } catch {}
+    }
   })();
 
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
@@ -353,7 +383,7 @@ export async function POST(request) {
 
   try {
     const key = await loadLLMKey(provider, profileId);
-    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key });
+    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key, profileId, userEmail: user.email });
     return await callAnthropic({ model, system, messages, maxTokens, key, tools: [WRITE_INSIGHT_SCHEMA], profileId, userEmail: user.email });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });

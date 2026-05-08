@@ -526,6 +526,31 @@ export default function CampaignsView({
     } catch {}
   }, [onCreateCampaign]);
 
+  // ── Duplicate current campaign ────────────────────────────
+
+  const handleDuplicate = useCallback(async () => {
+    if (!campaign) return;
+    try {
+      const created = await onCreateCampaign();
+      if (!created?.id) return;
+      const copy = {
+        ...created,
+        name:        `Copy of ${campaign.name}`,
+        color:       campaign.color,
+        objective:   campaign.objective || "",
+        audience:    campaign.audience  || "",
+        deliverables: (campaign.deliverables || []).map(d => ({ ...d, id: crypto.randomUUID() })),
+        status:      "planning",
+        start_date:  null,
+        end_date:    null,
+      };
+      await onUpdateCampaign(copy);
+      setActiveCampaignId(created.id);
+      setLocalName(copy.name);
+      setConfirmDelete(false);
+    } catch {}
+  }, [campaign, onCreateCampaign, onUpdateCampaign]);
+
   // ── Field update shorthand ───────────────────────────────
 
   const updateField = (field, value) => {
@@ -664,6 +689,9 @@ export default function CampaignsView({
                     <button onClick={analyzeCampaign} disabled={analysisLoading} style={buttonStyle("secondary", { gap: 5, fontSize: 11 })}>
                       <Sparkles size={12} /> {analysisLoading ? "Analyzing…" : "Analyze"}
                     </button>
+                    {!confirmDelete && (
+                      <button onClick={handleDuplicate} style={{ ...buttonStyle("ghost", { padding: "5px 10px", fontSize: 11 }), color: "var(--t3)" }}>Duplicate</button>
+                    )}
                     {campaign.status !== "archived" && !confirmDelete && (
                       <button onClick={() => updateField("status", "archived")} style={{ ...buttonStyle("ghost", { padding: "5px 10px", fontSize: 11 }), color: "var(--t3)" }}>Archive</button>
                     )}

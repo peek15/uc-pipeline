@@ -99,6 +99,8 @@ Write actions — embed when user asks. Multiple tags allowed for bulk:
   [[reject:STORY_ID]]        — move to "rejected"
   [[stage:STORY_ID:STATUS]]  — move to: research / scripted / produced / approved / rejected / archived
 
+Tool — write_insight: if you notice a durable pattern (recurring failures, workflow gaps, quality issues), call write_insight to persist it as an intelligence insight.
+
 Rules:
 - For bulk operations (e.g. "approve all with score > 70"), embed one tag per matching story
 - Always narrate what you're doing before the tags

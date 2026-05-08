@@ -21,7 +21,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.19.2";
+const VERSION = "3.19.3";
 
 const TABS = [
   { key: "pipeline",   label: "Content",  Icon: Layers },
@@ -55,6 +55,7 @@ export default function Home() {
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
   const [agentOpen,       setAgentOpen]       = useState(false);
+  const [newBrand,        setNewBrand]        = useState({ show: false, name: "", cloneSettings: true, openSettings: false });
 
   useEffect(() => {
     if (tab === "script") { setCreateMode("write"); setTab("create"); }
@@ -115,16 +116,22 @@ export default function Home() {
   const handleSignIn  = async () => { setAuthLoading(true); setAuthError(null); try { await signInWithGoogle(); } catch (err) { setAuthError(err.message); setAuthLoading(false); } };
   const handleSignOut = async () => { await signOut(); setUser(null); setStories([]); setShowUserMenu(false); };
 
-  const createBrand = useCallback(async () => {
-    const name = window.prompt("New brand name");
-    if (!name?.trim()) return;
-    const profile = await createBrandProfile({ name: name.trim(), settings: appSettings || {} }, activeTenant);
+  const createBrand = useCallback(() => {
+    setNewBrand({ show: true, name: "", cloneSettings: true, openSettings: false });
+  }, []);
+
+  const submitNewBrand = useCallback(async () => {
+    if (!newBrand.name.trim()) return;
+    const settings = newBrand.cloneSettings ? (appSettings || {}) : {};
+    const profile = await createBrandProfile({ name: newBrand.name.trim(), settings }, activeTenant);
     setBrandProfiles(prev => [...prev.filter(p => p.id !== profile.id), profile]);
     const nextTenant = { workspace_id: profile.workspace_id || activeTenant.workspace_id, brand_profile_id: profile.id };
     setTenant(nextTenant);
-    setAppSettings(profile.settings || { ...(appSettings || {}), brand: { ...(appSettings?.brand || {}), name: name.trim() } });
-    toast(`Created ${name.trim()}`);
-  }, [activeTenant, appSettings, setTenant]);
+    setAppSettings(profile.settings || { ...(appSettings || {}), brand: { ...(appSettings?.brand || {}), name: newBrand.name.trim() } });
+    setNewBrand({ show: false, name: "", cloneSettings: true, openSettings: false });
+    toast(`Created ${newBrand.name.trim()}`);
+    if (newBrand.openSettings) setShowSettings(true);
+  }, [activeTenant, appSettings, newBrand, setTenant]);
 
   const addStories = useCallback(async (n) => {
     const saved = await bulkUpsertStories(n, activeTenant);
@@ -662,6 +669,35 @@ export default function Home() {
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} settings={appSettings} />}
       <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} />
       <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
+
+      {newBrand.show && (
+        <div onClick={() => setNewBrand(s => ({ ...s, show: false }))} style={{ position:"fixed", inset:0, zIndex:100, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:"var(--bg2)", border:"0.5px solid var(--border)", borderRadius:12, padding:24, width:320, display:"flex", flexDirection:"column", gap:14 }}>
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--t1)" }}>New brand</div>
+            <input
+              autoFocus
+              placeholder="Brand name"
+              value={newBrand.name}
+              onChange={e => setNewBrand(s => ({ ...s, name: e.target.value }))}
+              onKeyDown={e => { if (e.key === "Enter") submitNewBrand(); if (e.key === "Escape") setNewBrand(s => ({ ...s, show: false })); }}
+              style={{ height:32, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t1)", fontSize:13, padding:"0 10px", outline:"none", fontFamily:"inherit", width:"100%", boxSizing:"border-box" }}
+            />
+            <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:"var(--t2)", cursor:"pointer" }}>
+              <input type="checkbox" checked={newBrand.cloneSettings} onChange={e => setNewBrand(s => ({ ...s, cloneSettings: e.target.checked }))} />
+              Clone current brand settings
+            </label>
+            <label style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:"var(--t2)", cursor:"pointer" }}>
+              <input type="checkbox" checked={newBrand.openSettings} onChange={e => setNewBrand(s => ({ ...s, openSettings: e.target.checked }))} />
+              Open settings after creation
+            </label>
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+              <button onClick={() => setNewBrand(s => ({ ...s, show: false }))} style={{ padding:"6px 14px", borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", color:"var(--t2)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Cancel</button>
+              <button onClick={submitNewBrand} disabled={!newBrand.name.trim()} style={{ padding:"6px 14px", borderRadius:7, border:"none", background:"var(--gold)", color:"#000", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", opacity: newBrand.name.trim() ? 1 : 0.4 }}>Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ToastContainer />
     </div>
   );

@@ -55,6 +55,42 @@ async function loadLLMKey(provider, profileId = BRAND_PROFILE_ID) {
   return null;
 }
 
+// ── Tool definitions ──────────────────────────────────────
+
+const VALID_CATEGORIES = ["research","quality","calendar","production","performance","prediction","memory","debug"];
+
+const WRITE_INSIGHT_SCHEMA = {
+  name: "write_insight",
+  description: "Persist a durable insight into intelligence_insights for later review. Use this when you notice a pattern, anomaly, or recommendation worth recording — such as recurring AI failures, quality gate issues, or workflow gaps.",
+  input_schema: {
+    type: "object",
+    properties: {
+      category:   { type: "string", enum: VALID_CATEGORIES, description: "Insight category" },
+      summary:    { type: "string", description: "Plain-text summary (max 1400 chars)" },
+      confidence: { type: "number", description: "0–1 confidence score" },
+    },
+    required: ["category", "summary"],
+  },
+};
+
+async function executeTool(name, input, profileId) {
+  if (name === "write_insight") {
+    const { data, error } = await serviceClient().from("intelligence_insights").insert({
+      brand_profile_id: profileId,
+      agent_name: "pipeline-agent",
+      source: "pipeline-agent",
+      category: VALID_CATEGORIES.includes(input.category) ? input.category : "debug",
+      summary: String(input.summary || "").slice(0, 1400),
+      payload: {},
+      confidence: Math.max(0, Math.min(1, Number(input.confidence) || 0.7)),
+      status: "open",
+    }).select("id,summary,category").single();
+    if (error) throw error;
+    return { ok: true, id: data.id, category: data.category };
+  }
+  throw new Error(`Unknown tool: ${name}`);
+}
+
 // ── Provider routing ──────────────────────────────────────
 
 function transformMessagesForAnthropic(messages) {
@@ -89,53 +125,99 @@ function transformMessagesForOpenAI(messages, system) {
   return out;
 }
 
-async function callAnthropic({ model, system, messages, maxTokens, key }) {
+async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId }) {
   if (!key) throw new Error("Anthropic API key not configured");
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model,
-      system,
-      messages: transformMessagesForAnthropic(messages),
-      max_tokens: maxTokens,
-      stream: true,
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Anthropic ${res.status}`);
-  }
-
-  // Normalize SSE: emit data: {"text":"..."} for each text delta
   const { readable, writable } = new TransformStream();
   const writer  = writable.getWriter();
-  const reader  = res.body.getReader();
-  const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let buf = "";
 
   (async () => {
     try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop();
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const ev = JSON.parse(line.slice(6));
-            if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ text: ev.delta.text })}\n\n`));
-            }
-          } catch {}
+      let turnMessages = transformMessagesForAnthropic(messages);
+
+      for (let turn = 0; turn < 4; turn++) {
+        const body = { model, system, messages: turnMessages, max_tokens: maxTokens, stream: true };
+        if (tools?.length) body.tools = tools;
+
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error?.message || `Anthropic ${res.status}`);
         }
+
+        const reader  = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        let stopReason = null;
+        const textBlocks = {};  // index → accumulated text
+        const toolBlocks = {};  // index → { id, name, inputJson }
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const ev = JSON.parse(line.slice(6));
+              if (ev.type === "content_block_start") {
+                if (ev.content_block?.type === "tool_use") {
+                  toolBlocks[ev.index] = { id: ev.content_block.id, name: ev.content_block.name, inputJson: "" };
+                } else if (ev.content_block?.type === "text") {
+                  textBlocks[ev.index] = "";
+                }
+              } else if (ev.type === "content_block_delta") {
+                if (ev.delta?.type === "text_delta" && ev.delta.text) {
+                  textBlocks[ev.index] = (textBlocks[ev.index] || "") + ev.delta.text;
+                  await writer.write(encoder.encode(`data: ${JSON.stringify({ text: ev.delta.text })}\n\n`));
+                } else if (ev.delta?.type === "input_json_delta" && toolBlocks[ev.index]) {
+                  toolBlocks[ev.index].inputJson += ev.delta.partial_json || "";
+                }
+              } else if (ev.type === "message_delta") {
+                stopReason = ev.delta?.stop_reason;
+              }
+            } catch {}
+          }
+        }
+
+        if (stopReason !== "tool_use") break;
+
+        // Build assistant content for the tool-use turn
+        const assistantContent = [];
+        for (const [idx, text] of Object.entries(textBlocks)) {
+          if (text) assistantContent.push({ type: "text", text });
+        }
+        for (const [idx, tb] of Object.entries(toolBlocks)) {
+          let input = {};
+          try { input = JSON.parse(tb.inputJson); } catch {}
+          assistantContent.push({ type: "tool_use", id: tb.id, name: tb.name, input });
+        }
+        turnMessages = [...turnMessages, { role: "assistant", content: assistantContent }];
+
+        // Execute tools and collect results
+        const toolResults = [];
+        for (const tb of Object.values(toolBlocks)) {
+          let input = {};
+          try { input = JSON.parse(tb.inputJson); } catch {}
+          let result;
+          try { result = await executeTool(tb.name, input, profileId); }
+          catch (err) { result = { error: err.message }; }
+          toolResults.push({ type: "tool_result", tool_use_id: tb.id, content: JSON.stringify(result) });
+        }
+        turnMessages = [...turnMessages, { role: "user", content: toolResults }];
       }
+
       await writer.write(encoder.encode("data: [DONE]\n\n"));
-    } catch {} finally { await writer.close(); }
+    } catch (err) {
+      try { await writer.write(encoder.encode(`data: ${JSON.stringify({ error: err.message })}\n\n`)); } catch {}
+    } finally { await writer.close(); }
   })();
 
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
@@ -242,7 +324,7 @@ export async function POST(request) {
   try {
     const key = await loadLLMKey(provider, profileId);
     if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key });
-    return await callAnthropic({ model, system, messages, maxTokens, key });
+    return await callAnthropic({ model, system, messages, maxTokens, key, tools: [WRITE_INSIGHT_SCHEMA], profileId });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }

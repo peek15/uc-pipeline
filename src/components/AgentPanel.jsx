@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, Send, Trash2, Bot, Paperclip, ChevronDown } from "lucide-react";
+import { X, Send, Trash2, Bot, Paperclip, ChevronDown, Database } from "lucide-react";
 import { supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { getAiCalls } from "@/lib/ai/audit";
@@ -18,31 +18,63 @@ const MODELS = [
 const PROVIDER_LABEL = { anthropic: "Claude", openai: "OpenAI" };
 
 const SUGGESTIONS = [
-  "What's the pipeline status?",
-  "Which stories are ready to script?",
-  "Check the production bank",
-  "What should we research next?",
+  "Approve all stories with score above 70",
+  "What's ready to script?",
+  "Show me recent AI failures",
+  "Pipeline status",
 ];
 
+// ── Context sources ───────────────────────────────────────
+const CONTEXT_SOURCES = [
+  { key: "all_scores",  label: "All scores",  desc: "Scores for every story — enables filter queries like 'approve score > 70'" },
+  { key: "debug",       label: "Debug logs",  desc: "Recent AI failures and errors from the pipeline" },
+  { key: "cost_detail", label: "Cost detail", desc: "Spend breakdown by workflow and provider" },
+];
+
+// ── History key ───────────────────────────────────────────
+function historyKey(tenant) {
+  return `agent_history_${tenant?.brand_profile_id || "default"}`;
+}
+
 // ── Pipeline context ──────────────────────────────────────
-function buildSystem(stories, tab, metrics, settings) {
-  const brandName  = getBrandName(settings);
+function buildSystem(stories, tab, metrics, settings, extraCtx) {
+  const brandName   = getBrandName(settings);
   const contentType = getBrandContentType(settings);
   const counts = {};
   for (const s of stories) counts[s.status] = (counts[s.status] || 0) + 1;
   const bank = stories.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
+
+  // Core snapshot — top 25, with score + quality gate
   const snapshot = stories
     .filter(s => !["rejected","archived"].includes(s.status))
     .slice(0, 25)
     .map(s => {
-      const gate = s.quality_gate_status ? ` [gate:${s.quality_gate_status}]` : "";
-      return `  • "${s.title}" [${s.status}]${gate}${s.archetype ? ` · ${s.archetype}` : ""}${s.era ? ` · ${s.era}` : ""} (id:${s.id})`;
+      const score = s.score  != null ? ` [score:${s.score}]`               : "";
+      const gate  = s.quality_gate_status ? ` [gate:${s.quality_gate_status}]` : "";
+      return `  • "${s.title}" [${s.status}]${score}${gate}${s.archetype ? ` · ${s.archetype}` : ""}${s.era ? ` · ${s.era}` : ""} (id:${s.id})`;
     })
     .join("\n");
 
   const metricsBlock = metrics
     ? `\nAI usage (7d): ${metrics.calls} calls · ${metrics.cost} · ${metrics.failed} failures · top: ${metrics.byType}`
     : "";
+
+  // Extra context blocks (on-request)
+  let extraBlocks = "";
+  if (extraCtx.all_scores) {
+    const allScored = stories
+      .filter(s => !["rejected","archived"].includes(s.status) && s.score != null)
+      .sort((a, b) => b.score - a.score)
+      .map(s => `  ${s.score} — "${s.title}" [${s.status}] (id:${s.id})`)
+      .join("\n");
+    extraBlocks += `\nAll story scores (high→low):\n${allScored || "(none with scores)"}`;
+  }
+  if (extraCtx.debug) {
+    extraBlocks += `\nRecent AI failures:\n${extraCtx.debug || "(none)"}`;
+  }
+  if (extraCtx.cost_detail) {
+    extraBlocks += `\nCost breakdown:\n${extraCtx.cost_detail}`;
+  }
 
   return `You are the pipeline agent for ${brandName}, a ${contentType} content pipeline at Peek Studios.
 
@@ -51,26 +83,26 @@ Pipeline state (${new Date().toLocaleDateString()}):
 - Production bank (approved+scripted+produced): ${bank}
 - Current view: ${tab}
 ${metricsBlock}
-Stories:
+Stories (top 25):
 ${snapshot || "(none yet)"}
-
+${extraBlocks}
 Navigation — embed to trigger:
   [[nav:pipeline]]  [[nav:research]]  [[nav:create]]  [[nav:calendar]]  [[nav:analyze]]
   [[story:STORY_ID]]  — open story detail
 
-Write actions — ONLY when user explicitly asks:
+Write actions — embed when user asks. Multiple tags allowed for bulk:
   [[approve:STORY_ID]]       — move to "approved"
   [[reject:STORY_ID]]        — move to "rejected"
   [[stage:STORY_ID:STATUS]]  — move to: research / scripted / produced / approved / rejected / archived
 
 Rules:
-- Narrate every action by title before embedding the tag
-- One tag per response unless asked for bulk
-- Format with **bold** for key names and bullet lists for multiple items
+- For bulk operations (e.g. "approve all with score > 70"), embed one tag per matching story
+- Always narrate what you're doing before the tags
+- Use **bold** for key names, bullet lists for multiple items
 - Be concise — 2-3 sentences unless more detail is requested`;
 }
 
-// ── Action parsing ────────────────────────────────────────
+// ── Action parsing (finds ALL occurrences) ────────────────
 function stripActions(text) {
   return text
     .replace(/\[\[nav:\w+\]\]/g, "")
@@ -81,15 +113,13 @@ function stripActions(text) {
     .replace(/  +/g, " ").trim();
 }
 
-function parseActions(text) {
-  const stageMatch = text.match(/\[\[stage:([a-f0-9-]+):(\w+)\]\]/);
+function parseAllActions(text) {
   return {
-    nav:     text.match(/\[\[nav:(\w+)\]\]/)?.[1]            ?? null,
-    story:   text.match(/\[\[story:([a-f0-9-]+)\]\]/)?.[1]   ?? null,
-    approve: text.match(/\[\[approve:([a-f0-9-]+)\]\]/)?.[1] ?? null,
-    reject:  text.match(/\[\[reject:([a-f0-9-]+)\]\]/)?.[1]  ?? null,
-    stageId: stageMatch?.[1] ?? null,
-    stageTo: stageMatch?.[2] ?? null,
+    nav:     text.match(/\[\[nav:(\w+)\]\]/)?.[1] ?? null,
+    stories: [...text.matchAll(/\[\[story:([a-f0-9-]+)\]\]/g)].map(m => m[1]),
+    approve: [...text.matchAll(/\[\[approve:([a-f0-9-]+)\]\]/g)].map(m => m[1]),
+    reject:  [...text.matchAll(/\[\[reject:([a-f0-9-]+)\]\]/g)].map(m => m[1]),
+    stages:  [...text.matchAll(/\[\[stage:([a-f0-9-]+):(\w+)\]\]/g)].map(m => ({ id: m[1], to: m[2] })),
   };
 }
 
@@ -136,11 +166,7 @@ function Markdown({ text }) {
     } else {
       flushList();
       if (trimmed) {
-        output.push(
-          <span key={key++} style={{ display: "block", marginTop: output.length ? 5 : 0, lineHeight: 1.55 }}>
-            {fmt(trimmed, `s${key}`)}
-          </span>
-        );
+        output.push(<span key={key++} style={{ display: "block", marginTop: output.length ? 5 : 0, lineHeight: 1.55 }}>{fmt(trimmed, `s${key}`)}</span>);
       } else if (output.length) {
         output.push(<span key={key++} style={{ display: "block", height: 5 }} />);
       }
@@ -155,13 +181,7 @@ function TypingDots() {
   return (
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center", padding: "2px 0" }}>
       {[0, 1, 2].map(i => (
-        <span key={i} style={{
-          width: 5, height: 5, borderRadius: "50%",
-          background: "var(--t4)",
-          display: "inline-block",
-          animation: "pulse 1.2s ease infinite",
-          animationDelay: `${i * 0.18}s`,
-        }} />
+        <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--t4)", display: "inline-block", animation: "pulse 1.2s ease infinite", animationDelay: `${i * 0.18}s` }} />
       ))}
     </span>
   );
@@ -188,11 +208,10 @@ function Bubble({ m, streaming }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start" }}>
       <div style={{
-        maxWidth: "90%",
-        padding: "8px 11px",
+        maxWidth: "90%", padding: "8px 11px",
         borderRadius: isUser ? "10px 10px 3px 10px" : "10px 10px 10px 3px",
         background: isUser ? "var(--t1)" : isError ? "var(--error-bg)" : "var(--fill2)",
-        color:      isUser ? "var(--bg)" : isError ? "var(--error)" : "var(--t1)",
+        color:      isUser ? "var(--bg)" : isError ? "var(--error)"  : "var(--t1)",
         fontSize: 13, lineHeight: 1.55,
         border: isUser ? "none" : isError ? "0.5px solid var(--error-border)" : "0.5px solid var(--border)",
         wordBreak: "break-word",
@@ -209,31 +228,77 @@ function Bubble({ m, streaming }) {
           ? <TypingDots />
           : isUser
             ? <span style={{ whiteSpace: "pre-wrap" }}>{text}</span>
-            : <Markdown text={text} />
-        }
+            : <Markdown text={text} />}
       </div>
     </div>
   );
 }
 
+// ── Context toggle button ─────────────────────────────────
+function ContextToggle({ source, active, loading, onToggle }) {
+  return (
+    <button onClick={() => onToggle(source.key)} title={source.desc} style={{
+      padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 500, cursor: "pointer",
+      background: active ? "rgba(196,154,60,0.18)" : "var(--fill)",
+      color:      active ? "var(--gold)"           : "var(--t4)",
+      border:     active ? "0.5px solid rgba(196,154,60,0.4)" : "0.5px solid var(--border)",
+      opacity:    loading ? 0.5 : 1,
+      transition: "all 0.12s",
+    }}>
+      {loading ? "…" : source.label}
+    </button>
+  );
+}
+
 // ── Main component ────────────────────────────────────────
 export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory, onUpdateStory, tenant, settings = null }) {
-  const [messages,   setMessages]   = useState([]);
-  const [input,      setInput]      = useState("");
-  const [streaming,  setStreaming]  = useState(false);
-  const [pending,    setPending]    = useState([]);
-  const [modelId,    setModelId]    = usePersistentState("agent_model", "claude-sonnet-4-6");
-  const [showPicker, setShowPicker] = useState(false);
-  const [providers,  setProviders]  = useState({ anthropic: true, openai: false });
-  const [dragOver,   setDragOver]   = useState(false);
-  const [metrics,    setMetrics]    = useState(null);
+  const [messages,    setMessages]    = useState([]);
+  const [input,       setInput]       = useState("");
+  const [streaming,   setStreaming]   = useState(false);
+  const [pending,     setPending]     = useState([]);
+  const [modelId,     setModelId]     = usePersistentState("agent_model", "claude-sonnet-4-6");
+  const [showPicker,  setShowPicker]  = useState(false);
+  const [providers,   setProviders]   = useState({ anthropic: true, openai: false });
+  const [dragOver,    setDragOver]    = useState(false);
+  const [metrics,     setMetrics]     = useState(null);
+  const [ctxActive,   setCtxActive]   = useState({});  // which context sources are on
+  const [ctxLoading,  setCtxLoading]  = useState({});  // which are loading
+  const [extraCtx,    setExtraCtx]    = useState({});  // fetched data per source
 
-  const scrollRef   = useRef(null);
-  const fileRef     = useRef(null);
-  const panelRef    = useRef(null);
-  const textareaRef = useRef(null);
+  const scrollRef    = useRef(null);
+  const fileRef      = useRef(null);
+  const panelRef     = useRef(null);
+  const textareaRef  = useRef(null);
+  const historyReady = useRef(false);
 
-  // Fetch available providers
+  // ── Load history from localStorage on mount (text only)
+  useEffect(() => {
+    if (historyReady.current) return;
+    historyReady.current = true;
+    try {
+      const saved = localStorage.getItem(historyKey(tenant));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length) setMessages(parsed);
+      }
+    } catch {}
+  }, [tenant]);
+
+  // ── Persist history (text only, max 30 messages)
+  useEffect(() => {
+    if (!historyReady.current) return;
+    try {
+      const toSave = messages.slice(-30).map(m => ({
+        role: m.role,
+        content: Array.isArray(m.content)
+          ? m.content.filter(p => p.type === "text")  // strip image data
+          : m.content,
+      }));
+      localStorage.setItem(historyKey(tenant), JSON.stringify(toSave));
+    } catch {}
+  }, [messages, tenant]);
+
+  // ── Fetch providers
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
@@ -241,7 +306,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
     });
   }, []);
 
-  // Fetch AI usage metrics once per panel open
+  // ── Fetch base metrics once per panel open
   useEffect(() => {
     if (!isOpen || metrics) return;
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -251,7 +316,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
       const byType = Object.entries(
         recent.reduce((acc, c) => { const k = c.type || "unknown"; acc[k] = (acc[k] || 0) + 1; return acc; }, {})
       ).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${k}×${n}`).join(", ");
-      setMetrics({ calls: recent.length, cost: formatCost(cost), failed: recent.filter(c => !c.success).length, byType: byType || "none" });
+      setMetrics({ calls: recent.length, cost: formatCost(cost), failed: recent.filter(c => !c.success).length, byType: byType || "none", raw: calls });
     }).catch(() => {});
   }, [isOpen, metrics, tenant?.workspace_id, tenant?.brand_profile_id]);
 
@@ -266,12 +331,49 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
     return () => document.removeEventListener("mousedown", handler);
   }, [showPicker]);
 
+  // ── Toggle context source
+  const toggleContext = useCallback(async (key) => {
+    if (ctxActive[key]) {
+      setCtxActive(s => ({ ...s, [key]: false }));
+      setExtraCtx(s => ({ ...s, [key]: null }));
+      return;
+    }
+    setCtxLoading(s => ({ ...s, [key]: true }));
+    try {
+      let data = null;
+      if (key === "all_scores") {
+        // Already have stories in props — just flag to use them all
+        data = true;
+      } else if (key === "debug") {
+        const calls = metrics?.raw || await getAiCalls({ limit: 200 });
+        const failures = calls.filter(c => !c.success).slice(0, 10);
+        data = failures.length
+          ? failures.map(c => `  [${c.type}] ${c.error_message || c.error_type || "unknown"} (${c.created_at ? new Date(c.created_at).toLocaleDateString() : "?"})`).join("\n")
+          : "(no recent failures)";
+      } else if (key === "cost_detail") {
+        const calls = metrics?.raw || await getAiCalls({ limit: 500 });
+        const byWorkflow = Object.entries(
+          calls.reduce((acc, c) => {
+            const k = c.type || "unknown";
+            acc[k] = acc[k] || { calls: 0, cost: 0 };
+            acc[k].calls++;
+            acc[k].cost += Number(c.cost_estimate) || 0;
+            return acc;
+          }, {})
+        ).sort((a, b) => b[1].cost - a[1].cost).slice(0, 10)
+         .map(([k, v]) => `  ${k}: ${v.calls} calls · ${formatCost(v.cost)}`).join("\n");
+        data = byWorkflow || "(no data)";
+      }
+      setExtraCtx(s => ({ ...s, [key]: data }));
+      setCtxActive(s => ({ ...s, [key]: true }));
+    } catch {}
+    finally { setCtxLoading(s => ({ ...s, [key]: false })); }
+  }, [ctxActive, metrics]);
+
   const selectedModel = MODELS.find(m => m.id === modelId) || MODELS[0];
 
   const addImages = useCallback(async (files) => {
-    const valid = Array.from(files)
-      .filter(f => f.type.startsWith("image/") && f.size <= 5 * 1024 * 1024)
-      .slice(0, 4 - pending.length);
+    const valid = Array.from(files).filter(f => f.type.startsWith("image/") && f.size <= 5 * 1024 * 1024).slice(0, 4 - pending.length);
     if (!valid.length) return;
     const converted = await Promise.all(valid.map(toBase64));
     setPending(p => [...p, ...converted].slice(0, 4));
@@ -282,8 +384,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   const onDragLeave = (e) => { if (!panelRef.current?.contains(e.relatedTarget)) setDragOver(false); };
 
   const onPaste = useCallback((e) => {
-    const files = Array.from(e.clipboardData?.items || [])
-      .filter(i => i.type.startsWith("image/")).map(i => i.getAsFile()).filter(Boolean);
+    const files = Array.from(e.clipboardData?.items || []).filter(i => i.type.startsWith("image/")).map(i => i.getAsFile()).filter(Boolean);
     if (files.length) { e.preventDefault(); addImages(files); }
   }, [addImages]);
 
@@ -294,13 +395,18 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   }, []);
 
   const runActions = useCallback((text) => {
-    const { nav, story, approve, reject, stageId, stageTo } = parseActions(text);
-    if (nav)     onNavigate(nav);
-    if (story)   { const s = stories.find(x => x.id === story); if (s) onOpenStory(s); }
-    if (approve) onUpdateStory?.(approve, { status: "approved" });
-    if (reject)  onUpdateStory?.(reject,  { status: "rejected" });
-    if (stageId && stageTo) onUpdateStory?.(stageId, { status: stageTo });
+    const { nav, stories: storyIds, approve, reject, stages } = parseAllActions(text);
+    if (nav) onNavigate(nav);
+    storyIds.forEach(id => { const s = stories.find(x => x.id === id); if (s) onOpenStory(s); });
+    approve.forEach(id => onUpdateStory?.(id, { status: "approved" }));
+    reject.forEach(id  => onUpdateStory?.(id, { status: "rejected" }));
+    stages.forEach(({ id, to }) => onUpdateStory?.(id, { status: to }));
   }, [onNavigate, onOpenStory, onUpdateStory, stories]);
+
+  const clearHistory = useCallback(() => {
+    setMessages([]);
+    try { localStorage.removeItem(historyKey(tenant)); } catch {}
+  }, [tenant]);
 
   const send = useCallback(async (overrideText) => {
     const text = (overrideText ?? input).trim();
@@ -314,7 +420,6 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
       : text;
 
     const history = [...messages, { role: "user", content }];
-    // Trim to last 20 messages to avoid context overflow
     const apiHistory = history.length > 20 ? history.slice(-20) : history;
     setMessages([...history, { role: "assistant", content: "" }]);
     setStreaming(true);
@@ -328,7 +433,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           provider:  selectedModel.provider,
           model:     modelId,
           messages:  apiHistory,
-          system:    buildSystem(stories, tab, metrics, settings),
+          system:    buildSystem(stories, tab, metrics, settings, ctxActive.all_scores ? { all_scores: true, debug: extraCtx.debug, cost_detail: extraCtx.cost_detail } : { debug: extraCtx.debug, cost_detail: extraCtx.cost_detail }),
           maxTokens: 1500,
         }),
       });
@@ -338,7 +443,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
         throw new Error(err.error || `Error ${res.status}`);
       }
 
-      const reader  = res.body.getReader();
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let full = ""; let buf = "";
 
@@ -364,21 +469,21 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
     } catch (err) {
       setMessages(m => { const n = [...m]; n[n.length - 1] = { role: "assistant", content: `Error: ${err.message}` }; return n; });
     } finally { setStreaming(false); }
-  }, [input, pending, messages, streaming, modelId, selectedModel, stories, tab, metrics, settings, runActions]);
+  }, [input, pending, messages, streaming, modelId, selectedModel, stories, tab, metrics, settings, ctxActive, extraCtx, runActions]);
 
   const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
 
   const btnIcon = { width: 24, height: 24, borderRadius: 5, border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   const groups  = Object.entries(MODELS.reduce((acc, m) => { (acc[m.provider] = acc[m.provider] || []).push(m); return acc; }, {}));
   const canSend = (input.trim() || pending.length) && !streaming;
+  const activeCtxCount = Object.values(ctxActive).filter(Boolean).length;
 
   return (
     <aside
       ref={panelRef}
       onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
       style={{
-        width: isOpen ? 320 : 0,
-        flexShrink: 0, overflow: "hidden",
+        width: isOpen ? 320 : 0, flexShrink: 0, overflow: "hidden",
         background: dragOver ? "var(--fill2)" : "var(--bg2)",
         borderLeft: `0.5px solid ${dragOver ? "var(--gold)" : "var(--border)"}`,
         display: "flex", flexDirection: "column", zIndex: 15,
@@ -403,10 +508,11 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           <div style={{ flex: 1 }} />
 
           {messages.length > 0 && (
-            <button onClick={() => setMessages([])} title="Clear conversation" style={{ ...btnIcon, color: "var(--t4)" }}><Trash2 size={12} /></button>
+            <button onClick={clearHistory} title="Clear conversation" style={{ ...btnIcon, color: "var(--t4)" }}><Trash2 size={12} /></button>
           )}
           <button onClick={onClose} title="Close (⌘⌥A)" style={{ ...btnIcon, color: "var(--t3)" }}><X size={13} /></button>
 
+          {/* Model picker */}
           {showPicker && (
             <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "var(--sheet)", border: "0.5px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-lg)", padding: "6px 0", margin: "4px 8px 0" }}>
               {groups.map(([provider, models]) => (
@@ -416,15 +522,14 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
                     {!providers[provider] && <span style={{ marginLeft: 4, color: "var(--error)", fontWeight: 400 }}>· key not set</span>}
                   </div>
                   {models.map(m => {
-                    const active   = m.id === modelId;
-                    const disabled = !providers[m.provider];
+                    const active = m.id === modelId, disabled = !providers[m.provider];
                     return (
                       <button key={m.id} disabled={disabled} onClick={() => { setModelId(m.id); setShowPicker(false); }} style={{
                         width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                         gap: 8, padding: "7px 12px", border: "none", cursor: disabled ? "not-allowed" : "pointer",
                         background: active ? "var(--fill2)" : "transparent", opacity: disabled ? 0.4 : 1,
                       }}>
-                        <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: "var(--t1)", textAlign: "left" }}>{m.label}</span>
+                        <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: "var(--t1)" }}>{m.label}</span>
                         <span style={{ fontSize: 11, color: "var(--t3)" }}>{m.desc}</span>
                       </button>
                     );
@@ -435,13 +540,22 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           )}
         </div>
 
+        {/* ── Context bar ── */}
+        <div style={{ padding: "6px 12px", borderBottom: "0.5px solid var(--border)", display: "flex", alignItems: "center", gap: 6 }}>
+          <Database size={10} style={{ color: "var(--t4)", flexShrink: 0 }} />
+          <span style={{ fontSize: 10, color: "var(--t4)", marginRight: 2 }}>Context:</span>
+          {CONTEXT_SOURCES.map(src => (
+            <ContextToggle key={src.key} source={src} active={!!ctxActive[src.key]} loading={!!ctxLoading[src.key]} onToggle={toggleContext} />
+          ))}
+        </div>
+
         {/* ── Messages ── */}
         <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: 10 }}>
           {messages.length === 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 32, gap: 20 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 24, gap: 16 }}>
               <div style={{ color: "var(--t4)", fontSize: 12, textAlign: "center", lineHeight: 1.8 }}>
-                Ask about the pipeline,<br />navigate views, or kick off<br />a production step.
-                <div style={{ fontSize: 10, marginTop: 4, opacity: 0.6 }}>Drop images anytime.</div>
+                Ask about the pipeline,<br />navigate views, or run bulk actions.
+                <div style={{ fontSize: 10, marginTop: 4, opacity: 0.6 }}>Drop images · {activeCtxCount > 0 ? `${activeCtxCount} context source${activeCtxCount > 1 ? "s" : ""} active` : "Enable context above for richer queries"}</div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
                 {SUGGESTIONS.map(s => (
@@ -461,7 +575,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           )}
         </div>
 
-        {/* ── Pending image thumbnails ── */}
+        {/* ── Pending images ── */}
         {pending.length > 0 && (
           <div style={{ display: "flex", gap: 6, padding: "6px 12px 0", flexWrap: "wrap" }}>
             {pending.map((img, i) => (
@@ -496,20 +610,16 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
                 padding: "8px 10px", borderRadius: 8,
                 border: "0.5px solid var(--border-in)", background: "var(--bg)",
                 color: "var(--t1)", fontSize: 13, outline: "none",
-                fontFamily: "inherit", lineHeight: 1.4,
-                minHeight: 36, maxHeight: 120,
+                fontFamily: "inherit", lineHeight: 1.4, minHeight: 36, maxHeight: 120,
               }}
             />
-            <button onClick={() => fileRef.current?.click()} title="Attach image" style={{
-              ...btnIcon, width: 32, height: 32, border: "0.5px solid var(--border)", color: "var(--t3)",
-            }}><Paperclip size={13} /></button>
+            <button onClick={() => fileRef.current?.click()} title="Attach image" style={{ ...btnIcon, width: 32, height: 32, border: "0.5px solid var(--border)", color: "var(--t3)" }}><Paperclip size={13} /></button>
             <button onClick={() => send()} disabled={!canSend} style={{
               width: 32, height: 32, borderRadius: 8, border: "none", flexShrink: 0,
               background: canSend ? "var(--t1)" : "var(--fill2)",
               color:      canSend ? "var(--bg)" : "var(--t4)",
               cursor:     canSend ? "pointer"   : "not-allowed",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "background 0.12s",
+              display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.12s",
             }}><Send size={13} /></button>
           </div>
         </div>

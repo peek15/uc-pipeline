@@ -83,7 +83,8 @@ function DeliverableRow({ row, linkedStories, onChange, onDelete }) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 72px 1fr 28px", gap: 8, alignItems: "center", padding: "8px 0", borderBottom: "0.5px solid var(--border2)" }}>
+    <div style={{ padding: "8px 0", borderBottom: "0.5px solid var(--border2)" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 72px 1fr 28px", gap: 8, alignItems: "center" }}>
       <select value={row.content_type || ""} onChange={e => onChange({ ...row, content_type: e.target.value })} style={sel}>
         <option value="">Type…</option>
         {CONTENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
@@ -110,6 +111,8 @@ function DeliverableRow({ row, linkedStories, onChange, onDelete }) {
       <button onClick={onDelete} style={{ ...buttonStyle("ghost", { padding: "4px 6px", height: 26 }) }}>
         <X size={11} />
       </button>
+    </div>
+    {row.note && <div style={{ fontSize: 10, color: "var(--t4)", marginTop: 3, paddingLeft: 2, fontStyle: "italic" }}>{row.note}</div>}
     </div>
   );
 }
@@ -398,15 +401,60 @@ export default function CampaignsView({
       const token = session?.access_token;
       if (!token) return;
 
-      const system = `You are a content campaign planner. Output ONLY a valid JSON array of deliverable targets for a campaign. Each item: {"id":"uuid","content_type":"narrative|ad|publicity|product_post|educational|community","channel":"${CHANNELS.slice(0,8).join("|")}","count_planned":number}. Output ONLY the JSON array.`;
-      const userMsg = `Campaign: "${campaign.name}"\nObjective: ${campaign.objective || "not specified"}\nAudience: ${campaign.audience || "not specified"}\nDuration: ${campaign.start_date || "TBD"} to ${campaign.end_date || "TBD"}\nSuggest 3-6 deliverable targets.`;
+      // Build brand context for smarter suggestions
+      const brandSettings = settings?.strategy || {};
+      const contentTemplates = brandSettings.content_templates || [];
+      const programmes = settings?.strategy?.programmes || [];
+      const brandName = getBrandName(settings);
+
+      // Calculate duration in weeks
+      let durationWeeks = null;
+      if (campaign.start_date && campaign.end_date) {
+        const ms = new Date(campaign.end_date) - new Date(campaign.start_date);
+        durationWeeks = Math.round(ms / (7 * 86400000));
+      }
+
+      // Existing deliverables summary (avoid duplicates)
+      const existingSummary = (campaign.deliverables || []).map(d =>
+        `${d.content_type}/${d.channel || "any"} × ${d.count_planned}`
+      ).join(", ") || "none";
+
+      // Linked stories breakdown
+      const linked = stories.filter(s => s.campaign_id === campaign.id);
+      const typeBreakdown = linked.reduce((acc, s) => {
+        const t = s.content_type || "narrative";
+        acc[t] = (acc[t] || 0) + 1;
+        return acc;
+      }, {});
+
+      const templateBlock = contentTemplates.length
+        ? `\nBrand content templates:\n${contentTemplates.map(t => `  • ${t.name} (${t.content_type}, channels: ${(t.channels||[]).join("/") || "any"})`).join("\n")}`
+        : "";
+
+      const programmeBlock = programmes.length
+        ? `\nBrand programmes/formats: ${programmes.map(p => p.name || p.label).join(", ")}`
+        : "";
+
+      const system = `You are a content campaign planner for "${brandName}". Output ONLY a valid JSON array of deliverable targets. Each item: {"content_type":"narrative|ad|publicity|product_post|educational|community","channel":"Instagram|YouTube|TikTok|LinkedIn|Twitter/X|Facebook|Email|Blog|Podcast","count_planned":number,"note":"one-line rationale"}. Output ONLY the JSON array, no markdown.`;
+
+      const userMsg = [
+        `Campaign: "${campaign.name}"`,
+        `Objective: ${campaign.objective || "not specified"}`,
+        `Audience: ${campaign.audience || "not specified"}`,
+        `Duration: ${campaign.start_date || "TBD"} to ${campaign.end_date || "TBD"}${durationWeeks ? ` (${durationWeeks} weeks)` : ""}`,
+        templateBlock,
+        programmeBlock,
+        `\nExisting deliverables (do not duplicate): ${existingSummary}`,
+        linked.length ? `Linked stories so far: ${linked.length} (${Object.entries(typeBreakdown).map(([t,n])=>`${n} ${t}`).join(", ")})` : "",
+        `\nPropose 3-6 deliverable targets that directly serve this campaign's objective and audience. Scale counts to the campaign duration. Favour the brand's own content templates and channels. Be specific about the rationale.`,
+      ].filter(Boolean).join("\n");
 
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({
-          provider: "anthropic", model: "claude-haiku-4-5-20251001",
-          system, messages: [{ role: "user", content: userMsg }], maxTokens: 400,
+          provider: "anthropic", model: "claude-sonnet-4-6",
+          system, messages: [{ role: "user", content: userMsg }], maxTokens: 600,
           brand_profile_id: tenant?.brand_profile_id,
         }),
       });
@@ -426,11 +474,11 @@ export default function CampaignsView({
       }
       const match = full.match(/\[[\s\S]*\]/);
       if (match) {
-        const suggestions = JSON.parse(match[0]).map(d => ({ ...d, id: d.id || crypto.randomUUID() }));
+        const suggestions = JSON.parse(match[0]).map(d => ({ ...d, id: crypto.randomUUID() }));
         saveDeliverables([...(campaign.deliverables || []), ...suggestions]);
       }
     } catch {} finally { setSuggestLoading(false); }
-  }, [campaign, suggestLoading, tenant, saveDeliverables]);
+  }, [campaign, suggestLoading, tenant, settings, stories, saveDeliverables]);
 
   // ── AI: Analyze campaign ─────────────────────────────────
 

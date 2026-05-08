@@ -92,6 +92,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   const programmes = useMemo(() => getBrandProgrammes(settings), [settings]);
   const programmeMap = useMemo(() => Object.fromEntries(programmes.map(p => [p.key, p])), [programmes]);
   const languageKeys = useMemo(() => getBrandLanguages(settings).map(l => l.key), [settings]);
+  const campaignMap = useMemo(() => Object.fromEntries(campaigns.map(c => [c.id, c])), [campaigns]);
 
   const activeFilterCount = [contentType, channel, era, archetype, format, hookType, emotAngle, languageKeys.includes("pt") && ptStatus, quality, dateFrom, dateTo, minScore>0, minReach>0].filter(Boolean).length;
   const clearFilters = () => { setContentType(""); setChannel(""); setEra(""); setArchetype(""); setFormat(""); setHookType(""); setEmotAngle(""); setPtStatus(""); setQuality(""); setDateFrom(""); setDateTo(""); setMinScore(0); setMinReach(0); setSort("date_desc"); };
@@ -430,6 +431,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 const hasScore   = s.score_total!=null;
                 const ac         = ACCENT[s.archetype]||"var(--border)";
                 const fmt        = programmeMap[s.format] || FORMAT_MAP[s.format];
+                const camp       = s.campaign_id ? campaignMap[s.campaign_id] : null;
                 const readiness  = getReadiness(s, settings);
                 const rColor     = readiness.done===readiness.total?"var(--success)":readiness.done>=Math.ceil(readiness.total * 0.65)?"var(--warning)":"var(--t4)";
                 const gateStatus = getGateStatus(s);
@@ -473,6 +475,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                           {getStoryScript(s, "en")&&<><span style={{color:"var(--t4)"}}>·</span><FileText size={11} color="var(--t3)"/></>}
                           {s.metrics_views&&<><span style={{color:"var(--t4)"}}>·</span><Eye size={11}/><span>{parseInt(s.metrics_views)>1000?`${(parseInt(s.metrics_views)/1000).toFixed(1)}k`:s.metrics_views}</span></>}
                           {gateStatus!=="missing"&&<><span style={{color:"var(--t4)"}}>·</span><span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:3,background:gateBlockers?"var(--error-bg)":gateWarnings?"var(--warning-bg)":"var(--success-bg)",color:gateBlockers?"var(--error)":gateWarnings?"var(--warning)":"var(--success)",border:`0.5px solid ${gateBlockers?"var(--error-border)":gateWarnings?"rgba(196,154,60,0.30)":"rgba(74,155,127,0.24)"}`}}>Gate {gateBlockers ? `${gateBlockers} blocker` : gateWarnings ? `${gateWarnings} warning${gateWarnings===1?"":"s"}` : gateScore != null ? gateScore : "passed"}</span></>}
+                          {camp&&<><span style={{color:"var(--t4)"}}>·</span><span style={{fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:3,background:`${camp.color||"#4A9B7F"}18`,color:camp.color||"#4A9B7F",border:`0.5px solid ${camp.color||"#4A9B7F"}30`,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block"}}>{camp.name}</span></>}
                         </div>
                         {/* Angle preview */}
                         {(objective || s.angle)&&!isExpanded&&(

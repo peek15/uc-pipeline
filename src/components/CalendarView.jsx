@@ -603,6 +603,36 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
         </div>
       </div>
 
+      {/* Campaign week legend — shows campaigns with stories in the visible week */}
+      {(() => {
+        const weekStoryIds = new Set(days.flatMap(d => getForDay(d).map(s => s.id)));
+        const weekCampaigns = campaigns
+          .filter(c => c.status !== "archived" && stories.some(s => s.campaign_id === c.id && weekStoryIds.has(s.id)));
+        if (!weekCampaigns.length) return null;
+        return (
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            <span style={{ fontSize: 10, color: "var(--t4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>This week:</span>
+            {weekCampaigns.map(c => {
+              const count = stories.filter(s => s.campaign_id === c.id && weekStoryIds.has(s.id)).length;
+              const active = campaignFilter === c.id;
+              return (
+                <button key={c.id} onClick={() => setCampaignFilter(active ? "" : c.id)} style={{
+                  display: "flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 99,
+                  background: active ? `${c.color}20` : "var(--fill2)",
+                  border: `0.5px solid ${active ? c.color : "var(--border)"}`,
+                  cursor: "pointer", fontSize: 11, fontWeight: active ? 700 : 500,
+                  color: active ? c.color : "var(--t3)",
+                }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+                  {c.name} <span style={{ color: "var(--t4)", fontWeight: 400 }}>{count}</span>
+                </button>
+              );
+            })}
+            {campaignFilter && <button onClick={() => setCampaignFilter("")} style={{ fontSize: 10, color: "var(--t4)", background: "transparent", border: "none", cursor: "pointer", padding: "2px 4px" }}>Clear ×</button>}
+          </div>
+        );
+      })()}
+
       {/* Week grid */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(168px, 1fr))", gap:8, alignItems:"stretch" }}>
         {days.map((d, di) => {
@@ -673,6 +703,11 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
                             {s.platform_target && <span style={{ fontSize:9, color:"var(--t4)", marginLeft:2 }}>{s.platform_target}</span>}
                           </div>
                           <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
+                          {storyColor && !campaignFilter && (
+                            <div style={{ fontSize: 9, fontWeight: 600, color: storyColor, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: 0.85 }}>
+                              {campaigns.find(c => c.id === s.campaign_id)?.name}
+                            </div>
+                          )}
                           <div style={{ display:"flex", gap:3, marginTop:3 }}>
                             {languages.filter(l => getStoryScript(s, l.key)).map(l=>(
                               <span key={l.key} style={{ fontSize:8, fontWeight:700, padding:"1px 4px", borderRadius:3, background:"var(--fill2)", color:"var(--t3)" }}>{l.label}</span>

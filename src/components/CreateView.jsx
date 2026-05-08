@@ -163,6 +163,46 @@ function programmeColor(story, settings) {
   return programme?.color || "var(--border)";
 }
 
+function CampaignStrip({ story, campaigns, stories }) {
+  const campaign = campaigns?.find(c => c.id === story?.campaign_id);
+  if (!campaign) return null;
+
+  const linked  = (stories || []).filter(s => s.campaign_id === campaign.id);
+  const inQueue = linked.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
+
+  // Best-match deliverable for this story's type + channel
+  const deliv = campaign.deliverables?.find(d =>
+    d.content_type === story.content_type && (!d.channel || d.channel === story.channel)
+  ) || campaign.deliverables?.find(d => d.content_type === story.content_type)
+    || campaign.deliverables?.[0];
+
+  const color = campaign.color || "#4A9B7F";
+
+  return (
+    <div style={{ padding: "10px 14px", borderRadius: 8, background: `${color}10`, border: `0.5px solid ${color}35`, marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color, marginBottom: 3 }}>Campaign</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.name}</div>
+          {campaign.objective && <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.objective}</div>}
+        </div>
+        <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center", fontSize: 10, color: "var(--t3)" }}>
+          <span>{inQueue} in Create</span><span style={{ color: "var(--t4)" }}>·</span><span>{linked.length} linked</span>
+        </div>
+      </div>
+      {deliv && (
+        <div style={{ marginTop: 7, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10, color: "var(--t4)" }}>Fills:</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--t2)", padding: "1px 6px", borderRadius: 3, background: "var(--fill2)", border: "0.5px solid var(--border)" }}>
+            {deliv.content_type}{deliv.channel ? ` / ${deliv.channel}` : ""}
+          </span>
+          <span style={{ fontSize: 10, color: "var(--t4)" }}>target {deliv.count_planned}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TemplateStrip({ story, settings }) {
   const template = getContentTemplate(settings, story?.content_template_id);
   if (!template) return null;
@@ -699,7 +739,7 @@ function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLa
   );
 }
 
-export default function CreateView({ stories, onUpdate, mode, onModeChange, tenant, settings }) {
+export default function CreateView({ stories, onUpdate, mode, onModeChange, tenant, settings, campaigns = [] }) {
   const brandProfileId = tenant?.brand_profile_id || DEFAULT_BRAND_PROFILE_ID;
   const workspaceId = tenant?.workspace_id;
   const [selectedId, setSelectedId] = usePersistentState("create_selected_story", null);
@@ -888,6 +928,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                   <div style={{ height: 4, borderRadius: 999, background: "var(--bg3)", overflow: "hidden", margin: "12px 0" }}>
                     <div style={{ width: `${selectedProgress.percent}%`, height: "100%", background: selectedProgress.done >= selectedProgress.total ? "var(--success)" : "var(--t2)" }} />
                   </div>
+                  <CampaignStrip story={selected} campaigns={campaigns} stories={stories} />
                   <TemplateStrip story={selected} settings={settings} />
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 6 }}>
                     {steps.map(step => {

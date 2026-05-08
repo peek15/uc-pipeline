@@ -22,7 +22,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.19.6";
+const VERSION = "3.19.7";
 
 const TABS = [
   { key: "pipeline",   label: "Content",   Icon: Layers },

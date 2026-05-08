@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Plus, Trash2, X, ChevronDown, ChevronRight, Sparkles, Target, Check, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/db";
 import { CONTENT_TYPES, CHANNELS, STAGES } from "@/lib/constants";
@@ -135,14 +135,20 @@ function StoryChip({ story, campaigns, onMove }) {
         {gate === "blocked"  && <span style={{ fontSize: 9, fontWeight: 700, color: "var(--error)",   background: "var(--error-bg)",   border: "0.5px solid var(--error-border)", borderRadius: 3, padding: "1px 5px" }}>blocked</span>}
         {gate === "warnings" && <span style={{ fontSize: 9, fontWeight: 700, color: "var(--warning)", background: "var(--warning-bg)", border: "0.5px solid rgba(196,154,60,.3)",  borderRadius: 3, padding: "1px 5px" }}>warning</span>}
       </div>
-      <select value={story.campaign_id || ""} onChange={e => onMove(story, e.target.value || null)}
-        style={{ fontSize: 10, borderRadius: 5, border: "0.5px solid var(--border)", background: "var(--fill2)", color: "var(--t3)", padding: "3px 6px", outline: "none", fontFamily: "inherit", cursor: "pointer", marginTop: 2 }}>
-        <option value={story.campaign_id || ""}>— Move to campaign…</option>
-        {campaigns.filter(c => c.id !== story.campaign_id && c.status !== "archived").map(c => (
-          <option key={c.id} value={c.id}>{c.name}</option>
-        ))}
-        {story.campaign_id && <option value="">Remove from campaign</option>}
-      </select>
+      <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
+        {story.campaign_id && (
+          <button onClick={() => onMove(story, null)} title="Remove from campaign" style={{ width: 22, height: 22, borderRadius: 4, border: "0.5px solid var(--border)", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <X size={9} color="var(--t4)" />
+          </button>
+        )}
+        <select value="" onChange={e => { if (e.target.value) onMove(story, e.target.value); }}
+          style={{ flex: 1, fontSize: 10, borderRadius: 5, border: "0.5px solid var(--border)", background: "var(--fill2)", color: "var(--t3)", padding: "3px 6px", outline: "none", fontFamily: "inherit", cursor: "pointer" }}>
+          <option value="">{story.campaign_id ? "Move to…" : "Assign to…"}</option>
+          {campaigns.filter(c => c.id !== story.campaign_id && c.status !== "archived").map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
@@ -157,9 +163,10 @@ function CampaignCard({ campaign, linkedStories, isActive, onClick }) {
 
   return (
     <button onClick={onClick} style={{
-      width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: 8,
+      width: "100%", textAlign: "left", padding: "10px 12px 10px 10px", borderRadius: 8,
       background: isActive ? "var(--fill2)" : "transparent",
       border: isActive ? "0.5px solid var(--border)" : "0.5px solid transparent",
+      borderLeft: `3px solid ${campaign.color || "#4A9B7F"}`,
       cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
       transition: "background 0.1s",
     }}>
@@ -191,8 +198,10 @@ export default function CampaignsView({
   const [addStoriesOpen,   setAddStoriesOpen]   = useState(false);
   const [suggestLoading,   setSuggestLoading]   = useState(false);
   const [confirmDelete,    setConfirmDelete]    = useState(false);
+  const [localName,        setLocalName]        = useState("");
 
   const campaign = useMemo(() => campaigns.find(c => c.id === activeCampaignId) || null, [campaigns, activeCampaignId]);
+  useEffect(() => { setLocalName(campaign?.name || ""); }, [campaign?.id]);
 
   const linkedStories = useMemo(() =>
     campaign ? stories.filter(s => s.campaign_id === campaign.id) : [],
@@ -333,10 +342,14 @@ export default function CampaignsView({
   // ── Unlinked stories (for picker) ────────────────────────
 
   const unlinkedStories = useMemo(() =>
-    stories.filter(s =>
-      !["rejected","archived"].includes(s.status) &&
-      (!s.campaign_id || s.campaign_id !== campaign?.id)
-    ),
+    stories
+      .filter(s => !["rejected","archived"].includes(s.status) && s.campaign_id !== campaign?.id)
+      .sort((a, b) => {
+        const aOther = a.campaign_id ? 1 : 0;
+        const bOther = b.campaign_id ? 1 : 0;
+        if (aOther !== bOther) return aOther - bOther;
+        return (b.score_total || 0) - (a.score_total || 0);
+      }),
     [stories, campaign]
   );
 
@@ -347,6 +360,15 @@ export default function CampaignsView({
     for (const s of linkedStories) counts[s.status] = (counts[s.status] || 0) + 1;
     return counts;
   }, [linkedStories]);
+
+  // ── Create handler (auto-selects new campaign) ───────────
+
+  const handleCreate = useCallback(async () => {
+    try {
+      const created = await onCreateCampaign();
+      if (created?.id) setActiveCampaignId(created.id);
+    } catch {}
+  }, [onCreateCampaign]);
 
   // ── Field update shorthand ───────────────────────────────
 
@@ -374,19 +396,25 @@ export default function CampaignsView({
             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--t1)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Campaigns <span style={{ color: "var(--t4)", fontWeight: 400 }}>{campaigns.length}</span>
             </span>
-            <button onClick={onCreateCampaign} style={{ ...buttonStyle("primary", { padding: "4px 10px", fontSize: 11 }) }}>
+            <button onClick={handleCreate} style={{ ...buttonStyle("primary", { padding: "4px 10px", fontSize: 11 }) }}>
               <Plus size={11} /> New
             </button>
           </div>
           {/* Status filter */}
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            {["all","active","planning","complete","archived"].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)} style={{
-                padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 600, border: "none", cursor: "pointer",
-                background: statusFilter === s ? "var(--t1)" : "transparent",
-                color:      statusFilter === s ? "var(--bg)"  : "var(--t4)",
-              }}>{s === "all" ? "All" : STATUS_META[s]?.label}</button>
-            ))}
+            {["all","active","planning","complete","archived"].map(s => {
+              const cnt = s === "all" ? campaigns.length : campaigns.filter(c => c.status === s).length;
+              return (
+                <button key={s} onClick={() => setStatusFilter(s)} style={{
+                  padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 600, border: "none", cursor: "pointer",
+                  background: statusFilter === s ? "var(--t1)" : "transparent",
+                  color:      statusFilter === s ? "var(--bg)"  : "var(--t4)",
+                }}>
+                  {s === "all" ? "All" : STATUS_META[s]?.label}
+                  {cnt > 0 && <span style={{ opacity: 0.65, marginLeft: 3 }}>{cnt}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -417,7 +445,7 @@ export default function CampaignsView({
               Select a campaign or create a new one<br/>
               <span style={{ fontSize: 12, color: "var(--t4)" }}>Organize stories, track deliverables, and keep launches on schedule.</span>
             </div>
-            <button onClick={onCreateCampaign} style={buttonStyle("primary", { marginTop: 8 })}>
+            <button onClick={handleCreate} style={buttonStyle("primary", { marginTop: 8 })}>
               <Plus size={13} /> Create first campaign
             </button>
           </div>
@@ -428,19 +456,20 @@ export default function CampaignsView({
               {/* Color + name row */}
               <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
                 {/* Color picker */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 4, flexShrink: 0 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, paddingTop: 4, flexShrink: 0, width: 46 }}>
                   {CAMPAIGN_COLORS.map(c => (
                     <button key={c} onClick={() => updateField("color", c)} style={{
-                      width: 14, height: 14, borderRadius: "50%", background: c, border: "none",
+                      width: 18, height: 18, borderRadius: "50%", background: c, border: "none",
                       cursor: "pointer", outline: campaign.color === c ? `2px solid ${c}` : "none",
-                      outlineOffset: 2, transition: "outline 0.1s",
+                      outlineOffset: 2,
                     }} />
                   ))}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <input
-                    value={campaign.name || ""}
-                    onChange={e => updateField("name", e.target.value)}
+                    value={localName}
+                    onChange={e => setLocalName(e.target.value)}
+                    onBlur={() => { const v = localName.trim(); if (v !== (campaign.name || "").trim()) updateField("name", v || "New campaign"); }}
                     placeholder="Campaign name"
                     style={{ fontSize: 20, fontWeight: 700, color: "var(--t1)", background: "transparent", border: "none", outline: "none", fontFamily: "inherit", width: "100%", marginBottom: 8 }}
                   />
@@ -473,6 +502,29 @@ export default function CampaignsView({
                       <InlineTextInput value={campaign.audience || ""} placeholder="Target audience…" onSave={v => updateField("audience", v)} />
                     </div>
                   </div>
+                  {/* Progress bar + stats */}
+                  {(() => {
+                    const prog = campaignProgress(campaign, linkedStories);
+                    const pct  = Math.round(prog.pct * 100);
+                    const daysLeft = campaign.end_date
+                      ? Math.max(0, Math.ceil((new Date(campaign.end_date + "T23:59:59") - new Date()) / 86400000))
+                      : null;
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "0.5px solid var(--border2)" }}>
+                        <ProgressRing pct={prog.pct} color={campaign.color || "#4A9B7F"} size={22} />
+                        <div style={{ flex: 1, height: 3, borderRadius: 2, background: "var(--bg3)", overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${pct}%`, background: campaign.color || "#4A9B7F", borderRadius: 2, transition: "width 0.4s" }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--t3)", whiteSpace: "nowrap" }}>{prog.done}/{prog.total} done</span>
+                        <span style={{ color: "var(--t4)", fontSize: 11 }}>·</span>
+                        <span style={{ fontSize: 11, color: "var(--t3)", whiteSpace: "nowrap" }}>{linkedStories.length} {linkedStories.length === 1 ? "story" : "stories"}</span>
+                        {daysLeft !== null && <>
+                          <span style={{ color: "var(--t4)", fontSize: 11 }}>·</span>
+                          <span style={{ fontSize: 11, color: daysLeft <= 7 ? "var(--warning)" : "var(--t4)", whiteSpace: "nowrap" }}>{daysLeft}d left</span>
+                        </>}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -517,8 +569,7 @@ export default function CampaignsView({
                   ))}
                   {/* Summary */}
                   {(() => {
-                    const total = (campaign.deliverables || []).reduce((s, d) => s + (d.count_planned || 0), 0);
-                    const done  = (campaign.deliverables || []).reduce((s, d) => s + deliverableProgress(d, linkedStories).done, 0);
+                    const { done, total } = campaignProgress(campaign, linkedStories);
                     return (
                       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, paddingTop: 10, fontSize: 12, color: "var(--t3)" }}>
                         <span>{done}/{total} total deliverables</span>

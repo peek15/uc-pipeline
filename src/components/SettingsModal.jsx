@@ -264,7 +264,7 @@ function insightTone(category) {
   return "var(--t2)";
 }
 
-function intelligenceModules(stories, settings, conflicts, insightCount = 0) {
+function intelligenceModules(stories, settings, conflicts, insightCount = 0, snapshotCount = 0) {
   const published = stories.filter(s => s.status === "published");
   const withMetrics = stories.filter(storyHasMetrics);
   const withScore = stories.filter(s => s.score_total != null);
@@ -315,11 +315,11 @@ function intelligenceModules(stories, settings, conflicts, insightCount = 0) {
     {
       key: "performance",
       name: "Performance learning",
-      status: withMetrics.length >= 3 ? "partial" : "partial",
-      signal: `${withMetrics.length} metric rows`,
-      source: "story metric fields",
-      detail: "Insights can import Metricool CSV and compare score to completion, but learning is not closed-loop yet.",
-      next: "Add performance_snapshots and feed patterns back into Research, Calendar, and predictions.",
+      status: snapshotCount ? "partial" : "partial",
+      signal: `${snapshotCount || withMetrics.length} snapshot${(snapshotCount || withMetrics.length) === 1 ? "" : "s"}`,
+      source: "performance_snapshots + story latest metrics",
+      detail: "Manual and CSV metrics now write time-series snapshots while story fields remain the latest-value cache.",
+      next: "Generate performance-pattern insights and feed them into Prediction Engine V1.",
     },
     {
       key: "prediction",
@@ -359,13 +359,14 @@ function IntelligenceDashboard({
   version,
   insightCount = 0,
   insights = [],
+  snapshotCount = 0,
   insightsLoading = false,
   insightError = null,
   onGenerateFeedbackInsights,
   generatingInsights = false,
   onUpdateInsightStatus,
 }) {
-  const modules = intelligenceModules(stories, settings, conflicts, insightCount);
+  const modules = intelligenceModules(stories, settings, conflicts, insightCount, snapshotCount);
   const active = modules.filter(m => m.status === "active").length;
   const partial = modules.filter(m => m.status === "partial").length;
   const stub = modules.filter(m => m.status === "stub").length;
@@ -400,6 +401,7 @@ function IntelligenceDashboard({
           ["Missing", missing],
           ["Published", published],
           ["Metrics", withMetrics],
+          ["Snapshots", snapshotCount],
           ["Templated", withTemplates],
           ["Audited", withGate],
         ].map(([label, value]) => (
@@ -721,6 +723,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightError,  setInsightError]  = useState(null);
   const [generatingInsights, setGeneratingInsights] = useState(false);
+  const [snapshotCount, setSnapshotCount] = useState(0);
   const appName = getAppName(settings);
   const languageSummary = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join(" → ");
 
@@ -762,22 +765,29 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
       .select("*")
       .order("created_at", { ascending: false })
       .limit(12);
+    let snapshotQuery = supabase
+      .from("performance_snapshots")
+      .select("id", { count: "exact", head: true });
     if (WORKSPACE_ID) {
       countQuery = countQuery.eq("workspace_id", WORKSPACE_ID);
       listQuery = listQuery.eq("workspace_id", WORKSPACE_ID);
+      snapshotQuery = snapshotQuery.eq("workspace_id", WORKSPACE_ID);
     }
     if (BRAND_PROFILE_ID) {
       countQuery = countQuery.eq("brand_profile_id", BRAND_PROFILE_ID);
       listQuery = listQuery.eq("brand_profile_id", BRAND_PROFILE_ID);
+      snapshotQuery = snapshotQuery.eq("brand_profile_id", BRAND_PROFILE_ID);
     }
     try {
-      const [{ count, error: countError }, { data, error: listError }] = await Promise.all([countQuery, listQuery]);
+      const [{ count, error: countError }, { data, error: listError }, { count: snapshots, error: snapshotError }] = await Promise.all([countQuery, listQuery, snapshotQuery]);
       if (countError || listError) throw countError || listError;
       setInsightCount(count || 0);
       setInsights(data || []);
+      setSnapshotCount(snapshotError ? 0 : (snapshots || 0));
     } catch (e) {
       setInsightCount(0);
       setInsights([]);
+      setSnapshotCount(0);
       setInsightError("Run the latest Supabase schema to enable intelligence insights.");
     } finally {
       setInsightsLoading(false);
@@ -1886,6 +1896,7 @@ ${fileText.slice(0,3000)}` : text };
               version={VERSION_NUM}
               insightCount={insightCount}
               insights={insights}
+              snapshotCount={snapshotCount}
               insightsLoading={insightsLoading}
               insightError={insightError}
               onGenerateFeedbackInsights={generateFeedbackInsights}

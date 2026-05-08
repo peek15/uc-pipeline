@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.18.5
+- App badge/package target: v3.18.6
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -27,6 +27,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Do not remove user/local changes unless explicitly requested.
 
 ## Recent Updates
+- v3.18.6: Performance snapshot foundation: `performance_snapshots` table added to schema, manual metric saves and Metricool CSV imports write time-series rows through `src/lib/performance.js`, Settings Intelligence shows snapshot count, and Provider Diagnostics probes the table.
 - v3.18.5: Intelligence insights review loop: Settings Intelligence now lists recent `intelligence_insights`, supports reviewed/dismissed status updates, and can scan recent `agent_feedback` corrections into safe feedback-pattern insight rows.
 - v3.18.4: Intelligence Phase 2 foundation: `intelligence_insights` table added to `supabase-schema.sql`, `write-insight` tool implemented as a safe scoped insert helper, Settings Intelligence reads insight counts, and Provider Diagnostics probes the new table.
 - v3.18.3: Intelligence Phase 1 dashboard in Settings: replaces aspirational copy with live module status for Research, Quality Gate, Calendar, Production Agents, Performance, Prediction, Durable Memory, and Debug intelligence; shows signal counts, maturity, readiness, and next build steps.
@@ -186,6 +187,7 @@ scheduling, provider operations, quality gates, and analytics.
   - `visual_assets`
   - `agent_feedback`
   - `intelligence_insights`
+  - `performance_snapshots`
 
 ## Typography/UI
 - Fonts are loaded through `next/font` in `src/app/layout.js`.

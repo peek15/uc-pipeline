@@ -6,6 +6,7 @@ App baseline: v3.18.2
 Update: v3.18.3 ships Phase 1, replacing the static Settings Intelligence copy with a live module-status dashboard.
 Update: v3.18.4 ships the Phase 2 foundation: `intelligence_insights` schema, safe `write-insight` tool, dashboard insight count, and diagnostics probe.
 Update: v3.18.5 ships the first review loop: Settings Intelligence lists insight rows, lets users mark them reviewed/dismissed, and scans `agent_feedback` corrections into feedback-pattern insights.
+Update: v3.18.6 ships the performance snapshot foundation: `performance_snapshots` schema, manual/Metricool snapshot writes, dashboard snapshot count, and diagnostics probe.
 
 ## Executive Summary
 
@@ -282,6 +283,8 @@ First insight producers:
 
 Goal: stop using `stories` as the only analytics store.
 
+Status: foundation shipped in v3.18.6. Manual metrics and Metricool CSV imports now write time-series rows while story metric fields stay as the latest-value cache.
+
 Add `performance_snapshots`:
 - `story_id`
 - `workspace_id`
@@ -298,6 +301,8 @@ Add `performance_snapshots`:
 - `follows`
 - `cost_estimate`
 - `raw_source`
+
+Done in v3.18.6.
 
 Then keep story metrics as latest cached values.
 

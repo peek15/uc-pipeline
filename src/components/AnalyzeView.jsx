@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { TrendingUp, Eye, Bookmark, Share2, Upload, BarChart3, Zap, CheckCircle, Clock, UserPlus } from "lucide-react";
 import { STAGES, FORMATS, FORMAT_MAP, ACCENT } from "@/lib/constants";
-import { supabase } from "@/lib/db";
+import { logPerformanceSnapshot } from "@/lib/performance";
 import { PageHeader, Panel, StatCard, buttonStyle } from "@/components/OperationalUI";
 
 // ── Intelligence stage tracker ──
@@ -161,7 +161,7 @@ function findCSVColumn(headers, candidates) {
   return null;
 }
 
-export default function AnalyzeView({ stories, onUpdate }) {
+export default function AnalyzeView({ stories, onUpdate, tenant }) {
   const [activeTab,  setActiveTab]  = useState("overview");
   const [selId,      setSelId]      = useState(null);
   const [form,       setForm]       = useState({});
@@ -188,8 +188,12 @@ export default function AnalyzeView({ stories, onUpdate }) {
     });
   };
 
-  const saveMetrics = () => {
+  const saveMetrics = async () => {
+    if (!sel) return;
     onUpdate(selId, { ...form, status:"published" });
+    try {
+      await logPerformanceSnapshot({ story: sel, metrics: form, tenant, source: "manual" });
+    } catch {}
     setSelId(null);
     setCsvStatus("Metrics saved.");
     setTimeout(()=>setCsvStatus(null), 2000);
@@ -231,7 +235,13 @@ export default function AnalyzeView({ stories, onUpdate }) {
           if (followsCol&&row[followsCol])  updates.metrics_follows    = row[followsCol];
           if (commentsCol&&row[commentsCol]) updates.metrics_comments   = row[commentsCol];
           if (likesCol&&row[likesCol])      updates.metrics_likes      = row[likesCol];
-          if (Object.keys(updates).length) { onUpdate(story.id, updates); matched++; }
+          if (Object.keys(updates).length) {
+            onUpdate(story.id, updates);
+            try {
+              await logPerformanceSnapshot({ story, metrics: updates, tenant, source: "metricool_csv", rawSource: row });
+            } catch {}
+            matched++;
+          }
         }
         setCsvStatus(`✓ Matched ${matched} of ${rows.length} rows from CSV.`);
       } catch(err) { setCsvStatus(`Error: ${err.message}`); }

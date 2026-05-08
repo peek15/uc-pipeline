@@ -847,6 +847,7 @@ const SCHEMA_PROBES = [
   { key: "visual_assets", label: "Visual assets", table: "visual_assets", select: "id,story_id,brand_profile_id,source,asset_type,file_url" },
   { key: "agent_feedback", label: "Agent feedback", table: "agent_feedback", select: "id,agent_name,brand_profile_id,story_id,correction_type" },
   { key: "intelligence_insights", label: "Intelligence insights", table: "intelligence_insights", select: "id,workspace_id,brand_profile_id,source,category,summary,status,confidence" },
+  { key: "performance_snapshots", label: "Performance snapshots", table: "performance_snapshots", select: "id,workspace_id,brand_profile_id,story_id,source,views,completion_rate,captured_at" },
 ];
 
 function schemaHint(message) {
@@ -855,6 +856,7 @@ function schemaHint(message) {
   if (text.includes("scripts")) return "Run the schema migration that adds stories.scripts JSONB for configurable languages.";
   if (text.includes("ai_calls")) return "Run supabase-audit-log.sql or the full schema so AI usage, cost alerts, and diagnostics can read call history.";
   if (text.includes("intelligence_insights")) return "Run the latest supabase-schema.sql so durable intelligence insights can be stored.";
+  if (text.includes("performance_snapshots")) return "Run the latest supabase-schema.sql so performance metrics can be stored as time-series snapshots.";
   if (text.includes("permission") || text.includes("row-level security")) return "Check RLS policies or authentication. The diagnostic probe could not read this table with the current user.";
   if (text.includes("does not exist") || text.includes("schema cache")) return "Run the latest Supabase schema and refresh the Supabase schema cache if needed.";
   return "Check Supabase schema/RLS and rerun diagnostics.";
@@ -937,8 +939,8 @@ function DiagnosticsPanel({ configs, calls, tenant, appVersion, onReload }) {
       const t0 = Date.now();
       try {
         let query = supabase.from(probe.table).select(probe.select).limit(1);
-        if (["stories", "intelligence_insights"].includes(probe.table) && tenant?.workspace_id) query = query.eq("workspace_id", tenant.workspace_id);
-        if (["stories", "asset_library", "visual_assets", "agent_feedback", "intelligence_insights"].includes(probe.table) && tenant?.brand_profile_id) {
+        if (["stories", "intelligence_insights", "performance_snapshots"].includes(probe.table) && tenant?.workspace_id) query = query.eq("workspace_id", tenant.workspace_id);
+        if (["stories", "asset_library", "visual_assets", "agent_feedback", "intelligence_insights", "performance_snapshots"].includes(probe.table) && tenant?.brand_profile_id) {
           query = query.eq("brand_profile_id", tenant.brand_profile_id);
         }
         if (probe.table === "brand_profiles" && tenant?.brand_profile_id) query = query.eq("id", tenant.brand_profile_id);

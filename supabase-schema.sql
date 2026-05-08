@@ -658,6 +658,53 @@ CREATE INDEX IF NOT EXISTS idx_intelligence_insights_status ON intelligence_insi
 CREATE INDEX IF NOT EXISTS idx_intelligence_insights_entity ON intelligence_insights (entity_type, entity_id);
 
 -- ═══════════════════════════════════════════
+-- PERFORMANCE SNAPSHOTS
+-- Time-series metrics captured from manual logging, CSV import,
+-- provider/platform syncs, or future analytics integrations.
+-- Story metric columns remain a latest-value cache.
+-- ═══════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS performance_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  captured_at TIMESTAMPTZ DEFAULT now(),
+  workspace_id UUID,
+  brand_profile_id UUID,
+  story_id UUID,
+  content_template_id TEXT,
+  content_type TEXT,
+  channel TEXT,
+  platform TEXT,
+  source TEXT DEFAULT 'manual',
+  views INT,
+  completion_rate NUMERIC,
+  watch_time NUMERIC,
+  likes INT,
+  comments INT,
+  saves INT,
+  shares INT,
+  follows INT,
+  cost_estimate NUMERIC DEFAULT 0,
+  raw_source JSONB DEFAULT '{}'::jsonb
+);
+
+ALTER TABLE performance_snapshots ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Tenant performance snapshots access" ON performance_snapshots;
+CREATE POLICY "Tenant performance snapshots access"
+  ON performance_snapshots FOR ALL
+  TO authenticated
+  USING (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
+
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_created ON performance_snapshots (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_captured ON performance_snapshots (captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_story ON performance_snapshots (story_id);
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_workspace ON performance_snapshots (workspace_id);
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_brand ON performance_snapshots (brand_profile_id);
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_template ON performance_snapshots (content_template_id);
+CREATE INDEX IF NOT EXISTS idx_performance_snapshots_channel ON performance_snapshots (channel);
+
+-- ═══════════════════════════════════════════
 -- GOOGLE AUTH SETUP (Dashboard, not SQL):
 --
 -- Authentication → Providers → Google

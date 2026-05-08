@@ -185,6 +185,149 @@ function CampaignCard({ campaign, linkedStories, isActive, onClick }) {
   );
 }
 
+// ── Timeline ──────────────────────────────────────────────
+
+function fmtDate(d) { return d.toISOString().split("T")[0]; }
+
+function CampaignTimeline({ campaigns, stories, activeCampaignId, onSelect }) {
+  const dated = campaigns.filter(c => c.start_date && c.end_date);
+  const undated = campaigns.filter(c => !c.start_date || !c.end_date);
+
+  if (!dated.length && !undated.length) return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"60vh", color:"var(--t4)", fontSize:13 }}>
+      No campaigns to display. Create one and set start/end dates to see the timeline.
+    </div>
+  );
+
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // Build time range from all dated campaigns + today ± padding
+  const allMs = dated.flatMap(c => [new Date(c.start_date).getTime(), new Date(c.end_date).getTime()]);
+  allMs.push(today.getTime());
+  const rangeStart = new Date(Math.min(...allMs) - 14 * 86400000); rangeStart.setHours(0,0,0,0);
+  const rangeEnd   = new Date(Math.max(...allMs) + 14 * 86400000); rangeEnd.setHours(0,0,0,0);
+  const totalMs    = rangeEnd - rangeStart;
+
+  function pct(dateStr) {
+    if (!dateStr) return 0;
+    const ms = new Date(dateStr).getTime() - rangeStart.getTime();
+    return Math.max(0, Math.min(100, (ms / totalMs) * 100));
+  }
+
+  // Generate month markers
+  const months = [];
+  const cur = new Date(rangeStart); cur.setDate(1);
+  while (cur <= rangeEnd) {
+    months.push({ label: cur.toLocaleDateString("en-US", { month: "short", year: "2-digit" }), pct: pct(fmtDate(cur)) });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  const todayPct = pct(fmtDate(today));
+
+  return (
+    <div style={{ padding: "20px 24px 32px", overflowX: "auto", minWidth: 500 }}>
+      {/* Month axis */}
+      <div style={{ position: "relative", height: 28, marginLeft: 150, marginBottom: 4 }}>
+        {months.map((m, i) => (
+          <div key={i} style={{ position: "absolute", left: `${m.pct}%`, transform: "translateX(-50%)", fontSize: 10, color: "var(--t4)", whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>
+            {m.label}
+          </div>
+        ))}
+        {/* Today marker label */}
+        <div style={{ position: "absolute", left: `${todayPct}%`, transform: "translateX(-50%)", fontSize: 9, color: "var(--t1)", fontWeight: 700, whiteSpace: "nowrap", bottom: 0 }}>
+          Today
+        </div>
+      </div>
+
+      {/* Campaign rows */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {[...dated].sort((a,b) => a.start_date.localeCompare(b.start_date)).map(c => {
+          const left  = pct(c.start_date);
+          const right = pct(c.end_date);
+          const width = Math.max(1, right - left);
+          const linked = stories.filter(s => s.campaign_id === c.id);
+          const prog   = campaignProgress(c, linked);
+          const sm     = STATUS_META[c.status] || STATUS_META.planning;
+          const isActive = c.id === activeCampaignId;
+
+          return (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* Name column */}
+              <div style={{ width: 138, flexShrink: 0, textAlign: "right", display: "flex", flexDirection: "column", gap: 1 }}>
+                <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? "var(--t1)" : "var(--t2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                <span style={{ fontSize: 9, fontWeight: 600, color: sm.color }}>{sm.label}</span>
+              </div>
+
+              {/* Bar track */}
+              <div style={{ flex: 1, position: "relative", height: 28, background: "var(--fill2)", borderRadius: 6, cursor: "pointer" }} onClick={() => onSelect(c.id)}>
+                {/* Campaign bar */}
+                <div style={{
+                  position: "absolute", left: `${left}%`, width: `${width}%`, top: 3, bottom: 3,
+                  background: c.color || "#4A9B7F", borderRadius: 4,
+                  opacity: isActive ? 1 : 0.72,
+                  outline: isActive ? `2px solid ${c.color || "#4A9B7F"}` : "none",
+                  outlineOffset: 2,
+                  transition: "opacity 0.15s",
+                }}>
+                  {/* Progress fill */}
+                  <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${prog.pct * 100}%`, background: "rgba(255,255,255,0.25)", borderRadius: 4 }} />
+                  {/* Story count badge */}
+                  {linked.length > 0 && (
+                    <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>
+                      {linked.length}
+                    </div>
+                  )}
+                </div>
+
+                {/* Scheduled story dots */}
+                {linked.filter(s => s.scheduled_date).map(s => (
+                  <div key={s.id} title={s.title} style={{
+                    position: "absolute", left: `${pct(s.scheduled_date)}%`,
+                    top: "50%", transform: "translate(-50%, -50%)",
+                    width: 7, height: 7, borderRadius: "50%",
+                    background: "var(--bg)", border: `2px solid ${c.color || "#4A9B7F"}`,
+                    zIndex: 3, pointerEvents: "none",
+                  }} />
+                ))}
+
+                {/* Today line */}
+                <div style={{ position: "absolute", left: `${todayPct}%`, top: -3, bottom: -3, width: 1.5, background: "var(--t1)", opacity: 0.6, zIndex: 4, pointerEvents: "none" }} />
+              </div>
+
+              {/* Stats */}
+              <div style={{ width: 60, flexShrink: 0, fontSize: 10, color: "var(--t4)", fontFamily: "var(--font-mono)", textAlign: "right" }}>
+                {prog.done}/{prog.total}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Undated campaigns */}
+        {undated.length > 0 && (
+          <>
+            <div style={{ fontSize: 10, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, marginLeft: 150, marginTop: 8 }}>No dates set</div>
+            {undated.map(c => {
+              const isActive = c.id === activeCampaignId;
+              const linked   = stories.filter(s => s.campaign_id === c.id);
+              return (
+                <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 138, flexShrink: 0, textAlign: "right" }}>
+                    <span style={{ fontSize: 11, fontWeight: isActive ? 700 : 500, color: isActive ? "var(--t1)" : "var(--t2)" }}>{c.name}</span>
+                  </div>
+                  <div onClick={() => onSelect(c.id)} style={{ flex: 1, height: 28, borderRadius: 6, border: `1.5px dashed ${c.color || "var(--border)"}`, cursor: "pointer", opacity: isActive ? 1 : 0.6, display:"flex", alignItems:"center", paddingLeft:10 }}>
+                    <span style={{ fontSize: 10, color: "var(--t4)" }}>Set start &amp; end dates in campaign detail</span>
+                  </div>
+                  <div style={{ width: 60, flexShrink: 0, fontSize: 10, color: "var(--t4)", fontFamily: "var(--font-mono)", textAlign: "right" }}>{linked.length} stories</div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────
 
 export default function CampaignsView({
@@ -192,6 +335,7 @@ export default function CampaignsView({
 }) {
   const [activeCampaignId, setActiveCampaignId] = useState(null);
   const [statusFilter,     setStatusFilter]     = useState("all");
+  const [timelineView,     setTimelineView]     = useState(false);
   const [analysisOpen,     setAnalysisOpen]     = useState(false);
   const [analysisText,     setAnalysisText]     = useState("");
   const [analysisLoading,  setAnalysisLoading]  = useState(false);
@@ -408,9 +552,21 @@ export default function CampaignsView({
             <span style={{ fontSize: 12, fontWeight: 700, color: "var(--t1)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
               Campaigns <span style={{ color: "var(--t4)", fontWeight: 400 }}>{campaigns.length}</span>
             </span>
-            <button onClick={handleCreate} style={{ ...buttonStyle("primary", { padding: "4px 10px", fontSize: 11 }) }}>
-              <Plus size={11} /> New
-            </button>
+            <div style={{ display: "flex", gap: 4 }}>
+              {/* View toggle */}
+              <div style={{ display: "flex", borderRadius: 6, border: "0.5px solid var(--border)", overflow: "hidden" }}>
+                {[{ key: false, label: "List" }, { key: true, label: "Timeline" }].map(({ key, label }) => (
+                  <button key={String(key)} onClick={() => setTimelineView(key)} style={{
+                    padding: "3px 8px", fontSize: 10, fontWeight: 600, border: "none", cursor: "pointer",
+                    background: timelineView === key ? "var(--t1)" : "transparent",
+                    color:      timelineView === key ? "var(--bg)"  : "var(--t4)",
+                  }}>{label}</button>
+                ))}
+              </div>
+              <button onClick={handleCreate} style={{ ...buttonStyle("primary", { padding: "4px 10px", fontSize: 11 }) }}>
+                <Plus size={11} /> New
+              </button>
+            </div>
           </div>
           {/* Status filter */}
           <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
@@ -449,8 +605,15 @@ export default function CampaignsView({
       </div>
 
       {/* ── Right workspace ── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 24px 32px" }}>
-        {!campaign ? (
+      <div style={{ flex: 1, overflowY: "auto", padding: timelineView ? 0 : "0 24px 32px" }}>
+        {timelineView ? (
+          <CampaignTimeline
+            campaigns={filteredCampaigns}
+            stories={stories}
+            activeCampaignId={activeCampaignId}
+            onSelect={(id) => { setActiveCampaignId(id); setTimelineView(false); setAnalysisOpen(false); setAddStoriesOpen(false); setConfirmDelete(false); }}
+          />
+        ) : !campaign ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", gap: 12 }}>
             <Target size={36} style={{ opacity: 0.15 }} />
             <div style={{ fontSize: 14, color: "var(--t3)", textAlign: "center" }}>

@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { estimateCost } from "@/lib/ai/costs";
 
 const ALLOWED_DOMAIN    = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
 const BRAND_PROFILE_ID  = process.env.NEXT_PUBLIC_DEFAULT_BRAND_PROFILE_ID || "00000000-0000-0000-0000-000000000001";
@@ -125,7 +126,7 @@ function transformMessagesForOpenAI(messages, system) {
   return out;
 }
 
-async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId }) {
+async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, userEmail }) {
   if (!key) throw new Error("Anthropic API key not configured");
 
   const { readable, writable } = new TransformStream();
@@ -133,6 +134,12 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
   const encoder = new TextEncoder();
 
   (async () => {
+    const t0 = Date.now();
+    let totalInputTokens  = 0;
+    let totalOutputTokens = 0;
+    let resolvedModel     = model;
+    let succeeded = false;
+
     try {
       let turnMessages = transformMessagesForAnthropic(messages);
 
@@ -154,8 +161,8 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
         const decoder = new TextDecoder();
         let buf = "";
         let stopReason = null;
-        const textBlocks = {};  // index → accumulated text
-        const toolBlocks = {};  // index → { id, name, inputJson }
+        const textBlocks = {};
+        const toolBlocks = {};
 
         while (true) {
           const { done, value } = await reader.read();
@@ -167,7 +174,11 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
             if (!line.startsWith("data: ")) continue;
             try {
               const ev = JSON.parse(line.slice(6));
-              if (ev.type === "content_block_start") {
+              if (ev.type === "message_start") {
+                if (ev.message?.model)               resolvedModel      = ev.message.model;
+                if (ev.message?.usage?.input_tokens)  totalInputTokens  += ev.message.usage.input_tokens;
+                if (ev.message?.usage?.output_tokens) totalOutputTokens += ev.message.usage.output_tokens;
+              } else if (ev.type === "content_block_start") {
                 if (ev.content_block?.type === "tool_use") {
                   toolBlocks[ev.index] = { id: ev.content_block.id, name: ev.content_block.name, inputJson: "" };
                 } else if (ev.content_block?.type === "text") {
@@ -182,6 +193,7 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
                 }
               } else if (ev.type === "message_delta") {
                 stopReason = ev.delta?.stop_reason;
+                if (ev.usage?.output_tokens) totalOutputTokens += ev.usage.output_tokens;
               }
             } catch {}
           }
@@ -189,19 +201,17 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
 
         if (stopReason !== "tool_use") break;
 
-        // Build assistant content for the tool-use turn
         const assistantContent = [];
-        for (const [idx, text] of Object.entries(textBlocks)) {
+        for (const [, text] of Object.entries(textBlocks)) {
           if (text) assistantContent.push({ type: "text", text });
         }
-        for (const [idx, tb] of Object.entries(toolBlocks)) {
+        for (const [, tb] of Object.entries(toolBlocks)) {
           let input = {};
           try { input = JSON.parse(tb.inputJson); } catch {}
           assistantContent.push({ type: "tool_use", id: tb.id, name: tb.name, input });
         }
         turnMessages = [...turnMessages, { role: "assistant", content: assistantContent }];
 
-        // Execute tools and collect results
         const toolResults = [];
         for (const tb of Object.values(toolBlocks)) {
           let input = {};
@@ -214,10 +224,30 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
         turnMessages = [...turnMessages, { role: "user", content: toolResults }];
       }
 
+      succeeded = true;
       await writer.write(encoder.encode("data: [DONE]\n\n"));
     } catch (err) {
       try { await writer.write(encoder.encode(`data: ${JSON.stringify({ error: err.message })}\n\n`)); } catch {}
-    } finally { await writer.close(); }
+    } finally {
+      await writer.close();
+      // Log to ai_calls after stream completes
+      try {
+        const duration_ms = Date.now() - t0;
+        await serviceClient().from("ai_calls").insert({
+          type:             "agent-call",
+          provider_name:    "anthropic",
+          model_version:    resolvedModel,
+          tokens_input:     totalInputTokens  || null,
+          tokens_output:    totalOutputTokens || null,
+          cost_estimate:    estimateCost(resolvedModel, totalInputTokens, totalOutputTokens),
+          brand_profile_id: profileId,
+          workspace_id:     null,
+          user_email:       userEmail || null,
+          success:          succeeded,
+          duration_ms,
+        });
+      } catch {}
+    }
   })();
 
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
@@ -324,7 +354,7 @@ export async function POST(request) {
   try {
     const key = await loadLLMKey(provider, profileId);
     if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key });
-    return await callAnthropic({ model, system, messages, maxTokens, key, tools: [WRITE_INSIGHT_SCHEMA], profileId });
+    return await callAnthropic({ model, system, messages, maxTokens, key, tools: [WRITE_INSIGHT_SCHEMA], profileId, userEmail: user.email });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }

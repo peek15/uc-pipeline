@@ -5,6 +5,7 @@ App baseline: v3.18.2
 
 Update: v3.18.3 ships Phase 1, replacing the static Settings Intelligence copy with a live module-status dashboard.
 Update: v3.18.4 ships the Phase 2 foundation: `intelligence_insights` schema, safe `write-insight` tool, dashboard insight count, and diagnostics probe.
+Update: v3.18.5 ships the first review loop: Settings Intelligence lists insight rows, lets users mark them reviewed/dismissed, and scans `agent_feedback` corrections into feedback-pattern insights.
 
 ## Executive Summary
 
@@ -253,7 +254,7 @@ Why first:
 
 Goal: create the durable memory layer.
 
-Status: foundation shipped in v3.18.4. The table and safe write helper exist; automatic insight producers are still next.
+Status: first loop shipped in v3.18.5. The table, safe write helper, review UI, and first feedback insight producer exist; performance/debug producers are still next.
 
 Add `intelligence_insights`:
 - `id`
@@ -272,7 +273,7 @@ Add `intelligence_insights`:
 Then implement `write-insight.js`. Done in v3.18.4.
 
 First insight producers:
-- agent feedback summarizer
+- agent feedback summarizer (first version shipped in v3.18.5)
 - performance pattern summarizer
 - provider/debug failure summarizer
 - quality gate recurring issue summarizer

@@ -5,6 +5,7 @@ import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, R
 import { CONTENT_TYPES, FORMATS, FORMAT_MAP, ARCHETYPES, ERAS, RESEARCH_ANGLES, SCRIPT_SYSTEM, TEAMS } from "@/lib/constants";
 import { supabase } from "@/lib/db";
 import { runPrompt } from "@/lib/ai/runner";
+import { writeInsight } from "@/lib/ai/tools/write-insight";
 import ProvidersSection from "@/components/ProvidersSection";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
@@ -247,6 +248,22 @@ function statusTone(status) {
   return { label: "Missing", color: "var(--t4)", bg: "var(--fill2)" };
 }
 
+function summarizeInsightPayload(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  const parts = [];
+  if (payload.agent_name) parts.push(payload.agent_name);
+  if (payload.correction_count != null) parts.push(`${payload.correction_count} corrections`);
+  if (payload.sample_notes?.length) parts.push(payload.sample_notes.slice(0, 2).join(" / "));
+  return parts.join(" · ");
+}
+
+function insightTone(category) {
+  if (category === "error" || category === "debug") return "var(--error)";
+  if (category === "provider_health" || category === "quality_pattern") return "var(--warning)";
+  if (category === "feedback" || category === "performance_pattern") return "var(--success)";
+  return "var(--t2)";
+}
+
 function intelligenceModules(stories, settings, conflicts, insightCount = 0) {
   const published = stories.filter(s => s.status === "published");
   const withMetrics = stories.filter(storyHasMetrics);
@@ -334,7 +351,20 @@ function intelligenceModules(stories, settings, conflicts, insightCount = 0) {
   ];
 }
 
-function IntelligenceDashboard({ stories, settings, conflicts, appName, version, insightCount = 0 }) {
+function IntelligenceDashboard({
+  stories,
+  settings,
+  conflicts,
+  appName,
+  version,
+  insightCount = 0,
+  insights = [],
+  insightsLoading = false,
+  insightError = null,
+  onGenerateFeedbackInsights,
+  generatingInsights = false,
+  onUpdateInsightStatus,
+}) {
   const modules = intelligenceModules(stories, settings, conflicts, insightCount);
   const active = modules.filter(m => m.status === "active").length;
   const partial = modules.filter(m => m.status === "partial").length;
@@ -407,6 +437,62 @@ function IntelligenceDashboard({ stories, settings, conflicts, appName, version,
             </div>
           );
         })}
+      </div>
+
+      <div style={{ padding:"14px 16px", borderRadius:10, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:12, flexWrap:"wrap" }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:"var(--t1)" }}>Intelligence insights</div>
+            <div style={{ fontSize:11, color:"var(--t4)", marginTop:3 }}>Reviewable memory candidates. These do not change strategy or content until you decide what to do with them.</div>
+          </div>
+          <button onClick={onGenerateFeedbackInsights} disabled={generatingInsights} style={{ padding:"6px 12px", borderRadius:7, border:"0.5px solid var(--border)", background:generatingInsights?"var(--bg3)":"var(--t1)", color:generatingInsights?"var(--t3)":"var(--bg)", fontSize:12, fontWeight:600, cursor:generatingInsights?"not-allowed":"pointer" }}>
+            {generatingInsights ? "Scanning..." : "Scan feedback"}
+          </button>
+        </div>
+
+        {insightError && (
+          <div style={{ fontSize:12, color:"var(--error)", lineHeight:1.45, marginBottom:10 }}>
+            {insightError}
+          </div>
+        )}
+
+        {insightsLoading ? (
+          <div style={{ fontSize:12, color:"var(--t4)", padding:"18px 0" }}>Loading insights...</div>
+        ) : insights.length ? (
+          <div style={{ display:"grid", gap:8 }}>
+            {insights.map(insight => (
+              <div key={insight.id} style={{ padding:"11px 12px", borderRadius:8, background:"var(--bg)", border:"0.5px solid var(--border)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"flex-start", marginBottom:6 }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap" }}>
+                      <span style={{ width:7, height:7, borderRadius:99, background:insightTone(insight.category), display:"inline-block" }} />
+                      <span style={{ fontSize:11, color:"var(--t4)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{insight.category}</span>
+                      <span style={{ fontSize:11, color:"var(--t4)" }}>{insight.source}</span>
+                      <span style={{ fontSize:10, color:insight.status === "open" ? "var(--warning)" : "var(--t4)", textTransform:"uppercase", letterSpacing:"0.05em" }}>{insight.status || "open"}</span>
+                    </div>
+                    <div style={{ fontSize:12, color:"var(--t1)", lineHeight:1.45, marginTop:5 }}>{insight.summary}</div>
+                    {summarizeInsightPayload(insight.payload) && (
+                      <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.4, marginTop:4 }}>{summarizeInsightPayload(insight.payload)}</div>
+                    )}
+                  </div>
+                  <div style={{ fontSize:11, color:"var(--t3)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", whiteSpace:"nowrap" }}>
+                    {Math.round((Number(insight.confidence) || 0) * 100)}%
+                  </div>
+                </div>
+                {insight.status === "open" && (
+                  <div style={{ display:"flex", gap:6, justifyContent:"flex-end", marginTop:8 }}>
+                    <button onClick={() => onUpdateInsightStatus?.(insight.id, "reviewed")} style={{ padding:"4px 9px", borderRadius:6, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t2)", fontSize:11, cursor:"pointer" }}>Reviewed</button>
+                    <button onClick={() => onUpdateInsightStatus?.(insight.id, "dismissed")} style={{ padding:"4px 9px", borderRadius:6, border:"0.5px solid var(--border)", background:"transparent", color:"var(--t4)", fontSize:11, cursor:"pointer" }}>Dismiss</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize:12, color:"var(--t4)", lineHeight:1.5, padding:"10px 0" }}>
+            No insights yet. Scan feedback after using production agents, or wait for performance/debug summarizers in the next phase.
+          </div>
+        )}
       </div>
 
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderTop:"0.5px solid var(--border2)", marginTop:2 }}>
@@ -631,6 +717,10 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [progAudit,     setProgAudit]     = useState(null);
   const [progRunning,   setProgRunning]   = useState(false);
   const [insightCount,  setInsightCount]  = useState(0);
+  const [insights,      setInsights]      = useState([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightError,  setInsightError]  = useState(null);
+  const [generatingInsights, setGeneratingInsights] = useState(false);
   const appName = getAppName(settings);
   const languageSummary = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join(" → ");
 
@@ -661,21 +751,126 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const BRAND_PROFILE_ID = activeTenant.brand_profile_id;
   const WORKSPACE_ID     = activeTenant.workspace_id;
 
-  useEffect(() => {
-    if (!isOpen || section !== "intelligence") return;
-    let cancelled = false;
-    let query = supabase
+  const loadInsights = async () => {
+    setInsightsLoading(true);
+    setInsightError(null);
+    let countQuery = supabase
       .from("intelligence_insights")
       .select("id", { count: "exact", head: true });
-    if (WORKSPACE_ID) query = query.eq("workspace_id", WORKSPACE_ID);
-    if (BRAND_PROFILE_ID) query = query.eq("brand_profile_id", BRAND_PROFILE_ID);
-    query.then(({ count, error }) => {
-      if (!cancelled) setInsightCount(error ? 0 : (count || 0));
-    }).catch(() => {
-      if (!cancelled) setInsightCount(0);
-    });
-    return () => { cancelled = true; };
+    let listQuery = supabase
+      .from("intelligence_insights")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(12);
+    if (WORKSPACE_ID) {
+      countQuery = countQuery.eq("workspace_id", WORKSPACE_ID);
+      listQuery = listQuery.eq("workspace_id", WORKSPACE_ID);
+    }
+    if (BRAND_PROFILE_ID) {
+      countQuery = countQuery.eq("brand_profile_id", BRAND_PROFILE_ID);
+      listQuery = listQuery.eq("brand_profile_id", BRAND_PROFILE_ID);
+    }
+    try {
+      const [{ count, error: countError }, { data, error: listError }] = await Promise.all([countQuery, listQuery]);
+      if (countError || listError) throw countError || listError;
+      setInsightCount(count || 0);
+      setInsights(data || []);
+    } catch (e) {
+      setInsightCount(0);
+      setInsights([]);
+      setInsightError("Run the latest Supabase schema to enable intelligence insights.");
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || section !== "intelligence") return;
+    loadInsights();
   }, [isOpen, section, WORKSPACE_ID, BRAND_PROFILE_ID]);
+
+  const generateFeedbackInsights = async () => {
+    setGeneratingInsights(true);
+    setInsightError(null);
+    try {
+      let query = supabase
+        .from("agent_feedback")
+        .select("agent_name,correction_type,agent_output,user_correction,notes,agent_confidence,created_at,story_id")
+        .in("correction_type", ["edit", "reject", "partial"])
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (WORKSPACE_ID) query = query.eq("workspace_id", WORKSPACE_ID);
+      if (BRAND_PROFILE_ID) query = query.eq("brand_profile_id", BRAND_PROFILE_ID);
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const existingFingerprints = new Set(
+        insights.map(i => i.payload?.fingerprint).filter(Boolean)
+      );
+      const groups = new Map();
+      for (const row of data || []) {
+        const key = row.agent_name || "unknown-agent";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(row);
+      }
+
+      let created = 0;
+      for (const [agentName, rows] of groups.entries()) {
+        if (!rows.length) continue;
+        const correctionCounts = rows.reduce((acc, row) => {
+          const key = row.correction_type || "unknown";
+          acc[key] = (acc[key] || 0) + 1;
+          return acc;
+        }, {});
+        const latest = rows[0]?.created_at || "";
+        const fingerprint = `feedback:${agentName}:${rows.length}:${latest}`;
+        if (existingFingerprints.has(fingerprint)) continue;
+        const sampleNotes = rows
+          .map(row => row.notes || (row.user_correction ? JSON.stringify(row.user_correction).slice(0, 160) : "Rejected without replacement"))
+          .filter(Boolean)
+          .slice(0, 3);
+        const dominant = Object.entries(correctionCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || "correction";
+        await writeInsight({
+          workspace_id: WORKSPACE_ID,
+          brand_profile_id: BRAND_PROFILE_ID,
+          agent_name: "feedback-summarizer",
+          source: "agent_feedback",
+          category: "feedback",
+          entity_type: "agent",
+          summary: `${agentName} has ${rows.length} recent ${dominant} correction${rows.length === 1 ? "" : "s"}. Review these before tuning the agent prompt or memory.`,
+          confidence: Math.min(0.95, 0.45 + rows.length * 0.08),
+          payload: {
+            fingerprint,
+            agent_name: agentName,
+            correction_count: rows.length,
+            correction_counts: correctionCounts,
+            latest_feedback_at: latest,
+            sample_notes: sampleNotes,
+            story_ids: [...new Set(rows.map(row => row.story_id).filter(Boolean))].slice(0, 8),
+          },
+        });
+        created += 1;
+      }
+      await loadInsights();
+      if (!created) setInsightError((data || []).length ? "No new feedback patterns found." : "No agent feedback corrections found yet.");
+    } catch (e) {
+      setInsightError(e?.message?.includes("intelligence_insights") ? "Run the latest Supabase schema to enable intelligence insights." : (e?.message || "Could not generate feedback insights."));
+    } finally {
+      setGeneratingInsights(false);
+    }
+  };
+
+  const updateInsightStatus = async (id, status) => {
+    const patch = { status };
+    if (status === "dismissed") patch.dismissed_at = new Date().toISOString();
+    if (status === "applied") patch.applied_at = new Date().toISOString();
+    const { error } = await supabase.from("intelligence_insights").update(patch).eq("id", id);
+    if (error) {
+      setInsightError(error.message || "Could not update insight.");
+      return;
+    }
+    await loadInsights();
+  };
 
   useEffect(() => {
     if (section === "brand" && isOpen && assets.length === 0) {
@@ -1690,6 +1885,12 @@ ${fileText.slice(0,3000)}` : text };
               appName={appName}
               version={VERSION_NUM}
               insightCount={insightCount}
+              insights={insights}
+              insightsLoading={insightsLoading}
+              insightError={insightError}
+              onGenerateFeedbackInsights={generateFeedbackInsights}
+              generatingInsights={generatingInsights}
+              onUpdateInsightStatus={updateInsightStatus}
             />
           )}
 

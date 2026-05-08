@@ -150,13 +150,19 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
   );
 }
 
-export default function CalendarView({ stories, onUpdate, onProduce, settings }) {
+export default function CalendarView({ stories, onUpdate, onProduce, settings, campaigns = [] }) {
   const languages = useMemo(() => getBrandLanguages(settings), [settings]);
   const programmeMap = useMemo(() => getBrandProgrammeMap(settings), [settings]);
-  const [weekOffset,  setWeekOffset]  = useState(0);
-  const [showAssign,  setShowAssign]  = useState(null); // day index
-  const [platform,    setPlatform]    = useState("All");
-  const [planPreview, setPlanPreview] = useState(null);
+  const [weekOffset,      setWeekOffset]      = useState(0);
+  const [showAssign,      setShowAssign]       = useState(null); // day index
+  const [platform,        setPlatform]         = useState("All");
+  const [planPreview,     setPlanPreview]      = useState(null);
+  const [campaignFilter,  setCampaignFilter]   = useState("");
+
+  const activeCampaign = useMemo(() =>
+    campaignFilter ? campaigns.find(c => c.id === campaignFilter) || null : null,
+    [campaignFilter, campaigns]
+  );
 
   // Read from settings — fall back to defaults
   const cadence   = settings?.strategy?.weekly_cadence || DEFAULT_CADENCE;
@@ -179,7 +185,10 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
       return d;
     }), [weekStart]);
 
-  const getForDay = (d) => stories.filter(s => s.scheduled_date === fmt(d));
+  const getForDay = (d) => stories.filter(s =>
+    s.scheduled_date === fmt(d) &&
+    (!campaignFilter || s.campaign_id === campaignFilter)
+  );
 
   const ready = stories.filter(s =>
     ["approved","scripted","produced"].includes(s.status) && !s.scheduled_date
@@ -556,10 +565,29 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
           </button>
         </div>
 
-        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+        <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
           <button onClick={() => previewAutoFill()} style={buttonStyle("secondary", { padding:"5px 12px" })}>
             ⌥P Preview auto-fill
           </button>
+          {/* Campaign filter */}
+          {campaigns.length > 0 && (
+            <select
+              value={campaignFilter}
+              onChange={e => setCampaignFilter(e.target.value)}
+              style={{
+                height: 30, borderRadius: 7, fontSize: 11, padding: "0 8px",
+                border: campaignFilter ? `0.5px solid ${activeCampaign?.color || "var(--border)"}` : "0.5px solid var(--border)",
+                background: campaignFilter ? `${activeCampaign?.color || "#4A9B7F"}14` : "var(--fill2)",
+                color: campaignFilter ? (activeCampaign?.color || "var(--t2)") : "var(--t2)",
+                outline: "none", fontFamily: "inherit", cursor: "pointer", fontWeight: campaignFilter ? 600 : 400,
+              }}
+            >
+              <option value="">All campaigns</option>
+              {campaigns.filter(c => c.status !== "archived").map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          )}
         </div>
         {/* Platform filter */}
         <div style={{ display:"flex", gap:4 }}>
@@ -583,12 +611,14 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
           const today_   = isToday(d);
           const suggested = getSuggested(di);
           const isGap    = !past && items.length===0;
+          const inCampaignRange = activeCampaign && activeCampaign.start_date && activeCampaign.end_date &&
+            fmt(d) >= activeCampaign.start_date && fmt(d) <= activeCampaign.end_date;
 
           return (
             <div key={di} style={{
               borderRadius:9,
               border: today_ ? "1px solid var(--t2)" : isGap ? "1px dashed var(--border)" : "1px solid var(--border2)",
-              background: today_ ? "var(--fill2)" : "transparent",
+              background: inCampaignRange ? `${activeCampaign.color}10` : today_ ? "var(--fill2)" : "transparent",
               opacity: past ? 0.45 : 1,
               overflow:"hidden",
               minHeight:220,
@@ -628,10 +658,12 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
                     const fmtObj = programmeMap[s.format] || FORMAT_MAP[s.format];
                     const ac     = fmtObj ? fmtObj.color : "var(--border)";
                     const readyCount = languages.filter(l => getStoryScript(s, l.key)).length;
+                    const storyColor = campaigns.find(c => c.id === s.campaign_id)?.color;
                     return (
                       <div key={s.id} draggable={!past} onDragStart={(e)=>e.dataTransfer.setData("text/story-id", s.id)} style={{
                         display:"flex", alignItems:"center", gap:8, padding:"var(--card-padding-y, 8px) var(--card-padding-x, 10px)", borderRadius:7, marginBottom:"var(--card-gap, 3px)",
                         background:"var(--card)", borderLeft:`3px solid ${ac}`, cursor:past ? "default" : "grab",
+                        borderTop: storyColor ? `2px solid ${storyColor}` : undefined,
                       }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>

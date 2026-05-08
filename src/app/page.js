@@ -4,6 +4,7 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import { Layers, Search, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot, Target } from "lucide-react";
 import { STAGES } from "@/lib/constants";
 import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile, getCampaigns, upsertCampaign, deleteCampaign as dbDeleteCampaign } from "@/lib/db";
+import { batchPredict } from "@/lib/prediction";
 import { signInWithGoogle, signOut, isEmailAllowed } from "@/lib/auth";
 import PipelineView from "@/components/PipelineView";
 import CampaignsView from "@/components/CampaignsView";
@@ -22,7 +23,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.20.4";
+const VERSION = "3.20.5";
 
 const TABS = [
   { key: "pipeline",   label: "Content",   Icon: Layers },
@@ -53,8 +54,9 @@ export default function Home() {
   const [appSettings,     setAppSettings]     = useState(null);
   const [brandProfiles,   setBrandProfiles]   = useState([]);
   const [campaigns,       setCampaigns]       = useState([]);
-  const [showSettings,    setShowSettings]    = useState(false); // persisted across tab switches
-  const [showShortcuts,   setShowShortcuts]   = useState(false); // v3.11.4
+  const [showSettings,       setShowSettings]       = useState(false);
+  const [showShortcuts,      setShowShortcuts]      = useState(false);
+  const [runningPredictions, setRunningPredictions] = useState(false);
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
   const [agentOpen,       setAgentOpen]       = useState(false);
@@ -215,6 +217,24 @@ export default function Home() {
     const saved = await upsertCampaign(campaign, activeTenant);
     setCampaigns(prev => prev.map(c => c.id === saved.id ? saved : c));
   }, [activeTenant]);
+
+  const runPredictions = useCallback(async () => {
+    setRunningPredictions(true);
+    try {
+      const toPredict = stories.filter(s => !["rejected","archived"].includes(s.status));
+      const predicted = batchPredict(toPredict);
+      const saved = await bulkUpsertStories(predicted, activeTenant);
+      if (saved?.length) {
+        const map = Object.fromEntries(saved.map(s => [s.id, s]));
+        setStories(p => p.map(s => map[s.id] || s));
+      }
+      toast(`Predicted ${predicted.length} stories`);
+    } catch (e) {
+      toast("Prediction failed: " + e.message);
+    } finally {
+      setRunningPredictions(false);
+    }
+  }, [stories, activeTenant]);
 
   const researchForCampaign = useCallback((campaign) => {
     setResearchPrefill({
@@ -730,7 +750,7 @@ export default function Home() {
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} settings={appSettings} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} onRunPredictions={runPredictions} runningPredictions={runningPredictions} />
       <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
 
       {newBrand.show && (

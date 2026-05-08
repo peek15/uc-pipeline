@@ -324,11 +324,11 @@ function intelligenceModules(stories, settings, conflicts, insightCount = 0, sna
     {
       key: "prediction",
       name: "Predictive scoring",
-      status: withPrediction.length ? "partial" : "missing",
+      status: withPrediction.length >= 5 ? "active" : withPrediction.length ? "partial" : "partial",
       signal: `${withPrediction.length} predicted`,
       source: "stories.predicted_score",
-      detail: "Schema support exists, but there is no prediction engine calculating the field yet.",
-      next: "Build Prediction Engine V1 with score, history, gate risk, channel, template, and sample-size confidence.",
+      detail: "Prediction Engine V1 is live. Scores use quality gate risk, historical peer-group performance, and sample-size confidence. Run it to populate predicted_score across all active stories.",
+      next: withPrediction.length ? "Feed predicted_score into Calendar auto-fill and Pipeline sort to replace the raw score+reach sum." : "Click 'Run predictions' to score active stories for the first time.",
     },
     {
       key: "memory",
@@ -365,6 +365,8 @@ function IntelligenceDashboard({
   onGenerateFeedbackInsights,
   generatingInsights = false,
   onUpdateInsightStatus,
+  onRunPredictions,
+  runningPredictions = false,
 }) {
   const modules = intelligenceModules(stories, settings, conflicts, insightCount, snapshotCount);
   const active = modules.filter(m => m.status === "active").length;
@@ -436,6 +438,13 @@ function IntelligenceDashboard({
                 <ArrowRight size={13} style={{ flexShrink:0, marginTop:2, color:"var(--t4)" }} />
                 <span>{module.next}</span>
               </div>
+              {module.key === "prediction" && onRunPredictions && (
+                <div style={{ marginTop:10 }}>
+                  <button onClick={onRunPredictions} disabled={runningPredictions} style={{ padding:"6px 12px", borderRadius:7, border:"0.5px solid var(--border)", background:runningPredictions?"var(--bg3)":"var(--t1)", color:runningPredictions?"var(--t3)":"var(--bg)", fontSize:12, fontWeight:600, cursor:runningPredictions?"not-allowed":"pointer" }}>
+                    {runningPredictions ? "Running…" : `Run predictions (${stories.filter(s=>!["rejected","archived"].includes(s.status)).length} stories)`}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -696,7 +705,7 @@ function ProgDiscuss({ programme, brandName }) {
   );
 }
 
-export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant }) {
+export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant, onRunPredictions, runningPredictions=false }) {
   const VERSION_NUM = version;
   const [section,  setSection]  = usePersistentState("settings_section", "brand");
   const [settings, setSettings] = useState(mergeSettings(initialSettings));
@@ -1902,6 +1911,8 @@ ${fileText.slice(0,3000)}` : text };
               onGenerateFeedbackInsights={generateFeedbackInsights}
               generatingInsights={generatingInsights}
               onUpdateInsightStatus={updateInsightStatus}
+              onRunPredictions={onRunPredictions}
+              runningPredictions={runningPredictions}
             />
           )}
 

@@ -571,6 +571,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                               <span style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>AI Score</span>
                               <div style={{display:"flex",gap:12,alignItems:"center"}}>
                                 {s.reach_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}}>↗ reach <span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t2)",fontWeight:600}}>{s.reach_score}</span></span>}
+                                {s.predicted_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}} title={`Predicted score (gate risk + peer history). Confidence: ${Math.round(((s.metadata?.prediction?.confidence)||0)*100)}%`}>⚡ pred <span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:s.predicted_score>=s.score_total?"var(--success)":s.predicted_score<s.score_total-10?"var(--error)":"var(--t2)",fontWeight:600}}>{s.predicted_score}</span></span>}
                                 <span style={{fontSize:13,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)"}}>{s.score_total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span></span>
                               </div>
                             </div>

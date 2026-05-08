@@ -74,10 +74,41 @@ const WRITE_INSIGHT_SCHEMA = {
   },
 };
 
-async function executeTool(name, input, profileId) {
+const DB_READ_SCHEMA = {
+  name: "db_read",
+  description: "Query workspace-scoped data from whitelisted tables (stories, performance_snapshots, intelligence_insights). Use to answer deeper questions about content history, performance data, or recorded intelligence findings.",
+  input_schema: {
+    type: "object",
+    properties: {
+      table:  { type: "string", enum: ["stories", "performance_snapshots", "intelligence_insights"] },
+      filter: { type: "object", description: "Equality filters. Use {\"$gt\": N}, {\"$lt\": N}, {\"$gte\": N} for comparisons." },
+      limit:  { type: "integer", maximum: 100, description: "Max rows (default 50)" },
+    },
+    required: ["table"],
+  },
+};
+
+const AUDIT_READ_SCHEMA = {
+  name: "audit_read",
+  description: "Read recent AI call logs or audit events. Use to diagnose failures, cost spikes, or trace what happened to a specific story.",
+  input_schema: {
+    type: "object",
+    properties: {
+      source:        { type: "string", enum: ["ai_calls", "audit_log"] },
+      story_id:      { type: "string" },
+      since:         { type: "string", description: "ISO 8601 timestamp" },
+      failures_only: { type: "boolean" },
+      limit:         { type: "integer", maximum: 100 },
+    },
+    required: ["source"],
+  },
+};
+
+async function executeTool(name, input, profileId, workspaceId) {
   if (name === "write_insight") {
     const { data, error } = await serviceClient().from("intelligence_insights").insert({
       brand_profile_id: profileId,
+      workspace_id: workspaceId || null,
       agent_name: "pipeline-agent",
       source: "pipeline-agent",
       category: VALID_CATEGORIES.includes(input.category) ? input.category : "debug",
@@ -89,6 +120,61 @@ async function executeTool(name, input, profileId) {
     if (error) throw error;
     return { ok: true, id: data.id, category: data.category };
   }
+
+  if (name === "db_read") {
+    const { table, filter = {}, limit = 50 } = input;
+    const ALLOWED = new Set(["stories", "performance_snapshots", "intelligence_insights"]);
+    if (!ALLOWED.has(table)) return { error: `Table not allowed: ${table}` };
+    const cap = Math.min(Number(limit) || 50, 100);
+    let q = serviceClient().from(table).select("*").limit(cap).order("created_at", { ascending: false });
+    if (profileId)   q = q.eq("brand_profile_id", profileId);
+    if (workspaceId) q = q.eq("workspace_id", workspaceId);
+    for (const [key, val] of Object.entries(filter || {})) {
+      if (val && typeof val === "object") {
+        if ("$gt"  in val) q = q.gt(key, val.$gt);
+        else if ("$lt"  in val) q = q.lt(key, val.$lt);
+        else if ("$gte" in val) q = q.gte(key, val.$gte);
+        else if ("$lte" in val) q = q.lte(key, val.$lte);
+        else if ("$neq" in val) q = q.neq(key, val.$neq);
+      } else {
+        q = q.eq(key, val);
+      }
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    return { rows: data || [], count: (data || []).length };
+  }
+
+  if (name === "audit_read") {
+    const { source = "ai_calls", story_id, since, failures_only = false, limit = 50 } = input;
+    if (!["ai_calls", "audit_log"].includes(source)) return { error: `Unknown source: ${source}` };
+    const cap = Math.min(Number(limit) || 50, 100);
+    if (source === "ai_calls") {
+      let q = serviceClient()
+        .from("ai_calls")
+        .select("type,provider_name,model_version,success,error_type,error_message,created_at,duration_ms,cost_estimate,story_id")
+        .order("created_at", { ascending: false })
+        .limit(cap);
+      if (failures_only) q = q.eq("success", false);
+      if (story_id)      q = q.eq("story_id", story_id);
+      if (since)         q = q.gte("created_at", since);
+      if (profileId)     q = q.eq("brand_profile_id", profileId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return { rows: data || [], count: (data || []).length };
+    }
+    let q = serviceClient()
+      .from("audit_log")
+      .select("action,table_name,record_id,created_at,details")
+      .order("created_at", { ascending: false })
+      .limit(cap);
+    if (story_id) q = q.eq("record_id", story_id);
+    if (since)    q = q.gte("created_at", since);
+    const { data, error } = await q;
+    if (error) throw error;
+    return { rows: data || [], count: (data || []).length };
+  }
+
   throw new Error(`Unknown tool: ${name}`);
 }
 
@@ -126,7 +212,7 @@ function transformMessagesForOpenAI(messages, system) {
   return out;
 }
 
-async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, userEmail }) {
+async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, workspaceId, userEmail }) {
   if (!key) throw new Error("Anthropic API key not configured");
 
   const { readable, writable } = new TransformStream();
@@ -217,7 +303,7 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
           let input = {};
           try { input = JSON.parse(tb.inputJson); } catch {}
           let result;
-          try { result = await executeTool(tb.name, input, profileId); }
+          try { result = await executeTool(tb.name, input, profileId, workspaceId); }
           catch (err) { result = { error: err.message }; }
           toolResults.push({ type: "tool_result", tool_use_id: tb.id, content: JSON.stringify(result) });
         }
@@ -378,13 +464,14 @@ export async function POST(request) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
 
-  const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700, brand_profile_id } = await request.json();
-  const profileId = brand_profile_id || BRAND_PROFILE_ID;
+  const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700, brand_profile_id, workspace_id } = await request.json();
+  const profileId   = brand_profile_id || BRAND_PROFILE_ID;
+  const workspaceId = workspace_id || null;
 
   try {
     const key = await loadLLMKey(provider, profileId);
-    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key, profileId, userEmail: user.email });
-    return await callAnthropic({ model, system, messages, maxTokens, key, tools: [WRITE_INSIGHT_SCHEMA], profileId, userEmail: user.email });
+    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key, profileId, workspaceId, userEmail: user.email });
+    return await callAnthropic({ model, system, messages, maxTokens, key, tools: [WRITE_INSIGHT_SCHEMA, DB_READ_SCHEMA, AUDIT_READ_SCHEMA], profileId, workspaceId, userEmail: user.email });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }

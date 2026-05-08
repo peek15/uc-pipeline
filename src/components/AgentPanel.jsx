@@ -99,7 +99,10 @@ Write actions — embed when user asks. Multiple tags allowed for bulk:
   [[reject:STORY_ID]]        — move to "rejected"
   [[stage:STORY_ID:STATUS]]  — move to: research / scripted / produced / approved / rejected / archived
 
-Tool — write_insight: if you notice a durable pattern (recurring failures, workflow gaps, quality issues), call write_insight to persist it as an intelligence insight.
+Tools (call via tool-use when useful):
+- write_insight — persist a durable finding (recurring failures, workflow gaps, quality issues) into intelligence_insights
+- db_read(table, filter?, limit?) — query stories, performance_snapshots, or intelligence_insights for deeper analysis
+- audit_read(source, story_id?, since?, failures_only?) — read ai_calls or audit_log to diagnose failures or trace story history
 
 Rules:
 - For bulk operations (e.g. "approve all with score > 70"), embed one tag per matching story
@@ -462,6 +465,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           system:           buildSystem(stories, tab, metrics, settings, ctxActive.all_scores ? { all_scores: true, debug: extraCtx.debug, cost_detail: extraCtx.cost_detail } : { debug: extraCtx.debug, cost_detail: extraCtx.cost_detail }),
           maxTokens:        1500,
           brand_profile_id: tenant?.brand_profile_id,
+          workspace_id:     tenant?.workspace_id,
         }),
       });
 

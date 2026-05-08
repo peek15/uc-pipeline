@@ -44,9 +44,15 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
   const [format,    setFormat]    = useState("");
   const [templateId, setTemplateId] = useState(contentTemplates[0]?.id || "narrative_story");
 
-  // Results
-  const [results,   setResults]   = useState([]);
-  const [scores,    setScores]    = useState({});
+  // Results — persisted in localStorage so they survive page reload
+  const [results, setResults] = useState(() => {
+    try { const r = localStorage.getItem("uc_research_results"); return r ? JSON.parse(r) : []; } catch { return []; }
+  });
+  const [scores, setScores] = useState(() => {
+    try { const s = localStorage.getItem("uc_research_scores"); return s ? JSON.parse(s) : {}; } catch { return {}; }
+  });
+  useEffect(() => { try { localStorage.setItem("uc_research_results", JSON.stringify(results)); } catch {} }, [results]);
+  useEffect(() => { try { localStorage.setItem("uc_research_scores",  JSON.stringify(scores));  } catch {} }, [scores]);
   const [scoring,   setScoring]   = useState(false);
   const [error,     setError]     = useState(null);
   const [batch,     setBatch]     = useState(0);
@@ -102,6 +108,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       ...s,
       content_template_id: s.content_template_id || template?.id || params.templateId || null,
       content_type: s.content_type || template?.content_type || "narrative",
+      format: s.format || params.format || "",
       objective: s.objective || template?.objective || "",
       audience: s.audience || template?.audience || "",
       channel: s.channel || template?.channels?.[0] || "",
@@ -240,6 +247,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         ...s,
         content_template_id: s.content_template_id || template?.id || templateId || null,
         content_type:    s.content_type    || template?.content_type  || "narrative",
+        format:          s.format          || format                  || "",
         objective:       s.objective       || template?.objective      || "",
         audience:        s.audience        || template?.audience       || "",
         channel:         s.channel         || template?.channels?.[0] || "",

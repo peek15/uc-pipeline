@@ -22,7 +22,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.20.0";
+const VERSION = "3.20.1";
 
 const TABS = [
   { key: "pipeline",   label: "Content",   Icon: Layers },
@@ -72,9 +72,14 @@ export default function Home() {
       setAuthLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // TOKEN_REFRESHED fires periodically and does not change the user — skip to avoid
+      // reloading stories on every background token rotation when the tab regains focus.
+      if (event === "TOKEN_REFRESHED") return;
       if (session?.user) {
-        if (isEmailAllowed(session.user.email)) { setUser(session.user); setAuthError(null); }
-        else { await supabase.auth.signOut(); setUser(null); setAuthError(`Access restricted to @${process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc"} accounts.`); }
+        if (isEmailAllowed(session.user.email)) {
+          setUser(prev => prev?.id === session.user.id ? prev : session.user);
+          setAuthError(null);
+        } else { await supabase.auth.signOut(); setUser(null); setAuthError(`Access restricted to @${process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc"} accounts.`); }
       } else { setUser(null); }
       setAuthLoading(false);
     });
@@ -334,7 +339,7 @@ export default function Home() {
  // v3.11.4 — Global keyboard shortcuts driven by SHORTCUTS registry.
   // Cross-platform (metaKey || ctrlKey).
   useEffect(() => {
-    const TAB_KEYS = ["pipeline","research","create","calendar","analyze"];
+    const TAB_KEYS = ["pipeline","research","create","campaigns","calendar","analyze"];
     const handler = (e) => {
       if (shouldIgnoreFromInput()) return;
 

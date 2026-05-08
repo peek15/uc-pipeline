@@ -570,7 +570,7 @@ export default function CampaignsView({
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
 
       {/* ── Left sidebar ── */}
-      <div style={{ width: 240, flexShrink: 0, borderRight: "0.5px solid var(--border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ width: 260, flexShrink: 0, borderRight: "0.5px solid var(--border)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {/* Header */}
         <div style={{ padding: "16px 14px 10px", borderBottom: "0.5px solid var(--border)", flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>

@@ -132,6 +132,42 @@ export async function createBrandProfile({ name, settings }, tenant) {
   return data || { id, workspace_id: t.workspace_id, name, settings: safeSettings };
 }
 
+// ─── CAMPAIGNS ───
+
+export async function getCampaigns(tenant) {
+  const t = normalizeTenant(tenant);
+  let query = supabase
+    .from("campaigns")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (t.brand_profile_id) query = query.eq("brand_profile_id", t.brand_profile_id);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function upsertCampaign(campaign, tenant) {
+  const t = normalizeTenant(tenant);
+  const row = {
+    ...campaign,
+    brand_profile_id: campaign.brand_profile_id || t.brand_profile_id,
+    workspace_id: campaign.workspace_id || t.workspace_id,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from("campaigns")
+    .upsert(row, { onConflict: "id" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteCampaign(id) {
+  const { error } = await supabase.from("campaigns").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // ─── Helper to get auth token ───
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession();

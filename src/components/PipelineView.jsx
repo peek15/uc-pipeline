@@ -4,37 +4,9 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import { Search, ArrowRight, FileText, Eye, ChevronRight, ChevronDown, SlidersHorizontal, X, Check, Trash2, RefreshCw } from "lucide-react";
 import { STAGES, ERAS, ARCHETYPES, ACCENT, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES, CONTENT_TYPES, CHANNELS } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
-import { PageHeader, Pill, buttonStyle } from "@/components/OperationalUI";
+import { PageHeader, Pill, buttonStyle, InlineTextInput } from "@/components/OperationalUI";
 import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
 
-function InlineTextInput({ value, placeholder, onSave }) {
-  const [local, setLocal] = useState(value);
-  const [focused, setFocused] = useState(false);
-  useEffect(() => { if (!focused) setLocal(value); }, [value, focused]);
-  const commit = () => { if (local.trim() !== value.trim()) onSave(local.trim()); };
-  return (
-    <textarea
-      value={local}
-      placeholder={placeholder}
-      rows={2}
-      onChange={e => setLocal(e.target.value)}
-      onFocus={() => setFocused(true)}
-      onBlur={() => { setFocused(false); commit(); }}
-      onKeyDown={e => {
-        if (e.key==="Enter"&&!e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
-        if (e.key==="Escape") { setLocal(value); setFocused(false); e.currentTarget.blur(); }
-      }}
-      style={{
-        width:"100%", fontSize:12, color:"var(--t2)", lineHeight:1.6,
-        background: focused ? "var(--fill2)" : "transparent",
-        border: focused ? "0.5px solid var(--border)" : "0.5px solid transparent",
-        borderRadius:5, padding: focused ? "5px 7px" : 0,
-        outline:"none", resize:"none", fontFamily:"inherit",
-        boxSizing:"border-box", transition:"border-color 0.1s, background 0.1s",
-      }}
-    />
-  );
-}
 
 const SORT_OPTS = [
   { key: "date_desc",      label: "Newest first" },
@@ -91,7 +63,7 @@ function getGateStatus(s) {
   return "missing";
 }
 
-export default function PipelineView({ stories, onSelect, onStageChange, onBulkAction, onBulkReject, onBulkDelete, onUpdate, setActiveTab, settings = null }) {
+export default function PipelineView({ stories, onSelect, onStageChange, onBulkAction, onBulkReject, onBulkDelete, onUpdate, setActiveTab, settings = null, campaigns = [] }) {
   // Filter state
   const [stageFilter, setStageFilter] = usePersistentState("pipeline_stage",     "all");
   const [search,      setSearch]      = usePersistentState("pipeline_search",    "");
@@ -380,6 +352,24 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
               {stageOrder.map(st=><option key={st} value={st}>{STAGES[st].label}</option>)}
               <option value="archived">Archived</option>
             </select>
+            {campaigns.length>0&&(
+              <select defaultValue="" onChange={e=>{
+                const cId=e.target.value;
+                if(!cId)return;
+                if(cId==="__remove__"){
+                  [...selected].forEach(id=>onUpdate&&onUpdate(id,{campaign_id:null,campaign_name:null}));
+                }else{
+                  const camp=campaigns.find(c=>c.id===cId);
+                  [...selected].forEach(id=>onUpdate&&onUpdate(id,{campaign_id:cId,campaign_name:camp?.name||null}));
+                }
+                setSelected(new Set());
+                e.target.value="";
+              }} style={{height:30,borderRadius:7,border:"0.5px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.12)",color:"var(--bg)",fontSize:11,padding:"0 8px",cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
+                <option value="">Assign to campaign…</option>
+                {campaigns.filter(c=>c.status!=="archived").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                <option value="__remove__">Remove from campaign</option>
+              </select>
+            )}
             <button onClick={()=>{[...selected].forEach(id=>onStageChange(id,"approved"));setSelected(new Set());}} style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--bg)",color:"var(--t1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}><Check size={11}/> Approve</button>
             <button onClick={()=>{onBulkReject([...selected]);setSelected(new Set());}} style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.12)",color:"var(--bg)",border:"0.5px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}><X size={11}/> Reject</button>
             <button onClick={()=>{const ids=[...selected];if(window.confirm(`Delete ${ids.length} item${ids.length===1?"":"s"}? Cannot be undone.`)){onBulkDelete(ids);setSelected(new Set());}}} style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.12)",color:"var(--bg)",border:"0.5px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}><Trash2 size={11}/> Delete</button>
@@ -551,6 +541,23 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                           </div>
                         </div>
 
+                        {campaigns.length>0&&(
+                          <div style={{marginBottom:10}}>
+                            <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Campaign</div>
+                            <select
+                              value={s.campaign_id||""}
+                              onChange={e=>{
+                                const cId=e.target.value||null;
+                                const camp=campaigns.find(c=>c.id===cId);
+                                onUpdate&&onUpdate(s.id,{campaign_id:cId,campaign_name:camp?.name||null});
+                              }}
+                              style={{width:"100%",fontSize:12,borderRadius:5,border:"0.5px solid var(--border)",background:"var(--fill2)",color:"var(--t1)",padding:"4px 7px",outline:"none",fontFamily:"inherit",cursor:"pointer"}}
+                            >
+                              <option value="">— No campaign</option>
+                              {campaigns.filter(c=>c.status!=="archived").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                          </div>
+                        )}
                         {s.angle&&<div style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,marginBottom:8}}>{s.angle}</div>}
                         {s.hook&&<div style={{fontSize:13,color:"var(--t3)",fontStyle:"italic",paddingLeft:12,borderLeft:"2px solid var(--border)",lineHeight:1.5,marginBottom:10}}>"{s.hook}"</div>}
                         {subjects&&<div style={{fontSize:12,color:"var(--t3)",marginBottom:10,lineHeight:1.6,whiteSpace:"normal"}}>{subjects}</div>}

@@ -1,11 +1,12 @@
 "use client";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { Layers, Search, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot } from "lucide-react";
+import { Layers, Search, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot, Target } from "lucide-react";
 import { STAGES } from "@/lib/constants";
-import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile } from "@/lib/db";
+import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile, getCampaigns, upsertCampaign, deleteCampaign as dbDeleteCampaign } from "@/lib/db";
 import { signInWithGoogle, signOut, isEmailAllowed } from "@/lib/auth";
 import PipelineView from "@/components/PipelineView";
+import CampaignsView from "@/components/CampaignsView";
 import ResearchView from "@/components/ResearchView";
 import CalendarView from "@/components/CalendarView";
 import CreateView from "@/components/CreateView";
@@ -21,14 +22,15 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.19.4";
+const VERSION = "3.19.5";
 
 const TABS = [
-  { key: "pipeline",   label: "Content",  Icon: Layers },
-  { key: "research",   label: "Research", Icon: Search },
-  { key: "create",     label: "Create",   Icon: Wrench },
-  { key: "calendar",   label: "Schedule", Icon: Clock },
-  { key: "analyze",    label: "Insights", Icon: BarChart3 },
+  { key: "pipeline",   label: "Content",   Icon: Layers },
+  { key: "research",   label: "Research",  Icon: Search },
+  { key: "create",     label: "Create",    Icon: Wrench },
+  { key: "campaigns",  label: "Campaigns", Icon: Target },
+  { key: "calendar",   label: "Schedule",  Icon: Clock },
+  { key: "analyze",    label: "Insights",  Icon: BarChart3 },
 ];
 
 export default function Home() {
@@ -50,6 +52,7 @@ export default function Home() {
   const [researchState,   setResearchState]   = useState(null);
   const [appSettings,     setAppSettings]     = useState(null);
   const [brandProfiles,   setBrandProfiles]   = useState([]);
+  const [campaigns,       setCampaigns]       = useState([]);
   const [showSettings,    setShowSettings]    = useState(false); // persisted across tab switches
   const [showShortcuts,   setShowShortcuts]   = useState(false); // v3.11.4
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
@@ -86,6 +89,7 @@ export default function Home() {
       // Load stories
       getStories(activeTenant).then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
       getBrandProfiles(activeTenant).then(rows => setBrandProfiles(rows)).catch(() => setBrandProfiles([]));
+      getCampaigns(activeTenant).then(rows => setCampaigns(rows)).catch(() => setCampaigns([]));
       // Load saved settings from brand profile
 // Load appearance from localStorage immediately (fast, no network)
       // NOTE: default_tab from settings is no longer applied here — last-used
@@ -185,6 +189,33 @@ export default function Home() {
     setStories(p => p.filter(s => s.id !== id));
     toast("Content item deleted", "error");
   }, [activeTenant]);
+
+  const createCampaign = useCallback(async () => {
+    const id = crypto.randomUUID();
+    const fresh = {
+      id,
+      name: "New campaign",
+      status: "planning",
+      color: "#4A9B7F",
+      deliverables: [],
+      brand_profile_id: activeTenant.brand_profile_id,
+      workspace_id: activeTenant.workspace_id,
+    };
+    const saved = await upsertCampaign(fresh, activeTenant);
+    setCampaigns(prev => [saved, ...prev]);
+    return saved;
+  }, [activeTenant]);
+
+  const saveCampaign = useCallback(async (campaign) => {
+    const saved = await upsertCampaign(campaign, activeTenant);
+    setCampaigns(prev => prev.map(c => c.id === saved.id ? saved : c));
+  }, [activeTenant]);
+
+  const removeCampaign = useCallback(async (id) => {
+    await dbDeleteCampaign(id);
+    setCampaigns(prev => prev.filter(c => c.id !== id));
+    toast("Campaign deleted");
+  }, []);
 
   const handleUndo = useCallback(async () => {
     if (!undoStack.length) return;
@@ -620,33 +651,48 @@ export default function Home() {
         </header>
 
         {/* ── Content ── */}
-        <main style={{ flex:1, overflowY:"auto", padding:"28px 24px 80px" }}>
-          <div style={{ maxWidth:1200, margin:"0 auto" }}>
-
-        <ProductionAlert
-          stories={stories}
-          onNavigate={(t) => setTab(t)}
-          onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
-          forceExpanded={showCmdK}
-          onToggle={() => setShowCmdK(s=>!s)}
-          settings={appSettings}
-        />
-
-            {/* All views mounted always — CSS visibility preserves state */}
-            <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
-              <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} />
-            </div>
-            <div style={{ display: tab==="research"   ? "block" : "none" }}>
-              <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} />
-            </div>
-            <div style={{ display: tab==="create" || tab==="script" || tab==="production" ? "block" : "none" }}>
-              <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={activeTenant} settings={appSettings} />
-            </div>
-            <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
-            <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} tenant={activeTenant} /></div>
-
+        {tab === "campaigns" ? (
+          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+            <CampaignsView
+              stories={stories}
+              campaigns={campaigns}
+              onCreateCampaign={createCampaign}
+              onUpdateCampaign={saveCampaign}
+              onDeleteCampaign={removeCampaign}
+              onUpdateStory={updateStory}
+              settings={appSettings}
+              tenant={activeTenant}
+            />
           </div>
-        </main>
+        ) : (
+          <main style={{ flex:1, overflowY:"auto", padding:"28px 24px 80px" }}>
+            <div style={{ maxWidth:1200, margin:"0 auto" }}>
+
+              <ProductionAlert
+                stories={stories}
+                onNavigate={(t) => setTab(t)}
+                onPrefillResearch={(pf) => { setResearchPrefill(pf); setTab("research"); }}
+                forceExpanded={showCmdK}
+                onToggle={() => setShowCmdK(s=>!s)}
+                settings={appSettings}
+              />
+
+              {/* All views mounted always — CSS visibility preserves state */}
+              <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
+                <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} campaigns={campaigns} />
+              </div>
+              <div style={{ display: tab==="research"   ? "block" : "none" }}>
+                <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} />
+              </div>
+              <div style={{ display: tab==="create" || tab==="script" || tab==="production" ? "block" : "none" }}>
+                <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={activeTenant} settings={appSettings} />
+              </div>
+              <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} /></div>
+              <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} tenant={activeTenant} /></div>
+
+            </div>
+          </main>
+        )}
       </div>
 
       <AgentPanel

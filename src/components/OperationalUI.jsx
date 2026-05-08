@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect } from "react";
 
 export const labelStyle = {
   fontSize: 10,
@@ -66,6 +67,35 @@ export function Pill({ children, tone = "neutral", active = false, style }) {
       {children}
     </span>
   );
+}
+
+export function InlineTextInput({ value, placeholder, onSave, multiline = true, style = {} }) {
+  const [local, setLocal] = useState(value || "");
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setLocal(value || ""); }, [value, focused]);
+  const commit = () => { if (local.trim() !== (value || "").trim()) onSave(local.trim()); };
+  const shared = {
+    value: local,
+    placeholder,
+    onChange: e => setLocal(e.target.value),
+    onFocus: () => setFocused(true),
+    onBlur: () => { setFocused(false); commit(); },
+    onKeyDown: e => {
+      if (e.key === "Enter" && !e.shiftKey && !multiline) { e.preventDefault(); e.currentTarget.blur(); }
+      if (e.key === "Escape") { setLocal(value || ""); setFocused(false); e.currentTarget.blur(); }
+    },
+    style: {
+      width: "100%", fontSize: 12, color: "var(--t2)", lineHeight: 1.6,
+      background: focused ? "var(--fill2)" : "transparent",
+      border: focused ? "0.5px solid var(--border)" : "0.5px solid transparent",
+      borderRadius: 5, padding: focused ? "5px 7px" : 0,
+      outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+      transition: "border-color 0.1s, background 0.1s", ...style,
+    },
+  };
+  return multiline
+    ? <textarea {...shared} rows={2} style={{ ...shared.style, resize: "none" }} />
+    : <input {...shared} />;
 }
 
 export function StatCard({ label, value, tone = "var(--t1)", suffix }) {

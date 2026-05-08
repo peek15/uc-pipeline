@@ -712,3 +712,38 @@ CREATE INDEX IF NOT EXISTS idx_performance_snapshots_channel ON performance_snap
 -- https://YOUR-PROJECT.supabase.co/auth/v1/callback
 -- Add your localhost and deployed URLs to Auth → URL Configuration.
 -- ═══════════════════════════════════════════
+
+-- ═══════════════════════════════════════════
+-- CAMPAIGNS
+-- Project-level organizing unit above individual stories.
+-- Deliverable targets stored as JSONB; stories link via stories.campaign_id.
+-- ═══════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  workspace_id UUID,
+  brand_profile_id UUID,
+  name TEXT NOT NULL,
+  description TEXT,
+  objective TEXT,
+  audience TEXT,
+  status TEXT DEFAULT 'planning' CHECK (status IN ('planning','active','complete','archived')),
+  color TEXT DEFAULT '#4A9B7F',
+  start_date DATE,
+  end_date DATE,
+  deliverables JSONB DEFAULT '[]'::jsonb
+);
+
+ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Tenant campaigns access" ON campaigns;
+CREATE POLICY "Tenant campaigns access"
+  ON campaigns FOR ALL TO authenticated
+  USING (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id))
+  WITH CHECK (workspace_id IS NULL OR workspace_id = '00000000-0000-0000-0000-000000000001' OR is_workspace_member(workspace_id));
+
+CREATE INDEX IF NOT EXISTS idx_campaigns_brand     ON campaigns (brand_profile_id);
+CREATE INDEX IF NOT EXISTS idx_campaigns_workspace  ON campaigns (workspace_id);
+CREATE INDEX IF NOT EXISTS idx_campaigns_status     ON campaigns (status);
+CREATE INDEX IF NOT EXISTS idx_campaigns_created    ON campaigns (created_at DESC);

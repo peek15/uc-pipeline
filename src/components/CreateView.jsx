@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Copy, Download, FileText, Image as ImageIcon, Library, Mic2, PackageCheck, RefreshCw, Search, Sparkles, Video, Wand2 } from "lucide-react";
 import { isInProductionQueue } from "@/lib/constants";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
@@ -244,9 +244,13 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [localScript, setLocalScript] = useState(null); // tracks unsaved EN edits
+  const [instruction, setInstruction] = useState("");   // revision instruction
 
   useEffect(() => {
     setError(null);
+    setLocalScript(null);
+    setInstruction("");
     if (!getScript(story, viewLang, localLangs, streaming)) setViewLang("en");
   }, [story.id]);
 
@@ -260,23 +264,34 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
     return text;
   };
 
-  const generate = async (withTranslate = true) => {
+  const generate = async (withTranslate = true, reviseInstruction = null) => {
+    const currentForRevision = reviseInstruction
+      ? (localScript !== null ? localScript : getStoryScript(story, "en") || null)
+      : null;
     setLoading(`en-${story.id}`);
     setError(null);
     setStreaming(prev => ({ ...prev, [story.id]: "" }));
     try {
       const { text: enText } = await runPromptStream({
         type: "generate-script",
-        params: { story, brand_config: brandConfigForPrompt(settings), content_template: template },
+        params: {
+          story,
+          brand_config: brandConfigForPrompt(settings),
+          content_template: template,
+          instruction: reviseInstruction || null,
+          current_script: currentForRevision,
+        },
         context: { story_id: story.id },
         onChunk: (live) => setStreaming(prev => ({ ...prev, [story.id]: live })),
       });
       setStreaming(prev => { const next = { ...prev }; delete next[story.id]; return next; });
+      setLocalScript(null);
+      if (reviseInstruction) setInstruction("");
       const enPatch = storyScriptPatch("en", enText, story);
       let storySnapshot = { ...story, ...enPatch };
       await onUpdate(story.id, { ...enPatch, script_version: (story.script_version || 0) + 1, status: "scripted" });
 
-      if (withTranslate) {
+      if (withTranslate && !reviseInstruction) {
         for (const lang of secondaryLanguages.map(l => l.key)) {
           setLoading(`${lang}-${story.id}`);
           const translated = await translateLang(lang, enText);
@@ -291,6 +306,17 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
       setStreaming(prev => { const next = { ...prev }; delete next[story.id]; return next; });
     } finally {
       setLoading(null);
+    }
+  };
+
+  const saveEdits = async () => {
+    if (localScript === null) return;
+    try {
+      const patch = storyScriptPatch("en", localScript, story);
+      await onUpdate(story.id, patch);
+      setLocalScript(null);
+    } catch (err) {
+      setError(err?.message || String(err));
     }
   };
 
@@ -331,10 +357,14 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
     a.click();
   };
 
-  const scriptText = getScript(story, viewLang, localLangs, streaming);
-  const available = languages.filter(lang => getScript(story, lang.key, localLangs, streaming));
-  const isStreaming = story.id in streaming;
-  const isBusy = !!loading;
+  const savedEnScript = getStoryScript(story, "en") || "";
+  const displayEn    = localScript !== null ? localScript : savedEnScript;
+  const scriptText   = viewLang === "en" ? displayEn : (getScript(story, viewLang, localLangs, streaming) || "");
+  const available    = languages.filter(lang => getScript(story, lang.key, localLangs, streaming));
+  const isStreaming  = story.id in streaming;
+  const isBusy       = !!loading;
+  const isDirty      = localScript !== null && localScript !== savedEnScript;
+  const displayWc    = wc(viewLang === "en" ? displayEn : scriptText);
 
   return (
     <Panel>
@@ -343,12 +373,14 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>Script workspace</div>
           <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>Generate the primary {stepLabel.toLowerCase()} first, then keep translations attached to the same content record.</div>
         </div>
-        <Pill active={!!getStoryScript(story, "en")}>{getStoryScript(story, "en") ? `v${story.script_version || 1} · ${wc(getStoryScript(story, "en"))}w` : "no script"}</Pill>
+        <Pill active={!!savedEnScript}>
+          {savedEnScript ? `v${story.script_version || 1} · ${displayWc}w${isDirty ? " · edited" : ""}` : "no script"}
+        </Pill>
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
         {languages.map(lang => {
-          const has = !!getScript(story, lang.key, localLangs, streaming);
+          const has  = lang.key === "en" ? !!displayEn : !!getScript(story, lang.key, localLangs, streaming);
           const busy = loading === `${lang.key}-${story.id}`;
           return (
             <button key={lang.key} onClick={() => has && setViewLang(lang.key)} disabled={!has}
@@ -360,10 +392,28 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
         })}
       </div>
 
-      {scriptText ? (
-        <div style={{ position: "relative", padding: "16px 18px", borderRadius: 8, background: "var(--bg2)", border: "0.5px solid var(--border)", maxHeight: 360, overflowY: "auto", marginBottom: 12 }}>
-          {isStreaming && <span style={{ position: "absolute", top: 12, right: 14, width: 7, height: 7, borderRadius: "50%", background: "var(--t1)", animation: "pulse 1s ease infinite" }} />}
-          <div className="type-script" style={{ fontSize: 14, lineHeight: 1.85, color: "var(--t2)", whiteSpace: "pre-wrap" }}>{scriptText}</div>
+      {scriptText || isStreaming ? (
+        <div style={{ position: "relative", marginBottom: 12 }}>
+          {isStreaming && <span style={{ position: "absolute", top: 12, right: 14, width: 7, height: 7, borderRadius: "50%", background: "var(--t1)", animation: "pulse 1s ease infinite", zIndex: 1 }} />}
+          {viewLang === "en" && !isStreaming ? (
+            <textarea
+              className="type-script"
+              value={displayEn}
+              onChange={e => setLocalScript(e.target.value)}
+              rows={10}
+              style={{
+                width: "100%", padding: "16px 18px", borderRadius: 8,
+                background: "var(--bg2)", border: `0.5px solid ${isDirty ? "var(--gold)" : "var(--border)"}`,
+                color: "var(--t2)", fontSize: 14, lineHeight: 1.85,
+                fontFamily: "inherit", resize: "vertical", outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          ) : (
+            <div style={{ padding: "16px 18px", borderRadius: 8, background: "var(--bg2)", border: "0.5px solid var(--border)", maxHeight: 360, overflowY: "auto" }}>
+              <div className="type-script" style={{ fontSize: 14, lineHeight: 1.85, color: "var(--t2)", whiteSpace: "pre-wrap" }}>{scriptText}</div>
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ padding: "36px 18px", borderRadius: 8, background: "var(--bg2)", border: "0.5px solid var(--border)", textAlign: "center", color: "var(--t4)", fontSize: 12, marginBottom: 12 }}>
@@ -371,11 +421,40 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
         </div>
       )}
 
+      {/* Revision row — shown when a script exists */}
+      {(savedEnScript || displayEn) && viewLang === "en" && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          <input
+            value={instruction}
+            onChange={e => setInstruction(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && instruction.trim() && !isBusy) generate(false, instruction); }}
+            placeholder="Revision instruction — e.g. make it shorter, more urgent, cut the opener…"
+            style={{
+              flex: 1, padding: "7px 10px", borderRadius: 7,
+              border: "0.5px solid var(--border-in)", background: "var(--bg)",
+              color: "var(--t1)", fontSize: 12, outline: "none", fontFamily: "inherit",
+            }}
+          />
+          <button
+            onClick={() => instruction.trim() && generate(false, instruction)}
+            disabled={!instruction.trim() || isBusy}
+            style={buttonStyle("secondary", { padding: "7px 12px", flexShrink: 0 })}
+          >
+            <Wand2 size={12} /> Revise
+          </button>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => generate(true)} disabled={isBusy} style={buttonStyle("primary", { padding: "7px 12px" })}>
-          <Sparkles size={12} /> {story.script ? `Rewrite ${stepLabel.toLowerCase()} + translate` : `Generate ${stepLabel.toLowerCase()}`}
+        {isDirty && (
+          <button onClick={saveEdits} disabled={isBusy} style={buttonStyle("primary", { padding: "7px 12px" })}>
+            <Check size={12} /> Save edits
+          </button>
+        )}
+        <button onClick={() => generate(true)} disabled={isBusy} style={buttonStyle(isDirty ? "ghost" : "primary", { padding: "7px 12px" })}>
+          <Sparkles size={12} /> {savedEnScript ? `Rewrite ${stepLabel.toLowerCase()} + translate` : `Generate ${stepLabel.toLowerCase()}`}
         </button>
-        {getStoryScript(story, "en") && available.length < languages.length && (
+        {savedEnScript && available.length < languages.length && (
           <button onClick={translateMissing} disabled={isBusy} style={buttonStyle("secondary", { padding: "7px 12px" })}>
             <Wand2 size={12} /> Translate missing
           </button>
@@ -419,6 +498,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
   const [localLangs, setLocalLangs] = useState({});
   const [streaming, setStreaming] = useState({});
   const [showLibrary, setShowLibrary] = useState(false);
+  const [autoTriggerVisual, setAutoTriggerVisual] = useState(false);
 
   const queue = useMemo(() => (stories || []).filter(story =>
     ["approved", "scripted", "produced"].includes(story.status) || isInProductionQueue(story)
@@ -492,6 +572,13 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
   ];
 
   const saveProductionUpdate = (updates) => selected && onUpdate?.(selected.id, updates || {});
+
+  const handleBriefApproved = useCallback(() => {
+    if (selectedSteps.some(s => s.key === "visuals")) {
+      setActiveStep("visuals");
+      setAutoTriggerVisual(true);
+    }
+  }, [selectedSteps, setActiveStep]);
 
   return (
     <div className="animate-fade-in">
@@ -610,10 +697,10 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                 {["brief", "assets", "voice", "visuals", "assembly"].includes(activeStep) && <ReadinessStrip story={selected} />}
                 {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} stepLabel={steps.find(step => step.key === "script")?.label || "Script"} />}
                 {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} />}
-                {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
+                {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} onApproved={handleBriefApproved} />}
                 {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
                 {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} languages={getBrandLanguages(settings)} onSaved={saveProductionUpdate} />}
-                {activeStep === "visuals" && <VisualSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
+                {activeStep === "visuals" && <VisualSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} autoStart={autoTriggerVisual} onAutoStartConsumed={() => setAutoTriggerVisual(false)} />}
                 {activeStep === "assembly" && <AssemblySection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} />}
                 {steps.find(step => step.key === activeStep)?.custom && (
                   <TemplateTaskSection story={selected} step={steps.find(step => step.key === activeStep)} onUpdate={onUpdate} />

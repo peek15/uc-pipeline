@@ -11,11 +11,7 @@ export const defaults = {
   model:     "sonnet",
 };
 
-/**
- * @param {object} params
- * @param {object} params.story  — { title, angle, players, era, archetype }
- */
-export function build({ story, brand_config = null, content_template = null }) {
+export function build({ story, brand_config = null, content_template = null, instruction = null, current_script = null }) {
   const brandName = brand_config?.brand_name || "Uncle Carter";
   const template = content_template || brand_config?.content_templates?.find(t => t.id === story?.content_template_id) || null;
   const templateBlock = template ? `
@@ -45,6 +41,21 @@ STRUCTURE:
 
 Pure copy/script only. No labels unless the template requires a structured handoff.`
     : SCRIPT_SYSTEM;
+
+  if (instruction && current_script) {
+    return `${system}
+
+---
+
+Revise the script below.
+
+Revision instruction: ${instruction}
+
+Current script:
+${current_script}
+
+Return only the revised script. Pure usable copy only.`;
+  }
 
   return `${system}
 

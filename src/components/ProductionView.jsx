@@ -217,7 +217,7 @@ export function PipelineProgress({ story }) {
 
 // ─── Brief section ───────────────────────────────────────
 
-export function BriefSection({ story, brand_profile_id, onSaved }) {
+export function BriefSection({ story, brand_profile_id, onSaved, onApproved }) {
   const [draft, setDraft]       = useState(story.visual_brief || null);
   const [original, setOriginal] = useState(story.visual_brief || null);
   const [running, setRunning]   = useState(false);
@@ -274,7 +274,9 @@ export function BriefSection({ story, brand_profile_id, onSaved }) {
         agent_output: original, user_correction: wasEdited ? draft : null,
         correction_type: wasEdited ? "edit" : "approve", agent_confidence: confidence,
       });
-      setOriginal(draft); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1800); onSaved?.({ visual_brief: draft });
+      setOriginal(draft); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1800);
+      onSaved?.({ visual_brief: draft });
+      onApproved?.();
     } catch (e) { setError(e?.message || String(e)); }
   };
 
@@ -484,7 +486,7 @@ export function VoiceSection({ story, brand_profile_id, onSaved, languages = nul
 
 // ─── Visual section ─────────────────────────────────────
 
-export function VisualSection({ story, brand_profile_id, onSaved }) {
+export function VisualSection({ story, brand_profile_id, onSaved, autoStart = false, onAutoStartConsumed }) {
   const [running, setRunning] = useState(false);
   const [result, setResult]   = useState(null);
   const [allAssets, setAllAssets] = useState([]);
@@ -503,6 +505,14 @@ export function VisualSection({ story, brand_profile_id, onSaved }) {
     setSelectedIds(new Set(sel.map(s => s.id)));
     if (story.id) loadExistingAssets();
   }, [story.id]);
+
+  useEffect(() => {
+    if (autoStart && canRun && !running && allAssets.length === 0) {
+      onAutoStartConsumed?.();
+      generate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, canRun]);
 
   // v3.11.4 — listen for ⌘⇧I from global handler
   useEffect(() => {

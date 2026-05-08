@@ -155,8 +155,10 @@ export async function getAiCalls({ limit = 100, storyId = null, type = null, wor
   let q = supabase.from("ai_calls").select("*").order("created_at", { ascending: false }).limit(limit);
   if (storyId) q = q.eq("story_id", storyId);
   if (type)    q = q.eq("type", type);
-  if (workspaceId) q = q.eq("workspace_id", workspaceId);
-  if (brandProfileId) q = q.eq("brand_profile_id", brandProfileId);
+  // Include untagged calls (workspace_id IS NULL) alongside workspace-scoped ones
+  // so calls from runner.js without tenant context are never hidden.
+  if (workspaceId) q = q.or(`workspace_id.eq.${workspaceId},workspace_id.is.null`);
+  if (brandProfileId) q = q.or(`brand_profile_id.eq.${brandProfileId},brand_profile_id.is.null`);
   const { data, error } = await q;
   if (error) return [];
   return data || [];

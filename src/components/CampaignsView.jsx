@@ -199,6 +199,7 @@ export default function CampaignsView({
   const [suggestLoading,   setSuggestLoading]   = useState(false);
   const [confirmDelete,    setConfirmDelete]    = useState(false);
   const [localName,        setLocalName]        = useState("");
+  const [pickerSearch,     setPickerSearch]     = useState("");
 
   const campaign = useMemo(() => campaigns.find(c => c.id === activeCampaignId) || null, [campaigns, activeCampaignId]);
   useEffect(() => { setLocalName(campaign?.name || ""); }, [campaign?.id]);
@@ -361,6 +362,17 @@ export default function CampaignsView({
     return counts;
   }, [linkedStories]);
 
+  // ── Filtered pipeline picker ──────────────────────────────
+
+  const filteredPipelineStories = useMemo(() => {
+    const q = pickerSearch.trim().toLowerCase();
+    if (!q) return unlinkedStories;
+    return unlinkedStories.filter(s =>
+      s.title?.toLowerCase().includes(q) ||
+      (s.status || "").toLowerCase().includes(q)
+    );
+  }, [unlinkedStories, pickerSearch]);
+
   // ── Create handler (auto-selects new campaign) ───────────
 
   const handleCreate = useCallback(async () => {
@@ -480,10 +492,18 @@ export default function CampaignsView({
                     <input type="date" value={campaign.start_date || ""} onChange={e => updateField("start_date", e.target.value)} style={{ ...selStyle, color: "var(--t3)" }} />
                     <span style={{ color: "var(--t4)", fontSize: 12 }}>→</span>
                     <input type="date" value={campaign.end_date || ""} onChange={e => updateField("end_date", e.target.value)} style={{ ...selStyle, color: "var(--t3)" }} />
+                    {campaign.start_date && campaign.end_date && campaign.start_date > campaign.end_date && (
+                      <span style={{ fontSize: 10, color: "var(--error)", display: "flex", alignItems: "center", gap: 3 }}>
+                        <AlertCircle size={10} /> End before start
+                      </span>
+                    )}
                     <div style={{ flex: 1 }} />
                     <button onClick={analyzeCampaign} disabled={analysisLoading} style={buttonStyle("secondary", { gap: 5, fontSize: 11 })}>
                       <Sparkles size={12} /> {analysisLoading ? "Analyzing…" : "Analyze"}
                     </button>
+                    {campaign.status !== "archived" && !confirmDelete && (
+                      <button onClick={() => updateField("status", "archived")} style={{ ...buttonStyle("ghost", { padding: "5px 10px", fontSize: 11 }), color: "var(--t3)" }}>Archive</button>
+                    )}
                     {!confirmDelete
                       ? <button onClick={() => setConfirmDelete(true)} style={buttonStyle("ghost", { padding: "5px 8px" })}><Trash2 size={13} /></button>
                       : <div style={{ display: "flex", gap: 5 }}>
@@ -581,8 +601,12 @@ export default function CampaignsView({
                   })()}
                 </>
               ) : (
-                <div style={{ padding: "20px 0", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>
-                  No deliverable targets yet. <button onClick={suggestDeliverables} disabled={suggestLoading} style={{ background: "none", border: "none", color: "var(--t2)", cursor: "pointer", fontSize: 12, textDecoration: "underline" }}>Let AI suggest some</button> or add manually.
+                <div style={{ padding: "20px 0", textAlign: "center", color: "var(--t4)", fontSize: 12, lineHeight: 1.6 }}>
+                  Deliverables define what this campaign should produce — e.g. 3 narrative posts + 2 ads for Instagram.<br />
+                  <button onClick={suggestDeliverables} disabled={suggestLoading} style={{ background: "none", border: "none", color: "var(--t2)", cursor: "pointer", fontSize: 12, textDecoration: "underline", marginTop: 4 }}>
+                    {suggestLoading ? "Suggesting…" : "Let AI suggest targets"}
+                  </button>
+                  {" "}&nbsp;or&nbsp;<button onClick={addDeliverable} style={{ background: "none", border: "none", color: "var(--t2)", cursor: "pointer", fontSize: 12, textDecoration: "underline" }}>add one manually</button>.
                 </div>
               )}
             </div>
@@ -593,7 +617,7 @@ export default function CampaignsView({
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--t1)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                   Stories <span style={{ color: "var(--t4)", fontWeight: 400 }}>{linkedStories.length}</span>
                 </span>
-                <button onClick={() => setAddStoriesOpen(o => !o)} style={buttonStyle("secondary", { fontSize: 11, gap: 4 })}>
+                <button onClick={() => { setAddStoriesOpen(o => !o); setPickerSearch(""); }} style={buttonStyle("secondary", { fontSize: 11, gap: 4 })}>
                   {addStoriesOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />} Add from pipeline
                 </button>
               </div>
@@ -629,13 +653,26 @@ export default function CampaignsView({
               {/* Add from pipeline picker */}
               {addStoriesOpen && (
                 <div className="animate-fade-in" style={{ borderRadius: 10, border: "0.5px solid var(--border)", overflow: "hidden", marginTop: 8 }}>
-                  <div style={{ padding: "10px 14px", background: "var(--bg2)", borderBottom: "0.5px solid var(--border)", fontSize: 11, fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Pipeline stories — click to assign
+                  <div style={{ padding: "10px 14px", background: "var(--bg2)", borderBottom: "0.5px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>Add from pipeline</span>
+                    <input
+                      value={pickerSearch}
+                      onChange={e => setPickerSearch(e.target.value)}
+                      placeholder="Search stories…"
+                      style={{ flex: 1, fontSize: 12, background: "var(--fill2)", border: "0.5px solid var(--border)", borderRadius: 5, padding: "4px 8px", color: "var(--t1)", outline: "none", fontFamily: "inherit" }}
+                    />
+                    {pickerSearch && (
+                      <button onClick={() => setPickerSearch("")} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
+                        <X size={12} color="var(--t4)" />
+                      </button>
+                    )}
                   </div>
                   <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                    {unlinkedStories.length === 0 ? (
-                      <div style={{ padding: "20px", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>All pipeline stories are already in a campaign.</div>
-                    ) : unlinkedStories.map(s => {
+                    {filteredPipelineStories.length === 0 ? (
+                      <div style={{ padding: "20px", textAlign: "center", color: "var(--t4)", fontSize: 12 }}>
+                        {unlinkedStories.length === 0 ? "All pipeline stories are already in this campaign." : "No stories match your search."}
+                      </div>
+                    ) : filteredPipelineStories.map(s => {
                       const inOtherCampaign = s.campaign_id && s.campaign_id !== campaign.id;
                       const otherName = inOtherCampaign ? campaigns.find(c => c.id === s.campaign_id)?.name : null;
                       return (
@@ -646,7 +683,7 @@ export default function CampaignsView({
                             <div style={{ fontSize: 10, color: "var(--t4)", marginTop: 2 }}>
                               {STAGES[s.status]?.label || s.status}
                               {s.score_total ? ` · ${s.score_total}` : ""}
-                              {otherName ? ` · in "${otherName}"` : ""}
+                              {otherName ? <span style={{ color: "var(--warning)" }}> · in "{otherName}"</span> : ""}
                             </div>
                           </div>
                           <Plus size={13} color="var(--t4)" />

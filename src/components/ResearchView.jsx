@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Check, X, Star, Plus, Play, Pause, Trash2 } from "lucide-react";
 import { suggestFormat } from "@/lib/constants";
-import { runPrompt } from "@/lib/ai/runner";
+import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import { brandConfigForPrompt, getContentTemplate, getBrandTaxonomy, subjectText } from "@/lib/brandConfig";
 
@@ -196,13 +196,85 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
     setQueueRunning(false);
   }, [runSearch, stories, settings]);
 
-  // Loading state — true if single search or queue running
+  // Streaming state for live generating panel
+  const [streamText, setStreamText]   = useState("");
+  const [liveIdeas, setLiveIdeas]     = useState([]);
+
+  // Single search — uses streaming for live feedback
   const [singleLoading, setSingleLoading] = useState(false);
   const handleFind = useCallback(async () => {
     setSingleLoading(true);
-    await doFetch();
-    setSingleLoading(false);
-  }, [doFetch]);
+    setStreamText("");
+    setLiveIdeas([]);
+    setError(null);
+    setScores({});
+    try {
+      const n = Math.max(1, Math.min(30, parseInt(count) || 8));
+      const template = getContentTemplate(settings, templateId);
+      const { text } = await runPromptStream({
+        type: "research-stories",
+        params: {
+          topic, count: n, era, team, archetype, format,
+          content_template: template,
+          existingTitles: getExisting(),
+          batch: batch + 1,
+          brand_config: brandConfigForPrompt(settings),
+        },
+        maxTokens: Math.min(700 + n * 350, 8000),
+        onChunk: (accumulated) => {
+          setStreamText(accumulated);
+          const found = [...accumulated.matchAll(/"title"\s*:\s*"([^"]+)"/g)].map(m => m[1]);
+          setLiveIdeas(found);
+        },
+      });
+
+      // Parse full result
+      const clean = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+      let arr = null;
+      try { arr = JSON.parse(clean); } catch {}
+      if (!arr) { const m = clean.match(/\[\s*\{[\s\S]*\}\s*\]/); if (m) try { arr = JSON.parse(m[0]); } catch {} }
+      if (!arr) { const fi = clean.indexOf("["); const li = clean.lastIndexOf("]"); if (fi !== -1 && li > fi) try { arr = JSON.parse(clean.substring(fi, li + 1)); } catch {} }
+      if (!Array.isArray(arr)) throw new Error("Parse failed");
+
+      const fresh = arr.filter(s => s && s.title).map(s => ({
+        ...s,
+        content_template_id: s.content_template_id || template?.id || templateId || null,
+        content_type:    s.content_type    || template?.content_type  || "narrative",
+        objective:       s.objective       || template?.objective      || "",
+        audience:        s.audience        || template?.audience       || "",
+        channel:         s.channel         || template?.channels?.[0] || "",
+        platform_target: s.platform_target || s.channel               || template?.channels?.[0] || "",
+        deliverable_type: s.deliverable_type || template?.deliverable_type || "",
+      }));
+
+      setStreamText(""); setLiveIdeas([]);
+      const existingSet = new Set(stories.map(s => s.title?.toLowerCase()));
+      const newStories  = fresh.filter(s => !existingSet.has(s.title?.toLowerCase()));
+      setResults(prev => {
+        const prevSet = new Set(prev.map(s => s.title?.toLowerCase()));
+        return [...prev, ...newStories.filter(s => !prevSet.has(s.title?.toLowerCase()))];
+      });
+      setBatch(b => b + 1);
+
+      if (newStories.length > 0) {
+        setScoring(true);
+        try {
+          const scoreData = await scoreStories(newStories, settings);
+          setScores(prev => {
+            const base = Object.keys(prev).length;
+            const next = { ...prev };
+            for (const s of scoreData) { if (s.index != null) next[base + s.index - 1] = s; }
+            return next;
+          });
+        } catch {} finally { setScoring(false); }
+      }
+    } catch (err) {
+      setStreamText(""); setLiveIdeas([]);
+      setError(err.message);
+    } finally {
+      setSingleLoading(false);
+    }
+  }, [topic, count, era, team, archetype, format, templateId, getExisting, batch, settings, stories]);
 
   const loading = singleLoading || queueRunning;
 
@@ -387,6 +459,29 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Live generating panel — visible while AI streams ideas */}
+      {singleLoading && (
+        <div style={{ marginBottom: 16, padding: "14px 16px", borderRadius: 10, border: "0.5px solid var(--border)", background: "var(--fill2)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: liveIdeas.length > 0 ? 10 : 0 }}>
+            <div className="anim-spin" style={{ width: 13, height: 13, borderRadius: "50%", border: "2px solid var(--border)", borderTopColor: "var(--t1)", flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--t2)" }}>
+              {liveIdeas.length === 0
+                ? "Searching for ideas…"
+                : `Found ${liveIdeas.length} of ~${count} ideas…`}
+            </span>
+          </div>
+          {liveIdeas.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {liveIdeas.map((title, i) => (
+                <div key={i} style={{ fontSize: 12, color: "var(--t2)", padding: "5px 10px", borderRadius: 6, background: "var(--bg)", border: "0.5px solid var(--border2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {title}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -72,6 +72,7 @@ RULES:
 - For educational templates, prioritize teachable structure and clear audience value.
 - For narrative templates, prioritize human story, specific facts, and under-covered angles.
 - Each idea must be distinct from existing titles and from the other results.
+- MANDATORY: Every narrative or editorial idea must be anchored to a REAL, NAMED individual. Use full real names (first and last). NEVER write vague references like "a player", "the coach", "a forward", "an athlete", "one star", "a veteran", or any pronoun-only subject. If no specific real named person fits an angle, choose a different angle. For ad/product/educational content types, brand names or conceptual subjects are acceptable.
 ${era ? `\nEra/context: ${era}.` : ""}${team ? `\nSubject/team/entity: ${team}.` : ""}${archetype ? `\nArchetype: ${archetype}.` : ""}${fmtLabel ? `\nContent programme: ${fmtLabel}${fmtDesc ? ` (${fmtDesc})` : ""}.` : ""}${topic ? `\nFocus: "${topic}"` : ""}${existingTitles ? `\nALREADY COVERED: ${existingTitles}` : ""}.
 
 Angle seed: "${angle}". Batch #${batch}. JSON array ONLY. No markdown.`;

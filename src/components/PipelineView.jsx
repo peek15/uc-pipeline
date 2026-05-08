@@ -9,13 +9,14 @@ import { contentAudience, contentChannel, contentObjective, getBrandLanguages, g
 
 
 const SORT_OPTS = [
-  { key: "date_desc",      label: "Newest first" },
-  { key: "date_asc",       label: "Oldest first" },
-  { key: "score_desc",     label: "Score: high → low" },
-  { key: "score_asc",      label: "Score: low → high" },
-  { key: "reach_desc",     label: "Reach: high → low" },
-  { key: "readiness_desc", label: "Readiness: high → low" },
-  { key: "title_asc",      label: "Title A → Z" },
+  { key: "date_desc",       label: "Newest first" },
+  { key: "date_asc",        label: "Oldest first" },
+  { key: "predicted_desc",  label: "Predicted: high → low" },
+  { key: "score_desc",      label: "Score: high → low" },
+  { key: "score_asc",       label: "Score: low → high" },
+  { key: "reach_desc",      label: "Reach: high → low" },
+  { key: "readiness_desc",  label: "Readiness: high → low" },
+  { key: "title_asc",       label: "Title A → Z" },
 ];
 
 function ScoreDots({ score }) {
@@ -134,6 +135,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
     list.sort((a,b) => {
       if (sort==="date_desc")      return new Date(b.created_at||0) - new Date(a.created_at||0);
       if (sort==="date_asc")       return new Date(a.created_at||0) - new Date(b.created_at||0);
+      if (sort==="predicted_desc") return (b.predicted_score??b.score_total??0)-(a.predicted_score??a.score_total??0);
       if (sort==="score_desc")     return (b.score_total||0)-(a.score_total||0);
       if (sort==="score_asc")      return (a.score_total||0)-(b.score_total||0);
       if (sort==="reach_desc")     return (b.reach_score||0)-(a.reach_score||0);

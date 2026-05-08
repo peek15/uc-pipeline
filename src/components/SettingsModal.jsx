@@ -253,7 +253,10 @@ function summarizeInsightPayload(payload) {
   const parts = [];
   if (payload.agent_name) parts.push(payload.agent_name);
   if (payload.correction_count != null) parts.push(`${payload.correction_count} corrections`);
-  if (payload.sample_notes?.length) parts.push(payload.sample_notes.slice(0, 2).join(" / "));
+  // New shape: calibration_hints replaces sample_notes
+  if (!payload.calibration_hints?.length && payload.sample_notes?.length) {
+    parts.push(payload.sample_notes.slice(0, 2).join(" / "));
+  }
   return parts.join(" · ");
 }
 
@@ -367,6 +370,7 @@ function IntelligenceDashboard({
   onUpdateInsightStatus,
   onRunPredictions,
   runningPredictions = false,
+  pendingFeedbackCount = 0,
 }) {
   const modules = intelligenceModules(stories, settings, conflicts, insightCount, snapshotCount);
   const active = modules.filter(m => m.status === "active").length;
@@ -456,9 +460,14 @@ function IntelligenceDashboard({
             <div style={{ fontSize:13, fontWeight:700, color:"var(--t1)" }}>Intelligence insights</div>
             <div style={{ fontSize:11, color:"var(--t4)", marginTop:3 }}>Reviewable memory candidates. These do not change strategy or content until you decide what to do with them.</div>
           </div>
-          <button onClick={onGenerateFeedbackInsights} disabled={generatingInsights} style={{ padding:"6px 12px", borderRadius:7, border:"0.5px solid var(--border)", background:generatingInsights?"var(--bg3)":"var(--t1)", color:generatingInsights?"var(--t3)":"var(--bg)", fontSize:12, fontWeight:600, cursor:generatingInsights?"not-allowed":"pointer" }}>
-            {generatingInsights ? "Scanning..." : "Scan feedback"}
-          </button>
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
+            {pendingFeedbackCount > 0 && !generatingInsights && (
+              <span style={{ fontSize:10, color:"var(--warning)", fontWeight:600 }}>{pendingFeedbackCount} new correction{pendingFeedbackCount > 1 ? "s" : ""}</span>
+            )}
+            <button onClick={onGenerateFeedbackInsights} disabled={generatingInsights} style={{ padding:"6px 12px", borderRadius:7, border:"0.5px solid var(--border)", background:generatingInsights?"var(--bg3)":"var(--t1)", color:generatingInsights?"var(--t3)":"var(--bg)", fontSize:12, fontWeight:600, cursor:generatingInsights?"not-allowed":"pointer" }}>
+              {generatingInsights ? "Scanning…" : "Scan feedback"}
+            </button>
+          </div>
         </div>
 
         {insightError && (
@@ -484,6 +493,22 @@ function IntelligenceDashboard({
                     <div style={{ fontSize:12, color:"var(--t1)", lineHeight:1.45, marginTop:5 }}>{insight.summary}</div>
                     {summarizeInsightPayload(insight.payload) && (
                       <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.4, marginTop:4 }}>{summarizeInsightPayload(insight.payload)}</div>
+                    )}
+                    {insight.payload?.calibration_hints?.length > 0 && (
+                      <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:4 }}>
+                        {insight.payload.calibration_hints.slice(0, 4).map((h, i) => (
+                          <div key={i} style={{ fontSize:11, color:"var(--t2)", background:"var(--bg2)", borderRadius:5, padding:"5px 8px", lineHeight:1.45 }}>
+                            <span style={{ color:"var(--t4)", marginRight:4 }}>⚙</span>
+                            <strong style={{ color:"var(--t1)" }}>{h.pattern}</strong>
+                            {h.suggested_action && (
+                              <span style={{ color:"var(--t4)" }}> → {h.suggested_action}</span>
+                            )}
+                            {h.recurrence_count > 1 && (
+                              <span style={{ color:"var(--t4)", marginLeft:6, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", fontSize:10 }}>×{h.recurrence_count}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                   <div style={{ fontSize:11, color:"var(--t3)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", whiteSpace:"nowrap" }}>
@@ -731,8 +756,10 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [insights,      setInsights]      = useState([]);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightError,  setInsightError]  = useState(null);
-  const [generatingInsights, setGeneratingInsights] = useState(false);
-  const [snapshotCount, setSnapshotCount] = useState(0);
+  const [generatingInsights,   setGeneratingInsights]   = useState(false);
+  const [snapshotCount,        setSnapshotCount]        = useState(0);
+  const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0);
+  const autoScannedRef = useRef(false);
   const appName = getAppName(settings);
   const languageSummary = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join(" → ");
 
@@ -793,6 +820,20 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
       setInsightCount(count || 0);
       setInsights(data || []);
       setSnapshotCount(snapshotError ? 0 : (snapshots || 0));
+
+      // Check for new agent_feedback corrections since the last scan
+      const lastScan = (data || [])
+        .filter(i => i.source === "agent_feedback")
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+      let fbQuery = supabase
+        .from("agent_feedback")
+        .select("id", { count: "exact", head: true })
+        .in("correction_type", ["edit", "reject", "partial"]);
+      if (lastScan?.created_at) fbQuery = fbQuery.gt("created_at", lastScan.created_at);
+      if (WORKSPACE_ID)     fbQuery = fbQuery.eq("workspace_id", WORKSPACE_ID);
+      if (BRAND_PROFILE_ID) fbQuery = fbQuery.eq("brand_profile_id", BRAND_PROFILE_ID);
+      const { count: newFb } = await fbQuery;
+      setPendingFeedbackCount(newFb || 0);
     } catch (e) {
       setInsightCount(0);
       setInsights([]);
@@ -805,8 +846,17 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
 
   useEffect(() => {
     if (!isOpen || section !== "intelligence") return;
+    autoScannedRef.current = false;
     loadInsights();
   }, [isOpen, section, WORKSPACE_ID, BRAND_PROFILE_ID]);
+
+  // Auto-scan once per modal session when >= 3 new corrections are waiting
+  useEffect(() => {
+    if (pendingFeedbackCount >= 3 && !generatingInsights && !autoScannedRef.current && isOpen && section === "intelligence") {
+      autoScannedRef.current = true;
+      generateFeedbackInsights();
+    }
+  }, [pendingFeedbackCount, isOpen, section]);
 
   const generateFeedbackInsights = async () => {
     setGeneratingInsights(true);
@@ -817,17 +867,21 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
         .select("agent_name,correction_type,agent_output,user_correction,notes,agent_confidence,created_at,story_id")
         .in("correction_type", ["edit", "reject", "partial"])
         .order("created_at", { ascending: false })
-        .limit(100);
-      if (WORKSPACE_ID) query = query.eq("workspace_id", WORKSPACE_ID);
+        .limit(120);
+      if (WORKSPACE_ID)     query = query.eq("workspace_id", WORKSPACE_ID);
       if (BRAND_PROFILE_ID) query = query.eq("brand_profile_id", BRAND_PROFILE_ID);
       const { data, error } = await query;
       if (error) throw error;
+      if (!(data || []).length) {
+        setInsightError("No agent feedback corrections found yet.");
+        return;
+      }
 
       const existingFingerprints = new Set(
         insights.map(i => i.payload?.fingerprint).filter(Boolean)
       );
       const groups = new Map();
-      for (const row of data || []) {
+      for (const row of data) {
         const key = row.agent_name || "unknown-agent";
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(row);
@@ -835,45 +889,55 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
 
       let created = 0;
       for (const [agentName, rows] of groups.entries()) {
-        if (!rows.length) continue;
-        const correctionCounts = rows.reduce((acc, row) => {
-          const key = row.correction_type || "unknown";
-          acc[key] = (acc[key] || 0) + 1;
-          return acc;
-        }, {});
+        if (rows.length < 2) continue;
         const latest = rows[0]?.created_at || "";
-        const fingerprint = `feedback:${agentName}:${rows.length}:${latest}`;
+        const fingerprint = `patterns:${agentName}:${rows.length}:${latest}`;
         if (existingFingerprints.has(fingerprint)) continue;
-        const sampleNotes = rows
-          .map(row => row.notes || (row.user_correction ? JSON.stringify(row.user_correction).slice(0, 160) : "Rejected without replacement"))
-          .filter(Boolean)
-          .slice(0, 3);
-        const dominant = Object.entries(correctionCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || "correction";
+
+        // LLM extracts recurring patterns and calibration hints
+        let calibration_hints = [];
+        let summary = `${agentName} has ${rows.length} corrections.`;
+        try {
+          const { parsed } = await runPrompt({
+            type:    "feedback-patterns",
+            params:  { agent_name: agentName, corrections: rows.slice(0, 20) },
+            context: { workspace_id: WORKSPACE_ID, brand_profile_id: BRAND_PROFILE_ID },
+            parse:   true,
+          });
+          calibration_hints = parsed?.patterns || [];
+          if (parsed?.summary) summary = parsed.summary;
+        } catch {}
+
         await writeInsight({
-          workspace_id: WORKSPACE_ID,
+          workspace_id:     WORKSPACE_ID,
           brand_profile_id: BRAND_PROFILE_ID,
-          agent_name: "feedback-summarizer",
-          source: "agent_feedback",
-          category: "feedback",
-          entity_type: "agent",
-          summary: `${agentName} has ${rows.length} recent ${dominant} correction${rows.length === 1 ? "" : "s"}. Review these before tuning the agent prompt or memory.`,
-          confidence: Math.min(0.95, 0.45 + rows.length * 0.08),
+          agent_name:       "feedback-pattern-scanner",
+          source:           "agent_feedback",
+          category:         "memory",
+          entity_type:      "agent",
+          summary,
+          confidence: Math.min(0.95, 0.5 + rows.length * 0.07),
           payload: {
             fingerprint,
-            agent_name: agentName,
-            correction_count: rows.length,
-            correction_counts: correctionCounts,
-            latest_feedback_at: latest,
-            sample_notes: sampleNotes,
-            story_ids: [...new Set(rows.map(row => row.story_id).filter(Boolean))].slice(0, 8),
+            agent_name:          agentName,
+            correction_count:    rows.length,
+            calibration_hints,
+            latest_feedback_at:  latest,
+            story_ids: [...new Set(rows.map(r => r.story_id).filter(Boolean))].slice(0, 8),
           },
         });
-        created += 1;
+        created++;
       }
+
+      setPendingFeedbackCount(0);
       await loadInsights();
-      if (!created) setInsightError((data || []).length ? "No new feedback patterns found." : "No agent feedback corrections found yet.");
+      if (!created) setInsightError("No new patterns found — all agents already scanned at this correction count.");
     } catch (e) {
-      setInsightError(e?.message?.includes("intelligence_insights") ? "Run the latest Supabase schema to enable intelligence insights." : (e?.message || "Could not generate feedback insights."));
+      setInsightError(
+        e?.message?.includes("intelligence_insights")
+          ? "Run the latest Supabase schema to enable intelligence insights."
+          : (e?.message || "Could not generate feedback insights.")
+      );
     } finally {
       setGeneratingInsights(false);
     }
@@ -1913,6 +1977,7 @@ ${fileText.slice(0,3000)}` : text };
               onUpdateInsightStatus={updateInsightStatus}
               onRunPredictions={onRunPredictions}
               runningPredictions={runningPredictions}
+              pendingFeedbackCount={pendingFeedbackCount}
             />
           )}
 

@@ -25,6 +25,7 @@ import * as alertsSuggest        from "./prompts/alerts-suggest";
 import * as summarizeContent     from "./prompts/summarize-content";
 import * as strategyAudit        from "./prompts/strategy-audit";
 import * as onboardingChat       from "./prompts/onboarding-chat";
+import * as feedbackPatterns     from "./prompts/feedback-patterns";
 
 const REGISTRY = {
   "score-story":            scoreStory,
@@ -40,6 +41,7 @@ const REGISTRY = {
   "summarize-content":      summarizeContent,
   "strategy-audit":         strategyAudit,
   "onboarding-chat":        onboardingChat,
+  "feedback-patterns":      feedbackPatterns,
 };
 
 // Passthrough used by agents — they build their own prompt

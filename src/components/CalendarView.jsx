@@ -9,6 +9,11 @@ import { getBrandLanguages, getBrandProgrammeMap, getStoryScript } from "@/lib/b
 const PLATFORMS = ["TikTok","Instagram","YouTube","All"];
 const DEFAULT_CADENCE = 5;
 
+// Prefer predicted_score when available; fall back to score+reach sum for unscored stories
+function contentScore(s) {
+  return s.predicted_score != null ? s.predicted_score : (s.score_total || 0) + (s.reach_score || 0);
+}
+
 function fmt(d)     { return d.toISOString().split("T")[0]; }
 function isToday(d) { return fmt(d) === fmt(new Date()); }
 function isPast(d)  { const t = new Date(); t.setHours(0,0,0,0); return d < t; }
@@ -27,12 +32,7 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
 
   const ready = stories.filter(s =>
     ["approved","scripted","produced"].includes(s.status) && !s.scheduled_date
-  ).sort((a,b) => {
-    // Sort by combined score — intelligence layer will replace this later
-    const scoreA = (a.score_total||0) + (a.reach_score||0);
-    const scoreB = (b.score_total||0) + (b.reach_score||0);
-    return scoreB - scoreA;
-  });
+  ).sort((a, b) => contentScore(b) - contentScore(a));
 
   const covered   = scheduled.length + ready.length;
   const pct       = Math.min(100, Math.round((covered/totalSlots)*100));
@@ -192,12 +192,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
 
   const ready = stories.filter(s =>
     ["approved","scripted","produced"].includes(s.status) && !s.scheduled_date
-  ).sort((a,b) => {
-    // Sort by combined score — intelligence layer will replace this later
-    const scoreA = (a.score_total||0) + (a.reach_score||0);
-    const scoreB = (b.score_total||0) + (b.reach_score||0);
-    return scoreB - scoreA;
-  });
+  ).sort((a, b) => contentScore(b) - contentScore(a));
 
   const assignToDay = (storyId, date, plt) => {
     onUpdate(storyId, {
@@ -338,10 +333,10 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
       // Pick best available story matching target format
       const candidates = available
         .filter(s => (s.format||"standard") === targetFormat)
-        .sort((a,b) => ((b.score_total||0)+(b.reach_score||0)) - ((a.score_total||0)+(a.reach_score||0)));
+        .sort((a, b) => contentScore(b) - contentScore(a));
 
       // Fall back to any format if none available
-      const pick = candidates[0] || available.sort((a,b) => ((b.score_total||0)+(b.reach_score||0)) - ((a.score_total||0)+(a.reach_score||0)))[0];
+      const pick = candidates[0] || available.sort((a, b) => contentScore(b) - contentScore(a))[0];
 
       if (pick) {
         placed.push({ story: pick, date: fmt(d), platform_target: platform !== "All" ? platform : null });

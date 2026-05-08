@@ -475,17 +475,223 @@ function ScriptWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming
   );
 }
 
-function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, streaming, setStreaming, settings }) {
+function TranslationWorkspace({ story, onUpdate, localLangs, setLocalLangs, settings }) {
+  const languages          = getBrandLanguages(settings);
+  const secondaryLanguages = languages.filter(l => l.key !== "en");
+  const enScript           = getStoryScript(story, "en") || "";
+
+  const [localEdits,   setLocalEdits]   = useState({});
+  const [loading,      setLoading]      = useState({});
+  const [instructions, setInstructions] = useState({});
+  const [errors,       setErrors]       = useState({});
+  const [copied,       setCopied]       = useState({});
+
+  useEffect(() => {
+    setLocalEdits({}); setLoading({}); setInstructions({}); setErrors({}); setCopied({});
+  }, [story.id]);
+
+  const getTranslation = (langKey) => {
+    if (langKey in localEdits) return localEdits[langKey];
+    return localLangs[story.id]?.[langKey] ?? getStoryScript(story, langKey) ?? "";
+  };
+
+  const persistTranslation = async (langKey, text) => {
+    setLocalLangs(prev => ({ ...prev, [story.id]: { ...(prev[story.id] || {}), [langKey]: text } }));
+    const patch = storyScriptPatch(langKey, text, story);
+    await onUpdate(story.id, patch);
+  };
+
+  const retranslate = async (langKey) => {
+    if (!enScript) return;
+    setLoading(p => ({ ...p, [langKey]: "translating" }));
+    setErrors(p => ({ ...p, [langKey]: null }));
+    try {
+      const { text } = await runPrompt({
+        type: "translate-script",
+        params: { script: enScript, lang_key: langKey, brand_config: brandConfigForPrompt(settings) },
+        context: { story_id: story.id },
+        parse: false,
+      });
+      await persistTranslation(langKey, text);
+      setLocalEdits(p => { const n = { ...p }; delete n[langKey]; return n; });
+    } catch (err) {
+      setErrors(p => ({ ...p, [langKey]: err?.message || String(err) }));
+    } finally {
+      setLoading(p => ({ ...p, [langKey]: null }));
+    }
+  };
+
+  const revise = async (langKey) => {
+    const instr   = instructions[langKey];
+    const current = getTranslation(langKey);
+    if (!instr || !current) return;
+    setLoading(p => ({ ...p, [langKey]: "revising" }));
+    setErrors(p => ({ ...p, [langKey]: null }));
+    try {
+      const { text } = await runPrompt({
+        type: "translate-script",
+        params: { script: enScript, lang_key: langKey, brand_config: brandConfigForPrompt(settings), instruction: instr, current_translation: current },
+        context: { story_id: story.id },
+        parse: false,
+      });
+      setLocalEdits(p => ({ ...p, [langKey]: text }));
+      setInstructions(p => ({ ...p, [langKey]: "" }));
+    } catch (err) {
+      setErrors(p => ({ ...p, [langKey]: err?.message || String(err) }));
+    } finally {
+      setLoading(p => ({ ...p, [langKey]: null }));
+    }
+  };
+
+  const saveEdits = async (langKey) => {
+    const text = localEdits[langKey];
+    if (text === undefined) return;
+    setLoading(p => ({ ...p, [langKey]: "saving" }));
+    try {
+      await persistTranslation(langKey, text);
+      setLocalEdits(p => { const n = { ...p }; delete n[langKey]; return n; });
+    } catch (err) {
+      setErrors(p => ({ ...p, [langKey]: err?.message || String(err) }));
+    } finally {
+      setLoading(p => ({ ...p, [langKey]: null }));
+    }
+  };
+
+  const translateMissing = async () => {
+    for (const lang of secondaryLanguages) {
+      if (!getTranslation(lang.key)) await retranslate(lang.key);
+    }
+  };
+
+  const copyText = async (langKey) => {
+    const text = getTranslation(langKey);
+    if (!text) return;
+    await navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(p => ({ ...p, [langKey]: true }));
+    setTimeout(() => setCopied(p => ({ ...p, [langKey]: false })), 1600);
+  };
+
+  const doneCount = secondaryLanguages.filter(l => !!getTranslation(l.key)).length;
+
   return (
-    <ScriptWorkspace
-      story={story}
-      onUpdate={onUpdate}
-      localLangs={localLangs}
-      setLocalLangs={setLocalLangs}
-      streaming={streaming}
-      setStreaming={setStreaming}
-      settings={settings}
-    />
+    <Panel>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>Translations</div>
+          <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>Edit translations directly, revise with an instruction, or retranslate from source.</div>
+        </div>
+        <Pill active={doneCount === secondaryLanguages.length && secondaryLanguages.length > 0}>
+          {doneCount} / {secondaryLanguages.length}
+        </Pill>
+      </div>
+
+      {!enScript ? (
+        <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--fill2)", border: "0.5px solid var(--border)", color: "var(--t3)", fontSize: 12 }}>
+          Generate the primary script first, then come back to translate.
+        </div>
+      ) : (
+        <>
+          {/* EN source reference */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>Source — EN</div>
+            <div style={{ padding: "10px 14px", borderRadius: 7, background: "var(--fill)", border: "0.5px solid var(--border)", fontSize: 12, lineHeight: 1.75, color: "var(--t3)", whiteSpace: "pre-wrap", maxHeight: 90, overflowY: "auto" }}>
+              {enScript}
+            </div>
+          </div>
+
+          {secondaryLanguages.some(l => !getTranslation(l.key)) && (
+            <div style={{ marginBottom: 14 }}>
+              <button onClick={translateMissing} style={buttonStyle("secondary", { padding: "7px 12px" })}>
+                <Wand2 size={12} /> Translate all missing
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gap: 12 }}>
+            {secondaryLanguages.map(lang => {
+              const text      = getTranslation(lang.key);
+              const savedText = localLangs[story.id]?.[lang.key] ?? getStoryScript(story, lang.key) ?? "";
+              const isDirty   = (lang.key in localEdits) && localEdits[lang.key] !== savedText;
+              const isBusy    = !!loading[lang.key];
+              const instr     = instructions[lang.key] || "";
+              const err       = errors[lang.key];
+
+              return (
+                <div key={lang.key} style={{ borderRadius: 8, border: `0.5px solid ${isDirty ? "var(--gold)" : "var(--border)"}`, overflow: "hidden" }}>
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 12px", background: "var(--fill)", borderBottom: "0.5px solid var(--border)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--t1)" }}>{lang.label}</span>
+                      {isDirty  && <span style={{ fontSize: 10, color: "var(--gold)" }}>edited</span>}
+                      {isBusy   && <span style={{ fontSize: 10, color: "var(--t3)" }}>{loading[lang.key]}…</span>}
+                      {!text && !isBusy && <span style={{ fontSize: 10, color: "var(--t4)" }}>not translated</span>}
+                      {text && !isDirty && !isBusy && wc(text) > 0 && <span style={{ fontSize: 10, color: "var(--t4)", fontFamily: "var(--font-mono)" }}>{wc(text)}w</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 5 }}>
+                      {text && (
+                        <button onClick={() => copyText(lang.key)} style={buttonStyle("ghost", { padding: "3px 8px", fontSize: 10 })}>
+                          <Copy size={10} /> {copied[lang.key] ? "Copied" : "Copy"}
+                        </button>
+                      )}
+                      <button onClick={() => retranslate(lang.key)} disabled={isBusy} style={buttonStyle("ghost", { padding: "3px 8px", fontSize: 10 })}>
+                        <RefreshCw size={10} className={loading[lang.key] === "translating" ? "spin" : ""} />
+                        {text ? "Retranslate" : "Translate"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Editable textarea */}
+                  <div style={{ padding: "10px 12px", background: "var(--bg2)" }}>
+                    <textarea
+                      className="type-script"
+                      value={text}
+                      onChange={e => setLocalEdits(p => ({ ...p, [lang.key]: e.target.value }))}
+                      placeholder={`${lang.label} translation…`}
+                      rows={6}
+                      style={{
+                        width: "100%", padding: "10px 12px", borderRadius: 6,
+                        background: "var(--bg)", border: "0.5px solid transparent",
+                        color: "var(--t2)", fontSize: 13, lineHeight: 1.75,
+                        fontFamily: "inherit", resize: "vertical", outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+
+                  {/* Revision row */}
+                  <div style={{ padding: "7px 12px", background: "var(--fill)", borderTop: "0.5px solid var(--border)", display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        value={instr}
+                        onChange={e => setInstructions(p => ({ ...p, [lang.key]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === "Enter" && instr.trim() && text && !isBusy) revise(lang.key); }}
+                        placeholder="Revision instruction — e.g. more formal, shorten, fix rhythm…"
+                        style={{
+                          flex: 1, padding: "5px 9px", borderRadius: 6,
+                          border: "0.5px solid var(--border-in)", background: "var(--bg)",
+                          color: "var(--t1)", fontSize: 11, outline: "none", fontFamily: "inherit",
+                        }}
+                      />
+                      <button onClick={() => revise(lang.key)} disabled={!instr.trim() || !text || isBusy}
+                        style={buttonStyle("secondary", { padding: "5px 10px", fontSize: 11, flexShrink: 0 })}>
+                        <Wand2 size={11} /> Revise
+                      </button>
+                      {isDirty && (
+                        <button onClick={() => saveEdits(lang.key)} disabled={isBusy}
+                          style={buttonStyle("primary", { padding: "5px 10px", fontSize: 11, flexShrink: 0 })}>
+                          <Check size={11} /> Save
+                        </button>
+                      )}
+                    </div>
+                    {err && <div style={{ fontSize: 11, color: "var(--error)", padding: "4px 8px", borderRadius: 5, background: "var(--error-bg)", border: "0.5px solid var(--error-border)" }}>{err}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </Panel>
   );
 }
 
@@ -696,7 +902,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
 
                 {["brief", "assets", "voice", "visuals", "assembly"].includes(activeStep) && <ReadinessStrip story={selected} />}
                 {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} stepLabel={steps.find(step => step.key === "script")?.label || "Script"} />}
-                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} />}
+                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} localLangs={localLangs} setLocalLangs={setLocalLangs} settings={settings} />}
                 {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} onApproved={handleBriefApproved} />}
                 {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
                 {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} languages={getBrandLanguages(settings)} onSaved={saveProductionUpdate} />}

@@ -5,7 +5,7 @@ import { supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { getAiCalls } from "@/lib/ai/audit";
 import { formatCost } from "@/lib/ai/costs";
-import { getBrandContentType, getBrandName } from "@/lib/brandConfig";
+import { getBrandName, getContentType, contentObjective, contentChannel } from "@/lib/brandConfig";
 
 // ── Model registry ────────────────────────────────────────
 const MODELS = [
@@ -19,7 +19,7 @@ const PROVIDER_LABEL = { anthropic: "Claude", openai: "OpenAI" };
 
 const SUGGESTIONS = [
   "Approve all stories with score above 70",
-  "What's ready to script?",
+  "What's ready for production?",
   "Show me recent AI failures",
   "Pipeline status",
 ];
@@ -38,20 +38,23 @@ function historyKey(tenant) {
 
 // ── Pipeline context ──────────────────────────────────────
 function buildSystem(stories, tab, metrics, settings, extraCtx) {
-  const brandName   = getBrandName(settings);
-  const contentType = getBrandContentType(settings);
+  const brandName = getBrandName(settings);
   const counts = {};
   for (const s of stories) counts[s.status] = (counts[s.status] || 0) + 1;
   const bank = stories.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
 
-  // Core snapshot — top 25, with score + quality gate
+  // Core snapshot — top 25, with score + quality gate + content metadata
   const snapshot = stories
     .filter(s => !["rejected","archived"].includes(s.status))
     .slice(0, 25)
     .map(s => {
-      const score = s.score  != null ? ` [score:${s.score}]`               : "";
+      const score = s.score != null ? ` [score:${s.score}]` : "";
       const gate  = s.quality_gate_status ? ` [gate:${s.quality_gate_status}]` : "";
-      return `  • "${s.title}" [${s.status}]${score}${gate}${s.archetype ? ` · ${s.archetype}` : ""}${s.era ? ` · ${s.era}` : ""} (id:${s.id})`;
+      const type  = getContentType(s, settings);
+      const obj   = contentObjective(s);
+      const ch    = contentChannel(s);
+      const meta  = [type, ch, obj].filter(Boolean).join(" · ");
+      return `  • "${s.title}" [${s.status}]${score}${gate}${meta ? ` · ${meta}` : ""} (id:${s.id})`;
     })
     .join("\n");
 
@@ -76,7 +79,7 @@ function buildSystem(stories, tab, metrics, settings, extraCtx) {
     extraBlocks += `\nCost breakdown:\n${extraCtx.cost_detail}`;
   }
 
-  return `You are the pipeline agent for ${brandName}, a ${contentType} content pipeline at Peek Studios.
+  return `You are the pipeline agent for ${brandName}.
 
 Pipeline state (${new Date().toLocaleDateString()}):
 - Active: ${stories.filter(s => !["rejected","archived"].includes(s.status)).length} · Stages: ${Object.entries(counts).map(([k,v]) => `${k}×${v}`).join(", ")}
@@ -302,9 +305,11 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-      fetch("/api/agent", { headers }).then(r => r.json()).then(setProviders).catch(() => {});
+      const bpid = tenant?.brand_profile_id;
+      const url  = bpid ? `/api/agent?brand_profile_id=${bpid}` : "/api/agent";
+      fetch(url, { headers }).then(r => r.json()).then(setProviders).catch(() => {});
     });
-  }, []);
+  }, [tenant?.brand_profile_id]);
 
   // ── Fetch base metrics once per panel open
   useEffect(() => {
@@ -430,11 +435,12 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token || ""}` },
         body: JSON.stringify({
-          provider:  selectedModel.provider,
-          model:     modelId,
-          messages:  apiHistory,
-          system:    buildSystem(stories, tab, metrics, settings, ctxActive.all_scores ? { all_scores: true, debug: extraCtx.debug, cost_detail: extraCtx.cost_detail } : { debug: extraCtx.debug, cost_detail: extraCtx.cost_detail }),
-          maxTokens: 1500,
+          provider:         selectedModel.provider,
+          model:            modelId,
+          messages:         apiHistory,
+          system:           buildSystem(stories, tab, metrics, settings, ctxActive.all_scores ? { all_scores: true, debug: extraCtx.debug, cost_detail: extraCtx.cost_detail } : { debug: extraCtx.debug, cost_detail: extraCtx.cost_detail }),
+          maxTokens:        1500,
+          brand_profile_id: tenant?.brand_profile_id,
         }),
       });
 

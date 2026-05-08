@@ -36,14 +36,14 @@ function serviceClient() {
 }
 
 // Load LLM key from provider_secrets, fall back to env var
-async function loadLLMKey(provider) {
+async function loadLLMKey(provider, profileId = BRAND_PROFILE_ID) {
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
       const providerType = provider === "openai" ? "llm_openai" : "llm_anthropic";
       const { data } = await serviceClient()
         .from("provider_secrets")
         .select("secrets")
-        .eq("brand_profile_id", BRAND_PROFILE_ID)
+        .eq("brand_profile_id", profileId)
         .eq("provider_type", providerType)
         .eq("active", true)
         .maybeSingle();
@@ -198,6 +198,9 @@ export async function GET(request) {
   let anthropic = !!process.env.ANTHROPIC_API_KEY;
   let openai    = !!process.env.OPENAI_API_KEY;
 
+  const url       = new URL(request.url);
+  const profileId = url.searchParams.get("brand_profile_id") || BRAND_PROFILE_ID;
+
   const authHeader = request.headers.get("authorization");
   const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
 
@@ -212,7 +215,7 @@ export async function GET(request) {
         const { data } = await serviceClient()
           .from("provider_secrets")
           .select("provider_type, secrets")
-          .eq("brand_profile_id", BRAND_PROFILE_ID)
+          .eq("brand_profile_id", profileId)
           .in("provider_type", ["llm_openai", "llm_anthropic"])
           .eq("active", true);
         if (data) {
@@ -233,10 +236,11 @@ export async function POST(request) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
 
-  const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700 } = await request.json();
+  const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700, brand_profile_id } = await request.json();
+  const profileId = brand_profile_id || BRAND_PROFILE_ID;
 
   try {
-    const key = await loadLLMKey(provider);
+    const key = await loadLLMKey(provider, profileId);
     if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key });
     return await callAnthropic({ model, system, messages, maxTokens, key });
   } catch (err) {

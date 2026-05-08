@@ -22,7 +22,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.20.1";
+const VERSION = "3.20.2";
 
 const TABS = [
   { key: "pipeline",   label: "Content",   Icon: Layers },
@@ -215,6 +215,17 @@ export default function Home() {
     const saved = await upsertCampaign(campaign, activeTenant);
     setCampaigns(prev => prev.map(c => c.id === saved.id ? saved : c));
   }, [activeTenant]);
+
+  const researchForCampaign = useCallback((campaign) => {
+    setResearchPrefill({
+      campaign_id:   campaign.id,
+      campaign_name: campaign.name,
+      topic:         campaign.objective || campaign.name,
+      audience:      campaign.audience  || "",
+    });
+    setTab("research");
+    toast(`↗ Researching for "${campaign.name}"`);
+  }, [setTab]);
 
   const removeCampaign = useCallback(async (id) => {
     await dbDeleteCampaign(id);
@@ -665,6 +676,7 @@ export default function Home() {
               onUpdateCampaign={saveCampaign}
               onDeleteCampaign={removeCampaign}
               onUpdateStory={updateStory}
+              onResearchForCampaign={researchForCampaign}
               settings={appSettings}
               tenant={activeTenant}
             />

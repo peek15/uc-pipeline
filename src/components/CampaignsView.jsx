@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { Plus, Trash2, X, ChevronDown, ChevronRight, Sparkles, Target, Check, AlertCircle } from "lucide-react";
+import { Plus, Trash2, X, ChevronDown, ChevronRight, Sparkles, Target, Check, AlertCircle, Search } from "lucide-react";
 import { supabase } from "@/lib/db";
 import { CONTENT_TYPES, CHANNELS, STAGES } from "@/lib/constants";
 import { contentChannel, getBrandName } from "@/lib/brandConfig";
@@ -331,7 +331,7 @@ function CampaignTimeline({ campaigns, stories, activeCampaignId, onSelect }) {
 // ── Main component ────────────────────────────────────────
 
 export default function CampaignsView({
-  stories, campaigns, onCreateCampaign, onUpdateCampaign, onDeleteCampaign, onUpdateStory, settings, tenant,
+  stories, campaigns, onCreateCampaign, onUpdateCampaign, onDeleteCampaign, onUpdateStory, onResearchForCampaign, settings, tenant,
 }) {
   const [activeCampaignId, setActiveCampaignId] = useState(null);
   const [statusFilter,     setStatusFilter]     = useState("all");
@@ -686,6 +686,11 @@ export default function CampaignsView({
                       </span>
                     )}
                     <div style={{ flex: 1 }} />
+                    {onResearchForCampaign && (
+                      <button onClick={() => onResearchForCampaign(campaign)} style={buttonStyle("secondary", { gap: 5, fontSize: 11 })}>
+                        <Search size={12} /> Find stories
+                      </button>
+                    )}
                     <button onClick={analyzeCampaign} disabled={analysisLoading} style={buttonStyle("secondary", { gap: 5, fontSize: 11 })}>
                       <Sparkles size={12} /> {analysisLoading ? "Analyzing…" : "Analyze"}
                     </button>

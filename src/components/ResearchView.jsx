@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, Check, X, Star, Plus, Play, Pause, Trash2 } from "lucide-react";
+import { Search, Check, X, Star, Plus, Play, Pause, Trash2, Target, RefreshCw } from "lucide-react";
 import { suggestFormat } from "@/lib/constants";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
@@ -68,7 +68,11 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
     if (!contentTemplates.some(t => t.id === templateId)) setTemplateId(contentTemplates[0].id);
   }, [contentTemplates, templateId]);
 
-  // Apply prefill from ProductionAlert / Cmd+J
+  // Active campaign context — stories found will be auto-assigned
+  const [activeCampaignId,   setActiveCampaignId]   = useState(null);
+  const [activeCampaignName, setActiveCampaignName] = useState("");
+
+  // Apply prefill from ProductionAlert / Cmd+J / campaign "Find stories"
   useEffect(() => {
     if (!prefill) return;
     if (prefill.topic)     setTopic(prefill.topic);
@@ -77,6 +81,9 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
     if (prefill.format)    setFormat(prefill.format);
     if (prefill.content_template_id) setTemplateId(prefill.content_template_id);
     if (prefill.count)     setCount(String(prefill.count));
+    // Campaign context
+    setActiveCampaignId(prefill.campaign_id || null);
+    setActiveCampaignName(prefill.campaign_name || "");
     if (onPrefillUsed) onPrefillUsed();
   }, [prefill, onPrefillUsed]);
 
@@ -286,6 +293,17 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
 
   const loading = singleLoading || queueRunning;
 
+  const reScoreAll = useCallback(async () => {
+    if (!results.length || scoring) return;
+    setScoring(true);
+    try {
+      const scoreData = await scoreStories(results, settings);
+      const fresh = {};
+      for (const s of scoreData) { if (s.index != null) fresh[s.index - 1] = s; }
+      setScores(fresh);
+    } catch {} finally { setScoring(false); }
+  }, [results, settings, scoring]);
+
   const addAllToPipeline = () => {
     const gated = results
       .map((s, i) => {
@@ -294,6 +312,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           ...s,
           format: s.format || format || suggestFormat(s.era),
           content_template_id: s.content_template_id || templateId,
+          ...(activeCampaignId ? { campaign_id: activeCampaignId, campaign_name: activeCampaignName } : {}),
           ...(sc ? { score_total: sc.total } : {}),
         };
         return { s: normalized, i, gate: auditStoryQuality(normalized, stories, settings), score: sc };
@@ -341,6 +360,20 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
 
   return (
     <div className="animate-fade-in">
+
+      {/* Campaign context banner */}
+      {activeCampaignId && (
+        <div style={{ marginBottom: 12, padding: "9px 14px", borderRadius: 8, background: "rgba(74,155,127,0.08)", border: "1px solid rgba(74,155,127,0.25)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <Target size={13} color="#4A9B7F" />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#4A9B7F" }}>Researching for "{activeCampaignName}"</span>
+            <span style={{ fontSize: 11, color: "rgba(74,155,127,0.7)" }}>— found stories will be auto-assigned</span>
+          </div>
+          <button onClick={() => { setActiveCampaignId(null); setActiveCampaignName(""); }} style={{ background: "transparent", border: "none", cursor: "pointer", color: "rgba(74,155,127,0.7)", display: "flex", alignItems: "center" }}>
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Active filter pills */}
       {(era||team||archetype||format||templateId) && (
@@ -501,11 +534,14 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <span style={{ fontSize:13, fontWeight:600, color:"var(--t1)" }}>{results.length} stories found{scoring?" · scoring...":""}</span>
             <div style={{ display:"flex", gap:8 }}>
+              <button onClick={reScoreAll} disabled={scoring} title="Re-score all results" style={{ padding:"6px 10px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color: scoring ? "var(--t4)" : "var(--t3)", cursor: scoring ? "not-allowed" : "pointer", display:"flex", alignItems:"center", gap:5 }}>
+                <RefreshCw size={11} /> Re-score
+              </button>
               <button onClick={()=>{setResults([]);setScores({});}} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t3)", cursor:"pointer" }}>
-                Clear results
+                Clear
               </button>
               <button onClick={addAllToPipeline} style={{ padding:"6px 14px", borderRadius:7, fontSize:12, fontWeight:600, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:5 }}>
-                <Plus size={12} /> Add all to Pipeline
+                <Plus size={12} /> Add all{activeCampaignId ? ` to "${activeCampaignName}"` : " to Pipeline"}
               </button>
             </div>
           </div>

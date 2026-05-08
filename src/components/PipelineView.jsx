@@ -7,6 +7,35 @@ import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import { PageHeader, Pill, buttonStyle } from "@/components/OperationalUI";
 import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
 
+function InlineTextInput({ value, placeholder, onSave }) {
+  const [local, setLocal] = useState(value);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setLocal(value); }, [value, focused]);
+  const commit = () => { if (local.trim() !== value.trim()) onSave(local.trim()); };
+  return (
+    <textarea
+      value={local}
+      placeholder={placeholder}
+      rows={2}
+      onChange={e => setLocal(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => { setFocused(false); commit(); }}
+      onKeyDown={e => {
+        if (e.key==="Enter"&&!e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); }
+        if (e.key==="Escape") { setLocal(value); setFocused(false); e.currentTarget.blur(); }
+      }}
+      style={{
+        width:"100%", fontSize:12, color:"var(--t2)", lineHeight:1.6,
+        background: focused ? "var(--fill2)" : "transparent",
+        border: focused ? "0.5px solid var(--border)" : "0.5px solid transparent",
+        borderRadius:5, padding: focused ? "5px 7px" : 0,
+        outline:"none", resize:"none", fontFamily:"inherit",
+        boxSizing:"border-box", transition:"border-color 0.1s, background 0.1s",
+      }}
+    />
+  );
+}
+
 const SORT_OPTS = [
   { key: "date_desc",      label: "Newest first" },
   { key: "date_asc",       label: "Oldest first" },
@@ -330,13 +359,30 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
       {/* Bulk action bar */}
       {selected.size>0&&(
-        <div className="animate-fade-in" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderRadius:10,background:"var(--t1)",color:"var(--bg)",marginBottom:12}}>
-          <span style={{fontSize:13,fontWeight:500}}>{selected.size} selected</span>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>{[...selected].forEach(id=>onStageChange(id,"approved"));setSelected(new Set());}} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--bg)",color:"var(--t1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><Check size={12}/> Approve</button>
-            <button onClick={()=>{onBulkReject([...selected]);setSelected(new Set());}} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"var(--bg)",border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><X size={12}/> Reject</button>
-            <button onClick={()=>{ const ids=[...selected]; if (window.confirm(`Delete ${ids.length} ${ids.length===1?"content item":"content items"}? This cannot be undone.`)) { onBulkDelete(ids); setSelected(new Set()); } }} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.1)",color:"var(--bg)",border:"0.5px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}><Trash2 size={12}/> Delete</button>
-            <button onClick={()=>setSelected(new Set())} style={{padding:"6px 10px",borderRadius:7,fontSize:12,background:"transparent",color:"rgba(255,255,255,0.5)",border:"none",cursor:"pointer"}}><X size={14}/></button>
+        <div className="animate-fade-in" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderRadius:10,background:"var(--t1)",color:"var(--bg)",marginBottom:12,gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+            <button onClick={()=>setSelected(new Set())} style={{width:22,height:22,borderRadius:5,background:"transparent",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"rgba(255,255,255,0.5)",flexShrink:0}}><X size={13}/></button>
+            <span style={{fontSize:13,fontWeight:600}}>{selected.size} selected</span>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            <select
+              defaultValue=""
+              onChange={e=>{
+                const stage=e.target.value;
+                if(!stage)return;
+                [...selected].forEach(id=>onStageChange(id,stage));
+                setSelected(new Set());
+                e.target.value="";
+              }}
+              style={{height:30,borderRadius:7,border:"0.5px solid rgba(255,255,255,0.2)",background:"rgba(255,255,255,0.12)",color:"var(--bg)",fontSize:11,padding:"0 8px",cursor:"pointer",fontFamily:"inherit",outline:"none"}}
+            >
+              <option value="">Move to stage…</option>
+              {stageOrder.map(st=><option key={st} value={st}>{STAGES[st].label}</option>)}
+              <option value="archived">Archived</option>
+            </select>
+            <button onClick={()=>{[...selected].forEach(id=>onStageChange(id,"approved"));setSelected(new Set());}} style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--bg)",color:"var(--t1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}><Check size={11}/> Approve</button>
+            <button onClick={()=>{onBulkReject([...selected]);setSelected(new Set());}} style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.12)",color:"var(--bg)",border:"0.5px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}><X size={11}/> Reject</button>
+            <button onClick={()=>{const ids=[...selected];if(window.confirm(`Delete ${ids.length} item${ids.length===1?"":"s"}? Cannot be undone.`)){onBulkDelete(ids);setSelected(new Set());}}} style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:600,background:"rgba(255,255,255,0.12)",color:"var(--bg)",border:"0.5px solid rgba(255,255,255,0.2)",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}><Trash2 size={11}/> Delete</button>
           </div>
         </div>
       )}
@@ -350,6 +396,25 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
           <div key={stKey} style={{marginBottom:"var(--section-gap, 32px)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:8,borderBottom:"1px solid var(--border)"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
+                {/* Select / deselect all in this group */}
+                {items.length>0&&(
+                  <div
+                    onClick={()=>{
+                      const groupIds=items.map(s=>s.id);
+                      const allSel=groupIds.every(id=>selected.has(id));
+                      setSelected(sel=>{
+                        const n=new Set(sel);
+                        if(allSel)groupIds.forEach(id=>n.delete(id));
+                        else groupIds.forEach(id=>n.add(id));
+                        return n;
+                      });
+                    }}
+                    style={{width:15,height:15,borderRadius:3,border:`1.5px solid ${items.every(s=>selected.has(s.id))?"var(--t2)":items.some(s=>selected.has(s.id))?"var(--t2)":"var(--border)"}`,background:items.every(s=>selected.has(s.id))?"var(--t2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
+                  >
+                    {items.every(s=>selected.has(s.id))&&<Check size={9} color="var(--bg)"/>}
+                    {items.some(s=>selected.has(s.id))&&!items.every(s=>selected.has(s.id))&&<div style={{width:7,height:1.5,background:"var(--t2)",borderRadius:1}}/>}
+                  </div>
+                )}
                 <span style={{fontSize:12,fontWeight:600,color:"var(--t1)",letterSpacing:"0.04em",textTransform:"uppercase"}}>{st.label}</span>
                 <span style={{fontSize:11,color:"var(--t3)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>{items.length}</span>
               </div>
@@ -453,12 +518,40 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                       )}
                     </div>
 
-                    {/* Expanded view — angle, hook, subjects, scores only. No script. */}
+                    {/* Expanded view — editable metadata + angle, hook, subjects, scores */}
                     {isExpanded&&(
                       <div className="animate-fade-in" style={{padding:"0 12px 14px 46px",borderTop:"1px solid var(--border2)"}}>
-                        {s.angle&&<div style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,marginTop:10,marginBottom:8}}>{s.angle}</div>}
-                        {objective&&<div style={{fontSize:12,color:"var(--t3)",lineHeight:1.6,marginBottom:8}}><strong style={{color:"var(--t2)"}}>Objective:</strong> {objective}</div>}
-                        {audience&&<div style={{fontSize:12,color:"var(--t3)",lineHeight:1.6,marginBottom:8}}><strong style={{color:"var(--t2)"}}>Audience:</strong> {audience}</div>}
+
+                        {/* Inline metadata editors */}
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10,marginBottom:10}}>
+                          <div>
+                            <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Content type</div>
+                            <select value={s.content_type||s.metadata?.content_type||"narrative"} onChange={e=>onUpdate&&onUpdate(s.id,{content_type:e.target.value})}
+                              style={{width:"100%",fontSize:12,borderRadius:5,border:"0.5px solid var(--border)",background:"var(--fill2)",color:"var(--t1)",padding:"4px 7px",outline:"none",fontFamily:"inherit",cursor:"pointer"}}>
+                              {CONTENT_TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Channel</div>
+                            <select value={displayChannel||""} onChange={e=>onUpdate&&onUpdate(s.id,{channel:e.target.value||null})}
+                              style={{width:"100%",fontSize:12,borderRadius:5,border:"0.5px solid var(--border)",background:"var(--fill2)",color:"var(--t1)",padding:"4px 7px",outline:"none",fontFamily:"inherit",cursor:"pointer"}}>
+                              <option value="">—</option>
+                              {CHANNELS.map(c=><option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                          <div>
+                            <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:2}}>Objective</div>
+                            <InlineTextInput key={`obj-${s.id}`} value={objective||""} placeholder="Add objective…" onSave={val=>onUpdate&&onUpdate(s.id,{objective:val})}/>
+                          </div>
+                          <div>
+                            <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:2}}>Audience</div>
+                            <InlineTextInput key={`aud-${s.id}`} value={audience||""} placeholder="Add audience…" onSave={val=>onUpdate&&onUpdate(s.id,{audience:val})}/>
+                          </div>
+                        </div>
+
+                        {s.angle&&<div style={{fontSize:13,color:"var(--t2)",lineHeight:1.7,marginBottom:8}}>{s.angle}</div>}
                         {s.hook&&<div style={{fontSize:13,color:"var(--t3)",fontStyle:"italic",paddingLeft:12,borderLeft:"2px solid var(--border)",lineHeight:1.5,marginBottom:10}}>"{s.hook}"</div>}
                         {subjects&&<div style={{fontSize:12,color:"var(--t3)",marginBottom:10,lineHeight:1.6,whiteSpace:"normal"}}>{subjects}</div>}
 

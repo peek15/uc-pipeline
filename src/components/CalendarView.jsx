@@ -462,17 +462,53 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings })
             </div>
           </div>
           {planPreview.placements.length ? (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:8 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:8 }}>
               {planPreview.placements.map(p => {
                 const d = new Date(p.date);
                 const fmtObj = programmeMap[p.story.format] || FORMAT_MAP[p.story.format];
+                const gate = gateStatus(p.story);
+                const usedIds = new Set(planPreview.placements.filter(pl => pl.date !== p.date).map(pl => pl.story.id));
+                const swapOptions = ready.filter(s => s.id !== p.story.id && !usedIds.has(s.id));
+                const gateColor = gate==="blocked" ? "var(--error)" : gate==="warnings" ? "var(--warning)" : gate==="passed" ? "var(--success)" : "var(--t4)";
                 return (
-                  <div key={`${p.story.id}-${p.date}`} style={{ padding:"9px 10px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", borderLeft:`3px solid ${fmtObj?.color || "var(--border)"}` }}>
-                    <div style={{ fontSize:10, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>
-                      {d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" })}
+                  <div key={`${p.story.id}-${p.date}`} style={{ padding:"9px 10px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", borderLeft:`3px solid ${fmtObj?.color || "var(--border)"}`, display:"flex", flexDirection:"column", gap:4 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ fontSize:10, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>
+                        {d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" })}
+                      </span>
+                      <button onClick={() => setPlanPreview(prev => ({ ...prev, placements: prev.placements.filter(pl => !(pl.date===p.date && pl.story.id===p.story.id)) }))}
+                        style={{ width:16, height:16, borderRadius:3, border:"none", background:"transparent", color:"var(--t4)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
+                        <X size={11}/>
+                      </button>
                     </div>
                     <div style={{ fontSize:12, fontWeight:600, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.story.title}</div>
-                    <div style={{ fontSize:10, color:"var(--t4)", marginTop:3 }}>{fmtObj?.label || p.story.format || "No format"}</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:10, color:"var(--t4)" }}>{fmtObj?.label || p.story.format || "—"}</span>
+                      {p.story.score_total != null && (
+                        <span style={{ fontSize:10, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t3)" }}>· {p.story.score_total}</span>
+                      )}
+                      {gate !== "missing" && (
+                        <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, border:`0.5px solid ${gateColor}40`, color:gateColor, background:`${gateColor}12` }}>
+                          {gate === "passed" ? "gate ✓" : gate === "blocked" ? "blocked" : "warnings"}
+                        </span>
+                      )}
+                    </div>
+                    {swapOptions.length > 0 && (
+                      <select
+                        value=""
+                        onChange={e => {
+                          const newStory = ready.find(s => s.id === e.target.value);
+                          if (!newStory) return;
+                          setPlanPreview(prev => ({ ...prev, placements: prev.placements.map(pl => pl.date===p.date && pl.story.id===p.story.id ? { ...pl, story:newStory } : pl) }));
+                        }}
+                        style={{ marginTop:2, width:"100%", fontSize:10, borderRadius:5, border:"0.5px solid var(--border)", background:"var(--bg2)", color:"var(--t3)", padding:"3px 5px", outline:"none", cursor:"pointer", fontFamily:"inherit" }}
+                      >
+                        <option value="">Swap story…</option>
+                        {swapOptions.slice(0, 8).map(s => (
+                          <option key={s.id} value={s.id}>{s.title.slice(0,36)}{s.score_total ? ` · ${s.score_total}` : ""}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 );
               })}

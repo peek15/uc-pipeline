@@ -843,6 +843,38 @@ export default function CampaignsView({
                       </div>
                     );
                   })()}
+                  {/* Delivery gaps */}
+                  {(() => {
+                    const gaps = (campaign.deliverables || []).map(d => ({
+                      ...d,
+                      ...deliverableProgress(d, linkedStories),
+                    })).filter(d => d.done < d.total);
+                    if (!gaps.length) return null;
+                    return (
+                      <div style={{ marginTop: 12, padding: "10px 12px", borderRadius: 7, background: "var(--bg2)", border: "0.5px solid var(--border)" }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Delivery gaps</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          {gaps.map((d, i) => {
+                            const needed = d.total - d.done;
+                            const type = CONTENT_TYPES.find(t => t.key === d.content_type);
+                            return (
+                              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                                <span style={{ color: "var(--t1)", fontWeight: 500 }}>{type?.label || d.content_type || "any"}</span>
+                                {d.channel && <span style={{ color: "var(--t4)" }}>· {d.channel}</span>}
+                                <span style={{ color: "var(--error)", fontFamily: "var(--font-mono)", fontSize: 11 }}>−{needed} needed</span>
+                                {d.active > 0 && <span style={{ color: "var(--warning)", fontSize: 11 }}>({d.active} in progress)</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {onResearchForCampaign && (
+                          <button onClick={() => onResearchForCampaign(campaign)} style={{ marginTop: 8, fontSize: 11, color: "var(--t2)", background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+                            Find stories for this campaign →
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </>
               ) : (
                 <div style={{ padding: "20px 0", textAlign: "center", color: "var(--t4)", fontSize: 12, lineHeight: 1.6 }}>

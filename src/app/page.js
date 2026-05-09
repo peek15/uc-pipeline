@@ -23,7 +23,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.20.7";
+const VERSION = "3.20.8";
 
 const TABS = [
   { key: "pipeline",   label: "Content",   Icon: Layers },
@@ -221,8 +221,14 @@ export default function Home() {
   const runPredictions = useCallback(async () => {
     setRunningPredictions(true);
     try {
+      const { data: snapshots } = await supabase
+        .from("performance_snapshots")
+        .select("story_id,content_template_id,content_type,channel,views,completion_rate")
+        .eq("workspace_id", activeTenant.workspace_id)
+        .order("captured_at", { ascending: false })
+        .limit(500);
       const toPredict = stories.filter(s => !["rejected","archived"].includes(s.status));
-      const predicted = batchPredict(toPredict);
+      const predicted = batchPredict(toPredict, snapshots || []);
       const saved = await bulkUpsertStories(predicted, activeTenant);
       if (saved?.length) {
         const map = Object.fromEntries(saved.map(s => [s.id, s]));

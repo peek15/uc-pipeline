@@ -73,6 +73,10 @@ const DEFAULT_SETTINGS = {
   prompts: {
     script_system: SCRIPT_SYSTEM,
   },
+  quality_gate: {
+    factual_anchor_terms: [],
+    profiles: {},
+  },
   appearance: {
     theme:       "system",
     density:     "comfortable",
@@ -371,6 +375,7 @@ function IntelligenceDashboard({
   onRunPredictions,
   runningPredictions = false,
   pendingFeedbackCount = 0,
+  onApplyCalibrationHint,
 }) {
   const modules = intelligenceModules(stories, settings, conflicts, insightCount, snapshotCount);
   const active = modules.filter(m => m.status === "active").length;
@@ -494,17 +499,20 @@ function IntelligenceDashboard({
                     {summarizeInsightPayload(insight.payload) && (
                       <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.4, marginTop:4 }}>{summarizeInsightPayload(insight.payload)}</div>
                     )}
-                    {insight.payload?.calibration_hints?.length > 0 && (
+                    {insight.payload?.calibration_hints?.length > 0 && insight.status !== "applied" && (
                       <div style={{ marginTop:8, display:"flex", flexDirection:"column", gap:4 }}>
                         {insight.payload.calibration_hints.slice(0, 4).map((h, i) => (
-                          <div key={i} style={{ fontSize:11, color:"var(--t2)", background:"var(--bg2)", borderRadius:5, padding:"5px 8px", lineHeight:1.45 }}>
-                            <span style={{ color:"var(--t4)", marginRight:4 }}>⚙</span>
-                            <strong style={{ color:"var(--t1)" }}>{h.pattern}</strong>
-                            {h.suggested_action && (
-                              <span style={{ color:"var(--t4)" }}> → {h.suggested_action}</span>
-                            )}
-                            {h.recurrence_count > 1 && (
-                              <span style={{ color:"var(--t4)", marginLeft:6, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", fontSize:10 }}>×{h.recurrence_count}</span>
+                          <div key={i} style={{ fontSize:11, color:"var(--t2)", background:"var(--bg2)", borderRadius:5, padding:"5px 8px", lineHeight:1.45, display:"flex", alignItems:"flex-start", gap:6 }}>
+                            <div style={{ flex:1 }}>
+                              <span style={{ color:"var(--t4)", marginRight:4 }}>⚙</span>
+                              <strong style={{ color:"var(--t1)" }}>{h.pattern}</strong>
+                              {h.suggested_action && <span style={{ color:"var(--t4)" }}> → {h.suggested_action}</span>}
+                              {h.recurrence_count > 1 && <span style={{ color:"var(--t4)", marginLeft:6, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", fontSize:10 }}>×{h.recurrence_count}</span>}
+                            </div>
+                            {onApplyCalibrationHint && (
+                              <button onClick={() => onApplyCalibrationHint(h, insight.id)} style={{ flexShrink:0, padding:"2px 7px", borderRadius:4, border:"0.5px solid var(--border)", background:"var(--t1)", color:"var(--bg)", fontSize:10, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                Apply
+                              </button>
                             )}
                           </div>
                         ))}
@@ -858,6 +866,29 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     }
   }, [pendingFeedbackCount, isOpen, section]);
 
+  const applyCalibrationHint = async (hint, insightId) => {
+    const action = hint.suggested_action || hint.pattern || "";
+    const avoidMatch = action.match(/\badd\b\s+['"]?([^'"]+?)['"]?\s+to\s+(?:brand\s+)?(?:voice\s+)?avoid/i);
+    const next = JSON.parse(JSON.stringify(settings));
+    if (avoidMatch) {
+      const term = avoidMatch[1].trim();
+      if (!next.brand) next.brand = {};
+      if (!Array.isArray(next.brand.voice_avoid)) next.brand.voice_avoid = [];
+      if (!next.brand.voice_avoid.includes(term)) next.brand.voice_avoid.push(term);
+    }
+    if (!next.intelligence) next.intelligence = {};
+    if (!Array.isArray(next.intelligence.calibration_notes)) next.intelligence.calibration_notes = [];
+    const note = `${hint.pattern}: ${action}`;
+    if (!next.intelligence.calibration_notes.includes(note)) next.intelligence.calibration_notes.push(note);
+    setSettings(next);
+    try {
+      await supabase.from("brand_profiles").upsert({ id: BRAND_PROFILE_ID, workspace_id: WORKSPACE_ID, name: next.brand?.name, settings: next, brief_doc: JSON.stringify(next) });
+      if (onSettingsChange) onSettingsChange(next);
+      try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(next)); } catch {}
+    } catch {}
+    await updateInsightStatus(insightId, "applied");
+  };
+
   const generateFeedbackInsights = async () => {
     setGeneratingInsights(true);
     setInsightError(null);
@@ -966,6 +997,19 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   }, [section, isOpen]);
 
   const [rulesTab, setRulesTab] = useState("scheduling");
+  const [gateProfileType, setGateProfileType] = useState("narrative");
+  const [anchorInput, setAnchorInput] = useState("");
+  const updQGProfile = (type, field, val) => {
+    setSettings(s => {
+      const n = JSON.parse(JSON.stringify(s));
+      if (!n.quality_gate) n.quality_gate = { factual_anchor_terms: [], profiles: {} };
+      if (!n.quality_gate.profiles) n.quality_gate.profiles = {};
+      if (!n.quality_gate.profiles[type]) n.quality_gate.profiles[type] = {};
+      if (val === undefined) { delete n.quality_gate.profiles[type][field]; }
+      else { n.quality_gate.profiles[type][field] = val; }
+      return n;
+    });
+  };
 
   const [progExpandIdx, setProgExpandIdx] = useState(null);
   const [showCustomThreshold, setShowCustomThreshold] = useState(false);
@@ -1783,7 +1827,7 @@ ${fileText.slice(0,3000)}` : text };
             <div>
               {/* Sub-tabs */}
               <div style={{ display:"flex", gap:2, marginBottom:20, padding:"4px", borderRadius:9, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
-                {[{key:"scheduling",label:"Scheduling rules"},{key:"alerts",label:"Alert thresholds"}].map(t=>(
+                {[{key:"scheduling",label:"Scheduling rules"},{key:"alerts",label:"Alert thresholds"},{key:"quality_gate",label:"Quality gate"}].map(t=>(
                   <button key={t.key} onClick={()=>setRulesTab(t.key)} style={{ flex:1, padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:rulesTab===t.key?500:400, background:rulesTab===t.key?"var(--card)":"transparent", color:rulesTab===t.key?"var(--t1)":"var(--t3)", border:rulesTab===t.key?"0.5px solid var(--border)":"none", cursor:"pointer" }}>
                     {t.label}
                   </button>
@@ -1951,6 +1995,112 @@ ${fileText.slice(0,3000)}` : text };
                 <RuleBuilder key={rule.id||i} rule={rule} index={i} onChange={v=>updRule(i,v)} onDelete={()=>delRule(i)} conflicts={conflicts} totalRules={rules.length}/>
               ))}
               </div>)}
+
+              {rulesTab==="quality_gate" && (() => {
+                const GQ_TYPES = [
+                  { key:"narrative",    label:"Narrative",    defaults:{ minAngle:35, minScriptWords:90,  maxScriptWords:260, needsHook:true, needsFact:true,  needsObjective:false, needsAudience:false, needsChannel:false, needsDeliverable:false } },
+                  { key:"ad",           label:"Ad",           defaults:{ minAngle:20, minScriptWords:25,  maxScriptWords:180, needsHook:true, needsFact:false, needsObjective:true,  needsAudience:true,  needsChannel:true,  needsDeliverable:true  } },
+                  { key:"publicity",    label:"Publicity",    defaults:{ minAngle:24, minScriptWords:35,  maxScriptWords:320, needsHook:true, needsFact:true,  needsObjective:true,  needsAudience:false, needsChannel:true,  needsDeliverable:true  } },
+                  { key:"product_post", label:"Product post", defaults:{ minAngle:22, minScriptWords:25,  maxScriptWords:220, needsHook:true, needsFact:false, needsObjective:true,  needsAudience:true,  needsChannel:true,  needsDeliverable:true  } },
+                  { key:"educational",  label:"Educational",  defaults:{ minAngle:26, minScriptWords:50,  maxScriptWords:320, needsHook:true, needsFact:false, needsObjective:true,  needsAudience:true,  needsChannel:true,  needsDeliverable:true  } },
+                  { key:"community",    label:"Community",    defaults:{ minAngle:20, minScriptWords:20,  maxScriptWords:180, needsHook:true, needsFact:false, needsObjective:true,  needsAudience:true,  needsChannel:true,  needsDeliverable:false } },
+                  { key:"generic",      label:"Generic",      defaults:{ minAngle:28, minScriptWords:40,  maxScriptWords:260, needsHook:true, needsFact:false, needsObjective:true,  needsAudience:true,  needsChannel:true,  needsDeliverable:true  } },
+                ];
+                const anchorTerms = settings.quality_gate?.factual_anchor_terms || [];
+                const activeType = GQ_TYPES.find(t => t.key === gateProfileType) || GQ_TYPES[0];
+                const custom = settings.quality_gate?.profiles?.[activeType.key] || {};
+                const defs = activeType.defaults;
+                const numField = (field, min, max, step=1) => {
+                  const effective = custom[field] ?? defs[field];
+                  return (
+                    <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <span style={{ fontSize:12, color:"var(--t2)" }}>{field==="minAngle"?"Min angle chars":field==="minScriptWords"?"Min words":"Max words"}</span>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          {custom[field]!=null && <span style={{ fontSize:10, color:"var(--t4)" }}>default: {defs[field]}</span>}
+                          <input type="number" min={min} max={max} step={step} value={effective}
+                            onChange={e=>updQGProfile(activeType.key, field, Math.min(max,Math.max(min,parseInt(e.target.value)||min)))}
+                            style={{ width:56, padding:"3px 6px", borderRadius:6, background:"var(--fill2)", border:`0.5px solid ${custom[field]!=null?"var(--t2)":"var(--border)"}`, color:"var(--t1)", fontSize:12, outline:"none", textAlign:"center", fontFamily:"var(--font-mono)" }}/>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+                const boolField = (field, label) => {
+                  const effective = custom[field] ?? defs[field];
+                  return (
+                    <button onClick={()=>updQGProfile(activeType.key, field, !effective)} style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 10px", borderRadius:6, fontSize:11, background:effective?"var(--t1)":"var(--fill2)", color:effective?"var(--bg)":"var(--t3)", border:`0.5px solid ${custom[field]!=null?"var(--t2)":"var(--border)"}`, cursor:"pointer" }}>
+                      {effective ? "✓" : "–"} {label}
+                    </button>
+                  );
+                };
+                const hasOverrides = Object.keys(custom).length > 0;
+                return (
+                  <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+                    {/* Factual anchor terms */}
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Factual anchor terms</div>
+                      <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10, lineHeight:1.5 }}>Words that count as factual grounding. Stories without any of these (or a year/number) get a "no factual anchor" warning.</div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+                        {anchorTerms.map((term,i)=>(
+                          <span key={i} style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:12, color:"var(--t1)" }}>
+                            {term}
+                            <button onClick={()=>upd("quality_gate.factual_anchor_terms", anchorTerms.filter((_,j)=>j!==i))} style={{ background:"none", border:"none", cursor:"pointer", padding:0, color:"var(--t4)", lineHeight:1, display:"flex" }}>
+                              <X size={10}/>
+                            </button>
+                          </span>
+                        ))}
+                        <input value={anchorInput} onChange={e=>setAnchorInput(e.target.value)}
+                          onKeyDown={e=>{ if((e.key==="Enter"||e.key===",")&&anchorInput.trim()){ e.preventDefault(); const t=anchorInput.trim().replace(/,$/,""); if(t&&!anchorTerms.includes(t)){upd("quality_gate.factual_anchor_terms",[...anchorTerms,t]);} setAnchorInput(""); } }}
+                          onBlur={()=>{ const t=anchorInput.trim().replace(/,$/,""); if(t&&!anchorTerms.includes(t)){upd("quality_gate.factual_anchor_terms",[...anchorTerms,t]);} setAnchorInput(""); }}
+                          placeholder="Add term…" style={{ padding:"3px 8px", borderRadius:99, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", width:100 }}/>
+                      </div>
+                      {!anchorTerms.length && <div style={{ fontSize:11, color:"var(--t4)", fontStyle:"italic" }}>Using built-in defaults (final, playoff, draft, trade, injury, rookie, mvp, all-star)</div>}
+                    </div>
+
+                    {/* Per-type profile overrides */}
+                    <div>
+                      <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Gate profile overrides</div>
+                      <div style={{ fontSize:11, color:"var(--t3)", marginBottom:12, lineHeight:1.5 }}>Customise thresholds and required checks per content type. Highlighted fields have been overridden from defaults.</div>
+                      {/* Type pills */}
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:14 }}>
+                        {GQ_TYPES.map(t=>{
+                          const tCustom = settings.quality_gate?.profiles?.[t.key];
+                          const hasC = tCustom && Object.keys(tCustom).length > 0;
+                          return (
+                            <button key={t.key} onClick={()=>setGateProfileType(t.key)} style={{ padding:"4px 10px", borderRadius:99, fontSize:11, fontWeight:gateProfileType===t.key?600:400, background:gateProfileType===t.key?"var(--t1)":"var(--fill2)", color:gateProfileType===t.key?"var(--bg)":hasC?"var(--t2)":"var(--t3)", border:`0.5px solid ${gateProfileType===t.key?"var(--t1)":hasC?"var(--t2)":"var(--border)"}`, cursor:"pointer" }}>
+                              {t.label}{hasC?" ·":""}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {/* Fields for active type */}
+                      <div style={{ padding:"14px", borderRadius:9, background:"var(--fill2)", border:"0.5px solid var(--border)", display:"flex", flexDirection:"column", gap:12 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                          <span style={{ fontSize:12, fontWeight:600, color:"var(--t1)" }}>{activeType.label}</span>
+                          {hasOverrides && <button onClick={()=>{ setSettings(s=>{const n=JSON.parse(JSON.stringify(s)); if(n.quality_gate?.profiles) delete n.quality_gate.profiles[activeType.key]; return n; }); }} style={{ fontSize:11, color:"var(--t4)", background:"none", border:"none", cursor:"pointer", textDecoration:"underline", padding:0 }}>Reset to defaults</button>}
+                        </div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+                          {numField("minAngle", 5, 80)}
+                          {numField("minScriptWords", 5, 500)}
+                          {numField("maxScriptWords", 20, 2000, 10)}
+                        </div>
+                        <div>
+                          <div style={{ fontSize:11, color:"var(--t3)", marginBottom:6 }}>Required checks</div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                            {boolField("needsHook", "Hook")}
+                            {boolField("needsFact", "Fact")}
+                            {boolField("needsObjective", "Objective")}
+                            {boolField("needsAudience", "Audience")}
+                            {boolField("needsChannel", "Channel")}
+                            {boolField("needsDeliverable", "Deliverable")}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1978,6 +2128,7 @@ ${fileText.slice(0,3000)}` : text };
               onRunPredictions={onRunPredictions}
               runningPredictions={runningPredictions}
               pendingFeedbackCount={pendingFeedbackCount}
+              onApplyCalibrationHint={applyCalibrationHint}
             />
           )}
 

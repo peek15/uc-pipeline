@@ -108,7 +108,7 @@ export function auditStoryQuality(story, existingStories = [], settings = null) 
   const audience = contentAudience(story);
   const channel = contentChannel(story);
   const deliverable = story.deliverable_type || template?.deliverable_type || "";
-  const profile = qualityProfileFor(contentType, template);
+  const profile = qualityProfileFor(contentType, template, settings);
 
   const add = (severity, code, message, category = profile.category) => issues.push({ severity, code, message, category });
 
@@ -182,7 +182,7 @@ export function auditStoryQuality(story, existingStories = [], settings = null) 
   };
 }
 
-function qualityProfileFor(contentType, template) {
+function qualityProfileFor(contentType, template, settings = null) {
   const type = String(template?.content_type || contentType || "narrative").toLowerCase();
   const templateFields = Array.isArray(template?.required_fields) ? template.required_fields : [];
   const base = {
@@ -207,7 +207,7 @@ function qualityProfileFor(contentType, template) {
     factMessage: "No clear factual anchor found.",
   };
   if (type === "narrative") {
-    return {
+    return applyCustomProfile({
       ...base,
       category: "story",
       needsArchetype: true,
@@ -223,24 +223,30 @@ function qualityProfileFor(contentType, template) {
       scriptLabel: "script",
       angleMessage: "Angle needs a clearer human tension.",
       factMessage: "No clear factual anchor found.",
-    };
+    }, type, settings);
   }
   if (type === "ad") {
-    return { ...base, key: "ad", category: "conversion", minAngle: 20, minScriptWords: 25, maxScriptWords: 180, angleMessage: "Ad angle needs a clearer offer, pain point, or promise." };
+    return applyCustomProfile({ ...base, key: "ad", category: "conversion", minAngle: 20, minScriptWords: 25, maxScriptWords: 180, angleMessage: "Ad angle needs a clearer offer, pain point, or promise." }, type, settings);
   }
   if (type === "publicity") {
-    return { ...base, key: "publicity", category: "publicity", needsAudience: false, needsFact: true, minAngle: 24, minScriptWords: 35, maxScriptWords: 320, angleMessage: "Publicity angle needs clearer news value.", factMessage: "No clear news/date/factual anchor found." };
+    return applyCustomProfile({ ...base, key: "publicity", category: "publicity", needsAudience: false, needsFact: true, minAngle: 24, minScriptWords: 35, maxScriptWords: 320, angleMessage: "Publicity angle needs clearer news value.", factMessage: "No clear news/date/factual anchor found." }, type, settings);
   }
   if (type === "product_post") {
-    return { ...base, key: "product_post", category: "product", minAngle: 22, minScriptWords: 25, maxScriptWords: 220, angleMessage: "Product angle needs a clearer benefit or use case." };
+    return applyCustomProfile({ ...base, key: "product_post", category: "product", minAngle: 22, minScriptWords: 25, maxScriptWords: 220, angleMessage: "Product angle needs a clearer benefit or use case." }, type, settings);
   }
   if (type === "educational") {
-    return { ...base, key: "educational", category: "education", needsFact: false, minAngle: 26, minScriptWords: 50, maxScriptWords: 320, angleMessage: "Educational angle needs a clearer lesson or takeaway." };
+    return applyCustomProfile({ ...base, key: "educational", category: "education", needsFact: false, minAngle: 26, minScriptWords: 50, maxScriptWords: 320, angleMessage: "Educational angle needs a clearer lesson or takeaway." }, type, settings);
   }
   if (type === "community") {
-    return { ...base, key: "community", category: "community", needsDeliverable: false, minAngle: 20, minScriptWords: 20, maxScriptWords: 180, angleMessage: "Community angle needs a clearer participation prompt." };
+    return applyCustomProfile({ ...base, key: "community", category: "community", needsDeliverable: false, minAngle: 20, minScriptWords: 20, maxScriptWords: 180, angleMessage: "Community angle needs a clearer participation prompt." }, type, settings);
   }
-  return base;
+  return applyCustomProfile(base, type, settings);
+}
+
+function applyCustomProfile(profile, type, settings) {
+  const custom = settings?.quality_gate?.profiles?.[type];
+  if (!custom || typeof custom !== "object") return profile;
+  return { ...profile, ...custom };
 }
 
 function runProfileChecks({ story, add, contentType, objective, audience, channel, deliverable, angle, hook, script, scheduledIn }) {

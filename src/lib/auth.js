@@ -1,10 +1,8 @@
 import { supabase } from "./db";
 
-const ALLOWED_DOMAIN = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
-
-export function isEmailAllowed(email) {
-  if (!email) return false;
-  return email.endsWith(`@${ALLOWED_DOMAIN}`);
+// Access is now gated by workspace membership, not email domain.
+export function isEmailAllowed(_email) {
+  return true;
 }
 
 export async function signInWithGoogle() {
@@ -12,9 +10,6 @@ export async function signInWithGoogle() {
     provider: "google",
     options: {
       redirectTo: typeof window !== "undefined" ? window.location.origin : "",
-      queryParams: {
-        hd: ALLOWED_DOMAIN,
-      },
     },
   });
   if (error) throw error;

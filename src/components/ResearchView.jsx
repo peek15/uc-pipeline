@@ -5,6 +5,7 @@ import { suggestFormat } from "@/lib/constants";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import { brandConfigForPrompt, getContentTemplate, getBrandTaxonomy, subjectText } from "@/lib/brandConfig";
+import { tenantStorageKey, normalizeTenant } from "@/lib/brand";
 
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null) return null;
@@ -27,7 +28,7 @@ async function scoreStories(stories, settings) {
   return parsed || [];
 }
 
-export default function ResearchView({ stories, onAddStories, prefill, onPrefillUsed, settings }) {
+export default function ResearchView({ stories, onAddStories, prefill, onPrefillUsed, settings, tenant }) {
   const brandTaxonomy = getBrandTaxonomy(settings);
   const programmes = brandTaxonomy.programmes;
   const programmeMap = brandTaxonomy.programme_map;
@@ -44,15 +45,25 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
   const [format,    setFormat]    = useState("");
   const [templateId, setTemplateId] = useState(contentTemplates[0]?.id || "narrative_story");
 
-  // Results — persisted in localStorage so they survive page reload
+  // Tenant-scoped localStorage keys — prevents cross-brand result contamination
+  const _t = normalizeTenant(tenant);
+  const resKey    = tenantStorageKey("uc_research_results", _t);
+  const scoresKey = tenantStorageKey("uc_research_scores",  _t);
+
+  // Results — persisted in tenant-scoped localStorage so they survive page reload
   const [results, setResults] = useState(() => {
-    try { const r = localStorage.getItem("uc_research_results"); return r ? JSON.parse(r) : []; } catch { return []; }
+    try { const r = localStorage.getItem(resKey); return r ? JSON.parse(r) : []; } catch { return []; }
   });
   const [scores, setScores] = useState(() => {
-    try { const s = localStorage.getItem("uc_research_scores"); return s ? JSON.parse(s) : {}; } catch { return {}; }
+    try { const s = localStorage.getItem(scoresKey); return s ? JSON.parse(s) : {}; } catch { return {}; }
   });
-  useEffect(() => { try { localStorage.setItem("uc_research_results", JSON.stringify(results)); } catch {} }, [results]);
-  useEffect(() => { try { localStorage.setItem("uc_research_scores",  JSON.stringify(scores));  } catch {} }, [scores]);
+  // Reload when tenant switches (component stays mounted)
+  useEffect(() => {
+    try { const r = localStorage.getItem(resKey); setResults(r ? JSON.parse(r) : []); } catch { setResults([]); }
+    try { const s = localStorage.getItem(scoresKey); setScores(s ? JSON.parse(s) : {}); } catch { setScores({}); }
+  }, [resKey]); // scoresKey always changes with resKey
+  useEffect(() => { try { localStorage.setItem(resKey,    JSON.stringify(results)); } catch {} }, [results, resKey]);
+  useEffect(() => { try { localStorage.setItem(scoresKey, JSON.stringify(scores));  } catch {} }, [scores,  scoresKey]);
   const [scoring,   setScoring]   = useState(false);
   const [error,     setError]     = useState(null);
   const [batch,     setBatch]     = useState(0);

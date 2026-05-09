@@ -3,9 +3,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { Layers, Search, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot, Target } from "lucide-react";
 import { STAGES } from "@/lib/constants";
-import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile, getCampaigns, upsertCampaign, deleteCampaign as dbDeleteCampaign } from "@/lib/db";
+import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile, getCampaigns, upsertCampaign, deleteCampaign as dbDeleteCampaign, getWorkspaces, createWorkspace } from "@/lib/db";
 import { batchPredict } from "@/lib/prediction";
-import { signInWithGoogle, signOut, isEmailAllowed } from "@/lib/auth";
+import { signInWithGoogle, signOut } from "@/lib/auth";
 import PipelineView from "@/components/PipelineView";
 import CampaignsView from "@/components/CampaignsView";
 import ResearchView from "@/components/ResearchView";
@@ -23,7 +23,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.20.8";
+const VERSION = "3.22.0";
 
 const TABS = [
   { key: "pipeline",   label: "Content",   Icon: Layers },
@@ -61,6 +61,8 @@ export default function Home() {
   const [showCmdK,        setShowCmdK]        = useState(false);
   const [agentOpen,       setAgentOpen]       = useState(false);
   const [newBrand,        setNewBrand]        = useState({ show: false, name: "", cloneSettings: true, openSettings: false });
+  const [workspaces,       setWorkspaces]       = useState([]);
+  const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
 
   useEffect(() => {
     if (tab === "script") { setCreateMode("write"); setTab("create"); }
@@ -69,8 +71,7 @@ export default function Home() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user && isEmailAllowed(session.user.email)) setUser(session.user);
-      else setUser(null);
+      setUser(session?.user || null);
       setAuthLoading(false);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -78,10 +79,8 @@ export default function Home() {
       // reloading stories on every background token rotation when the tab regains focus.
       if (event === "TOKEN_REFRESHED") return;
       if (session?.user) {
-        if (isEmailAllowed(session.user.email)) {
-          setUser(prev => prev?.id === session.user.id ? prev : session.user);
-          setAuthError(null);
-        } else { await supabase.auth.signOut(); setUser(null); setAuthError(`Access restricted to @${process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc"} accounts.`); }
+        setUser(prev => prev?.id === session.user.id ? prev : session.user);
+        setAuthError(null);
       } else { setUser(null); }
       setAuthLoading(false);
     });
@@ -95,7 +94,13 @@ export default function Home() {
       setStories([]);
       // Load stories
       getStories(activeTenant).then(d => { setStories(d); setLoading(false); }).catch(() => setLoading(false));
-      getBrandProfiles(activeTenant).then(rows => setBrandProfiles(rows)).catch(() => setBrandProfiles([]));
+      getBrandProfiles(activeTenant).then(rows => {
+        setBrandProfiles(rows);
+        // When workspace switches, brand_profile_id may not belong to the new workspace — reset to first.
+        if (rows.length && !rows.some(bp => bp.id === activeTenant.brand_profile_id)) {
+          setTenant(prev => ({ ...prev, brand_profile_id: rows[0].id }));
+        }
+      }).catch(() => setBrandProfiles([]));
       getCampaigns(activeTenant).then(rows => setCampaigns(rows)).catch(() => setCampaigns([]));
       // Load saved settings from brand profile
 // Load appearance from localStorage immediately (fast, no network)
@@ -123,6 +128,14 @@ export default function Home() {
     }
     else setLoading(false);
   }, [user, activeTenant]);
+
+  // Load workspaces once per login — drives workspace switcher + no-access guard.
+  useEffect(() => {
+    if (!user) { setWorkspaces([]); setWorkspacesLoaded(false); return; }
+    getWorkspaces()
+      .then(ws => { setWorkspaces(ws); setWorkspacesLoaded(true); })
+      .catch(() => { setWorkspaces([]); setWorkspacesLoaded(true); });
+  }, [user]);
 
   const handleSignIn  = async () => { setAuthLoading(true); setAuthError(null); try { await signInWithGoogle(); } catch (err) { setAuthError(err.message); setAuthLoading(false); } };
   const handleSignOut = async () => { await signOut(); setUser(null); setStories([]); setShowUserMenu(false); };
@@ -507,6 +520,28 @@ export default function Home() {
 
   if (authLoading) return <Spinner />;
   if (!user) return <LoginScreen onSignIn={handleSignIn} loading={authLoading} error={authError} />;
+  if (workspacesLoaded && workspaces.length === 0) return (
+    <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{ maxWidth:360, textAlign:"center" }}>
+        <p style={{ fontSize:16, fontWeight:600, color:"var(--t1)", marginBottom:8 }}>No workspace access</p>
+        <p style={{ fontSize:13, color:"var(--t3)", lineHeight:1.5, marginBottom:20 }}>
+          Your account isn't a member of any workspace. Ask a workspace owner to add you, or create one below.
+        </p>
+        <button onClick={async () => {
+          const name = prompt("New workspace name:");
+          if (!name?.trim()) return;
+          try {
+            const ws = await createWorkspace(name.trim());
+            setWorkspaces([ws]);
+            setTenant({ workspace_id: ws.id, brand_profile_id: ws.id });
+          } catch (e) { alert(e.message); }
+        }} style={{ padding:"10px 20px", borderRadius:8, background:"var(--t1)", color:"var(--bg)", border:"none", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+          Create workspace
+        </button>
+        <button onClick={handleSignOut} style={{ display:"block", margin:"12px auto 0", background:"none", border:"none", color:"var(--t4)", fontSize:12, cursor:"pointer" }}>Sign out</button>
+      </div>
+    </div>
+  );
   if (loading) return <Spinner />;
 
   const menuBtn = { width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" };
@@ -537,6 +572,18 @@ export default function Home() {
                   <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentBrandLabel}</span>
                   <span style={{ fontSize:9, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
                 </div>
+                {workspaces.length > 1 && (
+                  <select
+                    value={activeTenant.workspace_id}
+                    onChange={(e) => setTenant({ workspace_id: e.target.value, brand_profile_id: e.target.value })}
+                    title="Workspace"
+                    style={{ width:"100%", height:26, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t2)", fontSize:11, fontFamily:"inherit", padding:"0 6px", outline:"none", marginBottom:5 }}
+                  >
+                    {workspaces.map(ws => (
+                      <option key={ws.id} value={ws.id}>{ws.name}</option>
+                    ))}
+                  </select>
+                )}
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 26px", gap:5 }}>
                   <select
                     value={activeTenant.brand_profile_id}
@@ -725,7 +772,7 @@ export default function Home() {
                 <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} campaigns={campaigns} />
               </div>
               <div style={{ display: tab==="research"   ? "block" : "none" }}>
-                <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} />
+                <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} tenant={activeTenant} />
               </div>
               <div style={{ display: tab==="create" || tab==="script" || tab==="production" ? "block" : "none" }}>
                 <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={activeTenant} settings={appSettings} campaigns={campaigns} />

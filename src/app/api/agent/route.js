@@ -1,31 +1,25 @@
 import { createClient } from "@supabase/supabase-js";
 import { estimateCost } from "@/lib/ai/costs";
-
-const ALLOWED_DOMAIN    = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
-const BRAND_PROFILE_ID  = process.env.NEXT_PUBLIC_DEFAULT_BRAND_PROFILE_ID || "00000000-0000-0000-0000-000000000001";
+import { getAuthenticatedUser } from "@/lib/apiAuth";
 
 async function authenticate(request) {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  const token = authHeader.split(" ")[1];
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return null;
-  if (!user.email?.endsWith(`@${ALLOWED_DOMAIN}`)) return null;
-  return user;
+  return getAuthenticatedUser(request);
 }
 
-function rateLimit(userId) {
-  const now = Date.now();
-  if (!global._agentLimits) global._agentLimits = {};
-  const limits = global._agentLimits[userId] || { count: 0, reset: now + 60000 };
-  if (now > limits.reset) { limits.count = 0; limits.reset = now + 60000; }
-  limits.count++;
-  global._agentLimits[userId] = limits;
-  return limits.count > 20;
+// Supabase-backed rate limit — works across serverless instances.
+// Falls back to allowing the request if the table hasn't been migrated yet.
+async function rateLimit(userId) {
+  try {
+    const { data, error } = await serviceClient()
+      .rpc("check_rate_limit", { p_user_id: userId, p_endpoint: "agent", p_limit: 20 });
+    if (error) {
+      console.warn("[rate-limit] check_rate_limit RPC unavailable:", error.message);
+      return false; // fail open if migration hasn't run yet
+    }
+    return data === false; // RPC returns false = rate limited
+  } catch {
+    return false; // fail open
+  }
 }
 
 function serviceClient() {
@@ -37,8 +31,8 @@ function serviceClient() {
 }
 
 // Load LLM key from provider_secrets, fall back to env var
-async function loadLLMKey(provider, profileId = BRAND_PROFILE_ID) {
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+async function loadLLMKey(provider, profileId = null) {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY && profileId) {
     try {
       const providerType = provider === "openai" ? "llm_openai" : "llm_anthropic";
       const { data } = await serviceClient()
@@ -427,30 +421,21 @@ export async function GET(request) {
   let openai    = !!process.env.OPENAI_API_KEY;
 
   const url       = new URL(request.url);
-  const profileId = url.searchParams.get("brand_profile_id") || BRAND_PROFILE_ID;
+  const profileId = url.searchParams.get("brand_profile_id") || null;
 
-  const authHeader = request.headers.get("authorization");
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
-
-  if (token && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  const user = await authenticate(request);
+  if (user && profileId && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
-      const anonClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      );
-      const { data: { user } } = await anonClient.auth.getUser(token);
-      if (user?.email?.endsWith(`@${ALLOWED_DOMAIN}`)) {
-        const { data } = await serviceClient()
-          .from("provider_secrets")
-          .select("provider_type, secrets")
-          .eq("brand_profile_id", profileId)
-          .in("provider_type", ["llm_openai", "llm_anthropic"])
-          .eq("active", true);
-        if (data) {
-          for (const row of data) {
-            if (row.provider_type === "llm_anthropic" && row.secrets?.api_key) anthropic = true;
-            if (row.provider_type === "llm_openai"    && row.secrets?.api_key) openai    = true;
-          }
+      const { data } = await serviceClient()
+        .from("provider_secrets")
+        .select("provider_type, secrets")
+        .eq("brand_profile_id", profileId)
+        .in("provider_type", ["llm_openai", "llm_anthropic"])
+        .eq("active", true);
+      if (data) {
+        for (const row of data) {
+          if (row.provider_type === "llm_anthropic" && row.secrets?.api_key) anthropic = true;
+          if (row.provider_type === "llm_openai"    && row.secrets?.api_key) openai    = true;
         }
       }
     } catch {}
@@ -462,10 +447,10 @@ export async function GET(request) {
 export async function POST(request) {
   const user = await authenticate(request);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  if (rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
+  if (await rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
 
   const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700, brand_profile_id, workspace_id } = await request.json();
-  const profileId   = brand_profile_id || BRAND_PROFILE_ID;
+  const profileId   = brand_profile_id || null;
   const workspaceId = workspace_id || null;
 
   try {

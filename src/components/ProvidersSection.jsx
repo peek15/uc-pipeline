@@ -50,26 +50,26 @@ function downloadJson(filename, payload) {
 const VOICE_PROVIDERS = [
   { key: "stub",       label: "Stub (no provider)" },
   { key: "elevenlabs", label: "ElevenLabs" },
-  { key: "playht",     label: "PlayHT" },
+  { key: "playht",     label: "PlayHT", not_implemented: true },
 ];
 
 const STORAGE_PROVIDERS = [
   { key: "supabase_storage", label: "Supabase Storage" },
-  { key: "s3",               label: "AWS S3" },
-  { key: "gcs",              label: "Google Cloud Storage" },
+  { key: "s3",               label: "AWS S3",                  not_implemented: true },
+  { key: "gcs",              label: "Google Cloud Storage",    not_implemented: true },
   { key: "stub",             label: "Stub (in-memory only)" },
 ];
 
 const ATMOSPHERIC_PROVIDERS = [
   { key: "flux",       label: "Flux (Replicate)" },
-  { key: "midjourney", label: "MidJourney (PiAPI)" },
-  { key: "dalle",      label: "DALL-E 3 (OpenAI)" },
+  { key: "midjourney", label: "MidJourney (PiAPI)", not_implemented: true },
+  { key: "dalle",      label: "DALL-E 3 (OpenAI)", not_implemented: true },
   { key: "stub",       label: "Stub" },
 ];
 
 const LICENSED_PROVIDERS = [
   { key: "pexels",       label: "Pexels (free)" },
-  { key: "shutterstock", label: "Shutterstock" },
+  { key: "shutterstock", label: "Shutterstock",    not_implemented: true },
   { key: "stub",         label: "Stub" },
 ];
 
@@ -281,9 +281,22 @@ function ProviderForm({ brandId, providerType, providers, initial, onSaved, rend
     <div style={{ display: "grid", gap: 14 }}>
       <div>
         <div style={labelStyle}>Provider</div>
-        <select value={providerName} onChange={(e) => { setProviderName(e.target.value); setSecrets({}); }} style={inputStyle}>
-          {providers.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+        <select
+          value={providerName}
+          onChange={(e) => { setProviderName(e.target.value); setSecrets({}); }}
+          style={inputStyle}
+        >
+          {providers.map(p => (
+            <option key={p.key} value={p.key} disabled={!!p.not_implemented}>
+              {p.label}{p.not_implemented ? " (not implemented)" : ""}
+            </option>
+          ))}
         </select>
+        {providers.find(p => p.key === providerName)?.not_implemented && (
+          <div style={{ marginTop: 6, fontSize: 11, padding: "6px 10px", borderRadius: 6, background: "rgba(196,154,60,0.10)", border: "0.5px solid rgba(196,154,60,0.35)", color: "#C49A3C" }}>
+            This provider is not yet implemented. Selecting it will result in a 501 error on any call. Choose a supported provider or Stub.
+          </div>
+        )}
       </div>
 
       {renderFields({ providerName, config, updateConfig, secrets, updateSecret, isSet })}

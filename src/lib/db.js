@@ -168,6 +168,43 @@ export async function deleteCampaign(id) {
   if (error) throw error;
 }
 
+// ─── WORKSPACES ───
+
+export async function getWorkspaces() {
+  const { data: memberships, error: mErr } = await supabase
+    .from("workspace_members")
+    .select("workspace_id, role");
+  if (mErr) throw mErr;
+
+  const ids = (memberships || []).map(m => m.workspace_id);
+  if (!ids.length) return [];
+
+  const { data: ws, error: wErr } = await supabase
+    .from("workspaces")
+    .select("id, name")
+    .in("id", ids);
+  if (wErr) throw wErr;
+
+  return (ws || []).map(w => {
+    const m = memberships.find(mb => mb.workspace_id === w.id);
+    return { ...w, role: m?.role };
+  });
+}
+
+export async function createWorkspace(name) {
+  const token = await getToken();
+  const res = await fetch("/api/workspace", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || `API ${res.status}`);
+  }
+  return (await res.json()).workspace;
+}
+
 // ─── Helper to get auth token ───
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession();

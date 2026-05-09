@@ -738,6 +738,209 @@ function ProgDiscuss({ programme, brandName }) {
   );
 }
 
+// ─── Workspace members panel ─────────────────────────────
+// Fetches live data from /api/workspace-members via service-role API route.
+// All state is local so it doesn't pollute the parent SettingsModal.
+
+const MEMBER_ROLES = ["owner", "admin", "editor", "member", "viewer"];
+
+function WorkspaceMembersPanel({ workspaceId, appName }) {
+  const [members,      setMembers]      = useState([]);
+  const [loading,      setLoading]      = useState(false);
+  const [loadError,    setLoadError]    = useState(null);
+  const [newEmail,     setNewEmail]     = useState("");
+  const [newRole,      setNewRole]      = useState("member");
+  const [adding,       setAdding]       = useState(false);
+  const [addError,     setAddError]     = useState(null);
+  const [removingId,   setRemovingId]   = useState(null);
+  const [callerEmail,  setCallerEmail]  = useState(null);
+
+  const getToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token;
+  };
+
+  const load = async () => {
+    setLoading(true); setLoadError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/workspace-members?workspace_id=${workspaceId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load members");
+      setMembers(json.members || []);
+      // Resolve caller identity for role checks
+      const { data: { session } } = await supabase.auth.getSession();
+      setCallerEmail(session?.user?.email || null);
+    } catch (e) { setLoadError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { if (workspaceId) load(); }, [workspaceId]);
+
+  const callerMember = members.find(m =>
+    callerEmail && m.email?.toLowerCase() === callerEmail.toLowerCase()
+  );
+  const canManage = ["owner", "admin"].includes(callerMember?.role);
+
+  const addMember = async () => {
+    if (!newEmail.trim()) return;
+    setAdding(true); setAddError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/workspace-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ workspace_id: workspaceId, email: newEmail.trim(), role: newRole }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to add member");
+      setMembers(prev => [...prev, json.member]);
+      setNewEmail(""); setNewRole("member");
+    } catch (e) { setAddError(e.message); }
+    finally { setAdding(false); }
+  };
+
+  const removeMember = async (memberId) => {
+    setRemovingId(memberId);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/workspace-members", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ workspace_id: workspaceId, member_id: memberId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to remove member");
+      setMembers(prev => prev.filter(m => m.id !== memberId));
+    } catch (e) { setLoadError(e.message); }
+    finally { setRemovingId(null); }
+  };
+
+  const rowStyle = {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "10px 12px", borderRadius: 8, background: "var(--fill2)",
+    border: "0.5px solid var(--border)", marginBottom: 6,
+  };
+  const pillStyle = {
+    fontSize: 10, padding: "2px 8px", borderRadius: 99,
+    background: "var(--bg3)", color: "var(--t3)",
+    border: "0.5px solid var(--border)", flexShrink: 0,
+  };
+  const inputSm = {
+    padding: "6px 10px", borderRadius: 7, fontSize: 12,
+    background: "var(--fill2)", border: "0.5px solid var(--border)",
+    color: "var(--t1)", outline: "none", fontFamily: "inherit",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Member list */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+          Team members
+        </div>
+
+        {loading && (
+          <div style={{ fontSize: 12, color: "var(--t4)", padding: "10px 0" }}>Loading members…</div>
+        )}
+        {loadError && (
+          <div style={{ fontSize: 11, color: "#C0666A", padding: "8px 12px", borderRadius: 6, background: "rgba(192,102,106,0.08)", border: "0.5px solid rgba(192,102,106,0.3)", marginBottom: 8 }}>
+            {loadError}
+          </div>
+        )}
+
+        {!loading && members.length === 0 && !loadError && (
+          <div style={{ ...rowStyle, justifyContent: "center" }}>
+            <span style={{ fontSize: 12, color: "var(--t4)" }}>
+              No members seeded yet. Add yourself below to secure this workspace.
+            </span>
+          </div>
+        )}
+
+        {members.map(m => (
+          <div key={m.id} style={rowStyle}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {m.email}
+              </div>
+              {m.user_id && (
+                <div style={{ fontSize: 10, color: "var(--t4)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace", marginTop: 2 }}>
+                  linked
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 10, flexShrink: 0 }}>
+              <span style={pillStyle}>{m.role}</span>
+              {canManage && m.id && (
+                <button
+                  onClick={() => removeMember(m.id)}
+                  disabled={removingId === m.id}
+                  style={{ padding: "2px 8px", borderRadius: 6, fontSize: 11, background: "transparent", color: "var(--t4)", border: "0.5px solid var(--border)", cursor: "pointer" }}
+                >
+                  {removingId === m.id ? "…" : "Remove"}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Add member form */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 500, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+          Add member
+        </div>
+
+        {!canManage && !loading && members.length > 0 && (
+          <div style={{ fontSize: 11, color: "var(--t4)", marginBottom: 8 }}>
+            Only owners and admins can add or remove members.
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            type="email"
+            value={newEmail}
+            onChange={e => setNewEmail(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && !adding && addMember()}
+            placeholder="email@example.com"
+            style={{ ...inputSm, flex: 1 }}
+            disabled={adding}
+          />
+          <select
+            value={newRole}
+            onChange={e => setNewRole(e.target.value)}
+            style={{ ...inputSm, width: 100 }}
+            disabled={adding}
+          >
+            {MEMBER_ROLES.map(r => (
+              <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+            ))}
+          </select>
+          <button
+            onClick={addMember}
+            disabled={adding || !newEmail.trim()}
+            style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 500, background: "var(--t1)", color: "var(--bg)", border: "none", cursor: "pointer", flexShrink: 0 }}
+          >
+            {adding ? "Adding…" : "Add"}
+          </button>
+        </div>
+
+        {addError && (
+          <div style={{ fontSize: 11, color: "#C0666A", marginTop: 6 }}>{addError}</div>
+        )}
+
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--t4)", lineHeight: 1.5 }}>
+          Roles: Owner · Admin · Editor · Member · Viewer.
+          {members.length === 0 && " Add yourself as Owner first to secure this workspace."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant, onRunPredictions, runningPredictions=false }) {
   const VERSION_NUM = version;
   const [section,  setSection]  = usePersistentState("settings_section", "brand");
@@ -2199,29 +2402,7 @@ ${fileText.slice(0,3000)}` : text };
                 ))}
               </div>
 
-              {/* Team members */}
-              <div>
-                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Team members</div>
-                <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:12, color:"var(--t2)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                  <div>
-                    <div style={{ fontWeight:500 }}>Théo Mauroy</div>
-                    <div style={{ fontSize:11, color:"var(--t3)" }}>Owner · admin@peekmedia.cc</div>
-                  </div>
-                  <span style={{ fontSize:10, padding:"2px 8px", borderRadius:99, background:"var(--bg3)", color:"var(--t3)", border:"0.5px solid var(--border)" }}>Owner</span>
-                </div>
-                <button style={{ marginTop:8, width:"100%", padding:"8px", borderRadius:8, fontSize:12, color:"var(--t3)", background:"transparent", border:"0.5px dashed var(--border)", cursor:"pointer" }}>
-                  + Invite team member
-                </button>
-                <div style={{ marginTop:6, fontSize:11, color:"var(--t4)" }}>Team member roles: Owner, Admin, Editor, Viewer. Multi-user access available on Creative Engine plans.</div>
-              </div>
-
-              {/* API */}
-              <div>
-                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>API access</div>
-                <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", fontSize:12, color:"var(--t3)" }}>
-                  API access for programmatic integration is available on Creative Engine Track 3. Contact us to enable.
-                </div>
-              </div>
+              <WorkspaceMembersPanel workspaceId={WORKSPACE_ID} appName={appName} />
             </div>
           )}
 

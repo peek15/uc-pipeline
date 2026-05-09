@@ -1,36 +1,44 @@
 import { createClient } from "@supabase/supabase-js";
-
-const ALLOWED_DOMAIN = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
+import { getAuthenticatedUser } from "@/lib/apiAuth";
 
 async function authenticate(request) {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  const token = authHeader.split(" ")[1];
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
-  const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return null;
-  if (!user.email?.endsWith(`@${ALLOWED_DOMAIN}`)) return null;
-  return user;
+  return getAuthenticatedUser(request);
 }
 
-function rateLimit(userId) {
-  const now = Date.now();
-  if (!global._rateLimits) global._rateLimits = {};
-  const limits = global._rateLimits[userId] || { count: 0, reset: now + 60000 };
-  if (now > limits.reset) { limits.count = 0; limits.reset = now + 60000; }
-  limits.count++;
-  global._rateLimits[userId] = limits;
-  return limits.count > 30;
+function serviceClient() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return null;
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+// Supabase-backed rate limit — works across serverless instances.
+// Falls back to allowing the request if the table hasn't been migrated yet.
+async function rateLimit(userId) {
+  const svc = serviceClient();
+  if (!svc) return false; // no service key — fail open
+  try {
+    const { data, error } = await svc.rpc("check_rate_limit", {
+      p_user_id: userId,
+      p_endpoint: "claude",
+      p_limit: 30,
+    });
+    if (error) {
+      console.warn("[rate-limit] check_rate_limit RPC unavailable:", error.message);
+      return false; // fail open if migration hasn't run yet
+    }
+    return data === false; // RPC returns false = rate limited
+  } catch {
+    return false; // fail open
+  }
 }
 
 // ─── STREAMING endpoint (/api/claude/stream via stream=true param) ───
 export async function POST(request) {
   const user = await authenticate(request);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  if (rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
+  if (await rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return Response.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });

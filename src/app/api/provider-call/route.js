@@ -20,28 +20,17 @@
 // ═══════════════════════════════════════════════════════════
 
 import { createClient } from "@supabase/supabase-js";
+import { getAuthenticatedUser, makeServiceClient } from "@/lib/apiAuth";
 
 const SUPABASE_URL              = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY         = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const ALLOWED_DOMAIN            = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
 
 function serviceClient() {
-  if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY not configured");
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  return makeServiceClient();
 }
 
 async function authenticate(request) {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  const token = authHeader.split(" ")[1];
-  const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data: { user }, error } = await supa.auth.getUser(token);
-  if (error || !user) return null;
-  if (!user.email?.endsWith(`@${ALLOWED_DOMAIN}`)) return null;
-  return user;
+  return getAuthenticatedUser(request);
 }
 
 async function loadProviderRow(brand_profile_id, provider_type) {

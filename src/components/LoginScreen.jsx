@@ -41,7 +41,7 @@ export default function LoginScreen({ onSignIn, loading, error }) {
         </button>
 
         <p style={{ fontSize:11, color:"var(--t4)", marginTop:14, textAlign:"center" }}>
-          Restricted to @peekmedia.cc accounts
+          Sign in with your Google account
         </p>
 
         {error && (

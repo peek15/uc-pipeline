@@ -3,6 +3,9 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
 import { CONTENT_TYPES, FORMATS, FORMAT_MAP, ARCHETYPES, ERAS } from "@/lib/constants";
+import { getWorkspaceBilling, normalizeBilling } from "@/lib/billing/db";
+import { ORDERED_PLANS } from "@/lib/billing/plans";
+import { getPlanLabel, entitlementLabel } from "@/lib/billing/entitlements";
 import { supabase } from "@/lib/db";
 import { runPrompt } from "@/lib/ai/runner";
 import { writeInsight } from "@/lib/ai/tools/write-insight";
@@ -675,6 +678,190 @@ function RuleBuilder({ rule, onChange, onDelete, index, conflicts, totalRules })
   );
 }
 
+// ── Billing Section ──
+function BillingSection({ billing, billingLoading, billingAction, billingMsg, workspaceId, onCheckout, onPortal, onDismissMsg }) {
+  const [callerRole, setCallerRole] = useState(null);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const email = session?.user?.email;
+        if (!email) return;
+        const { data } = await supabase
+          .from("workspace_members")
+          .select("role")
+          .eq("workspace_id", workspaceId)
+          .ilike("email", email)
+          .maybeSingle();
+        setCallerRole(data?.role || null);
+      } catch {}
+    })();
+  }, [workspaceId]);
+
+  const canManageBilling = ["owner", "admin"].includes(callerRole);
+  const b = billing || {};
+  const planKey = b.plan_key || "studio_starter";
+  const planLabel = getPlanLabel(planKey);
+  const status = b.subscription_status || "—";
+
+  const statusColor = {
+    active:    "#4A9B7F",
+    trialing:  "#5B8FB9",
+    past_due:  "#C49A3C",
+    canceled:  "var(--t4)",
+    manual:    "var(--t4)",
+    unpaid:    "#C0666A",
+    expired:   "#C0666A",
+    paused:    "var(--t4)",
+    incomplete:"var(--t4)",
+  }[status] || "var(--t3)";
+
+  const rowSt = { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0", borderBottom:"0.5px solid var(--border2)" };
+  const labelSt = { fontSize:13, color:"var(--t3)" };
+  const valueSt = { fontSize:13, color:"var(--t4)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" };
+
+  const ENTITLEMENT_LABELS = {
+    brand_profile_level:  "Brand profiles",
+    studio_access_level:  "Studio access",
+    reporting_level:      "Reporting",
+    paid_ads_mode:        "Paid ads",
+    team_features_level:  "Team features",
+    priority_processing:  "Processing priority",
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+      {/* Current plan status */}
+      <div>
+        <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>Current plan</div>
+        {billingLoading ? (
+          <div style={{ fontSize:12, color:"var(--t4)" }}>Loading…</div>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column" }}>
+            {[
+              { label:"Plan",          value: planLabel },
+              { label:"Status",        value: <span style={{ color:statusColor, fontWeight:500 }}>{status}</span> },
+              { label:"Billing",       value: b.billing_period || "—" },
+              { label:"Billing email", value: b.billing_email || "—" },
+              { label:"Period ends",   value: b.current_period_end ? new Date(b.current_period_end).toLocaleDateString() : "—" },
+              { label:"Trial ends",    value: b.trial_ends_at   ? new Date(b.trial_ends_at).toLocaleDateString()   : "—" },
+            ].map(({ label, value }) => (
+              <div key={label} style={rowSt}>
+                <span style={labelSt}>{label}</span>
+                <span style={valueSt}>{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Qualitative entitlements for current plan */}
+      {!billingLoading && (
+        <div>
+          <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>Plan features</div>
+          <div style={{ display:"flex", flexDirection:"column" }}>
+            {ORDERED_PLANS.find(p => p.key === planKey)?.entitlements
+              ? Object.entries(ORDERED_PLANS.find(p => p.key === planKey).entitlements).map(([k, v]) => (
+                <div key={k} style={rowSt}>
+                  <span style={labelSt}>{ENTITLEMENT_LABELS[k] || k}</span>
+                  <span style={valueSt}>{entitlementLabel(v)}</span>
+                </div>
+              ))
+              : null
+            }
+          </div>
+          <div style={{ fontSize:10, color:"var(--t4)", marginTop:8, lineHeight:1.5 }}>
+            Final usage limits are not shown here. Fair-use monitoring is active. Contact support for detailed quota information.
+          </div>
+        </div>
+      )}
+
+      {/* Plan picker */}
+      <div>
+        <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 }}>Available plans</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {ORDERED_PLANS.map(plan => {
+            const isCurrent = plan.key === planKey;
+            const isEnterprise = plan.key === "enterprise";
+            return (
+              <div key={plan.key} style={{
+                display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"12px 14px", borderRadius:9,
+                border: isCurrent ? "0.5px solid var(--t1)" : "0.5px solid var(--border)",
+                background: isCurrent ? "var(--fill2)" : "transparent",
+              }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:isCurrent?600:400, color: isCurrent?"var(--t1)":"var(--t2)", marginBottom:2 }}>
+                    {plan.label}
+                    {isCurrent && <span style={{ marginLeft:8, fontSize:10, fontWeight:500, color:"var(--t4)", background:"var(--fill2)", border:"0.5px solid var(--border)", borderRadius:4, padding:"1px 5px" }}>current</span>}
+                  </div>
+                  <div style={{ fontSize:11, color:"var(--t4)" }}>{plan.short_desc}</div>
+                </div>
+                {canManageBilling && !isCurrent && (
+                  isEnterprise ? (
+                    <button
+                      onClick={() => onCheckout(plan.key)}
+                      disabled={!!billingAction}
+                      style={{ marginLeft:12, padding:"6px 12px", borderRadius:7, fontSize:11, fontWeight:500, background:"transparent", color:"var(--t2)", border:"0.5px solid var(--border)", cursor:"pointer", flexShrink:0 }}
+                    >
+                      Contact us
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onCheckout(plan.key, "monthly")}
+                      disabled={!!billingAction}
+                      style={{ marginLeft:12, padding:"6px 12px", borderRadius:7, fontSize:11, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"0.5px solid var(--t1)", cursor:billingAction?"not-allowed":"pointer", flexShrink:0, opacity:billingAction?0.6:1 }}
+                    >
+                      {billingAction === "checkout" ? "Redirecting…" : "Upgrade"}
+                    </button>
+                  )
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Portal / manage button */}
+      {canManageBilling && b.stripe_customer_id && (
+        <div>
+          <button
+            onClick={onPortal}
+            disabled={!!billingAction}
+            style={{ padding:"8px 16px", borderRadius:8, fontSize:12, fontWeight:500, background:"var(--fill2)", color:"var(--t2)", border:"0.5px solid var(--border)", cursor:billingAction?"not-allowed":"pointer", opacity:billingAction?0.6:1 }}
+          >
+            {billingAction === "portal" ? "Opening…" : "Manage subscription & invoices"}
+          </button>
+        </div>
+      )}
+
+      {/* Non-owner notice */}
+      {callerRole && !canManageBilling && (
+        <div style={{ fontSize:11, color:"var(--t4)", padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+          Billing is managed by workspace owners and admins.
+        </div>
+      )}
+
+      {/* Feedback message */}
+      {billingMsg && (
+        <div style={{
+          padding:"10px 14px", borderRadius:8, fontSize:12, lineHeight:1.5,
+          background: billingMsg.ok ? "rgba(74,155,127,0.08)" : "rgba(192,102,106,0.08)",
+          border: `0.5px solid ${billingMsg.ok ? "rgba(74,155,127,0.3)" : "rgba(192,102,106,0.3)"}`,
+          color: billingMsg.ok ? "#4A9B7F" : "#C0666A",
+          display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8,
+        }}>
+          <span>{billingMsg.text}</span>
+          <button onClick={onDismissMsg} style={{ background:"none", border:"none", color:"inherit", cursor:"pointer", fontSize:14, lineHeight:1, flexShrink:0 }}>×</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Section nav ──
 const SECTIONS = [
   { key:"brand",       label:"Brand Profile" },
@@ -685,6 +872,7 @@ const SECTIONS = [
   { key:"workspace",   label:"Workspace" },
   { key:"providers",   label:"Providers" },
   { key:"intelligence",label:"Intelligence" },
+  { key:"billing",     label:"Billing" },
   { key:"danger",      label:"Danger Zone",  danger:true },
 ];
 
@@ -1562,6 +1750,71 @@ ${fileText.slice(0,3000)}` : text };
     } catch(e) { setAssetError(e.message); }
   };
 
+  // ── Billing state ──
+  const [billing,        setBilling]        = useState(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingAction,  setBillingAction]  = useState(null); // null | "checkout" | "portal"
+  const [billingMsg,     setBillingMsg]     = useState(null); // { ok, text }
+
+  useEffect(() => {
+    if (!isOpen || section !== "billing" || !WORKSPACE_ID) return;
+    setBillingLoading(true);
+    getWorkspaceBilling(WORKSPACE_ID)
+      .then(raw => setBilling(normalizeBilling(raw)))
+      .catch(() => setBilling(normalizeBilling(null)))
+      .finally(() => setBillingLoading(false));
+  }, [isOpen, section, WORKSPACE_ID]);
+
+  const startCheckout = async (plan_key, billing_period = "monthly") => {
+    setBillingAction("checkout");
+    setBillingMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ workspace_id: WORKSPACE_ID, plan_key, billing_period }),
+      });
+      const json = await res.json();
+      if (json.contact) {
+        setBillingMsg({ ok: true, text: json.message });
+      } else if (json.url) {
+        window.location.href = json.url;
+      } else {
+        setBillingMsg({ ok: false, text: json.error || "Checkout unavailable." });
+      }
+    } catch (e) {
+      setBillingMsg({ ok: false, text: e.message || "Checkout failed." });
+    } finally {
+      setBillingAction(null);
+    }
+  };
+
+  const openPortal = async () => {
+    setBillingAction("portal");
+    setBillingMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch("/api/billing/portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ workspace_id: WORKSPACE_ID }),
+      });
+      const json = await res.json();
+      if (json.url) {
+        window.location.href = json.url;
+      } else {
+        setBillingMsg({ ok: false, text: json.error || "Billing portal unavailable." });
+      }
+    } catch (e) {
+      setBillingMsg({ ok: false, text: e.message || "Portal failed." });
+    } finally {
+      setBillingAction(null);
+    }
+  };
+
   const inputStyle = { width:"100%", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", fontFamily:"inherit" };
   const selStyle = { ...inputStyle };
 
@@ -2404,6 +2657,21 @@ ${fileText.slice(0,3000)}` : text };
 
               <WorkspaceMembersPanel workspaceId={WORKSPACE_ID} appName={appName} />
             </div>
+          )}
+
+          {/* ── Billing ── */}
+          {section==="billing" && (
+            <BillingSection
+              billing={billing}
+              billingLoading={billingLoading}
+              billingAction={billingAction}
+              billingMsg={billingMsg}
+              userRole={null}
+              workspaceId={WORKSPACE_ID}
+              onCheckout={startCheckout}
+              onPortal={openPortal}
+              onDismissMsg={()=>setBillingMsg(null)}
+            />
           )}
 
           {/* ── Danger Zone ── */}

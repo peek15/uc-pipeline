@@ -3,7 +3,7 @@
 // Extracted from ResearchView.buildPrompt().
 // ═══════════════════════════════════════════════════════════
 
-import { ARCHETYPES, RESEARCH_ANGLES, FORMAT_MAP } from "@/lib/constants";
+import { ARCHETYPES, FORMAT_MAP } from "@/lib/constants";
 
 export const defaults = {
   maxTokens: 8000,
@@ -28,9 +28,9 @@ export function build({ topic, count, era, team, archetype, format, content_temp
   const fmtLabel = programme?.name || FORMAT_MAP[format]?.label || "";
   const fmtDesc  = programme?.desc || FORMAT_MAP[format]?.desc || "";
   const archetypes = brand_config?.archetypes?.length ? brand_config.archetypes : ARCHETYPES;
-  const angles = brand_config?.research_angles?.length ? brand_config.research_angles : RESEARCH_ANGLES;
-  const angle = angles[Math.floor(Math.random() * angles.length)];
-  const brandName = brand_config?.brand_name || "Uncle Carter";
+  const angles = brand_config?.research_angles?.length ? brand_config.research_angles : [];
+  const angle = angles.length ? angles[Math.floor(Math.random() * angles.length)] : "";
+  const brandName = brand_config?.brand_name || "your brand";
   const contentType = brand_config?.content_type || "narrative";
   const template = content_template || brand_config?.content_templates?.[0] || null;
   const templateBlock = template ? `

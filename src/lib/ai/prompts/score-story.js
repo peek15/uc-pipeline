@@ -13,7 +13,7 @@ export const defaults = {
  * @param {Array<{title:string, angle:string}>} params.stories
  */
 export function build({ stories, brand_config = null }) {
-  const brandName = brand_config?.brand_name || "Uncle Carter";
+  const brandName = brand_config?.brand_name || "your brand";
   const contentType = brand_config?.content_type || "short-form video";
   const voice = brand_config?.voice ? `\nBrand voice: ${brand_config.voice}.` : "";
   return `You are an AI content scorer for "${brandName}", a ${contentType} brand.${voice}

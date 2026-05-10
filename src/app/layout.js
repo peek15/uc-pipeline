@@ -17,9 +17,9 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata = {
-  title: "Content Pipeline",
-  description: "Content production hub — Peek Media Company",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Pipeline" },
+  title: "Creative Engine",
+  description: "AI content studio — research, script, schedule, analyze.",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Creative Engine" },
   manifest: "/manifest.json",
 };
 

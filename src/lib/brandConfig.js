@@ -1,19 +1,20 @@
-import { ARCHETYPES, CONTENT_TYPE_MAP, ERAS, FORMATS, LANGS, RESEARCH_ANGLES, SCRIPT_SYSTEM, TEAMS } from "@/lib/constants";
+import { ARCHETYPES, CONTENT_TYPE_MAP, ERAS, FORMATS, LANGS } from "@/lib/constants";
 
 export function getBrandName(settings) {
-  return settings?.brand?.name || "Uncle Carter";
+  return settings?.brand?.name || "";
 }
 
 export function getAppName(settings) {
-  return `${getBrandName(settings)} Pipeline`;
+  const name = getBrandName(settings);
+  return name ? `${name} Pipeline` : "Creative Engine";
 }
 
 export function getBrandVoice(settings) {
-  return settings?.brand?.voice || "Calm, warm, slightly mischievous. Never reactive. Never loud.";
+  return settings?.brand?.voice || "";
 }
 
 export function getBrandAvoid(settings) {
-  return settings?.brand?.avoid || "Hot takes, highlight reels, cliches, exclamation marks";
+  return settings?.brand?.avoid || "";
 }
 
 export function getBrandContentType(settings) {
@@ -121,10 +122,10 @@ export function getBrandTaxonomy(settings) {
     archetypes: getBrandArchetypes(settings),
     languages: getBrandLanguages(settings),
     eras: settings?.taxonomy?.eras || ERAS,
-    subjects: settings?.taxonomy?.subjects || TEAMS,
-    research_angles: settings?.taxonomy?.research_angles || RESEARCH_ANGLES,
-    script_system: settings?.prompts?.script_system || SCRIPT_SYSTEM,
-    closing_line: settings?.brand?.locked_elements?.[0] || "Because the score is never the whole story.",
+    subjects: settings?.taxonomy?.subjects || [],
+    research_angles: settings?.taxonomy?.research_angles || [],
+    script_system: settings?.prompts?.script_system || null,
+    closing_line: settings?.brand?.locked_elements?.[0] || "",
   };
 }
 

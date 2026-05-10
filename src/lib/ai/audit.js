@@ -20,6 +20,8 @@ import { estimateCost } from "./costs";
  * @param {string} [opts.brand_profile_id]
  * @param {string} [opts.workspace_id]
  * @param {number} [opts.duration_ms]
+ * @param {string} [opts.cost_center]      — e.g. "research" | "script" | "translation" | "onboarding"
+ * @param {string} [opts.cost_category]    — e.g. "generation" | "compliance" | "internal_admin"
  * @returns {Promise<string|null>} ai_call row id or null
  */
 export async function logAiCall({
@@ -32,6 +34,8 @@ export async function logAiCall({
   brand_profile_id = null,
   workspace_id = null,
   duration_ms = null,
+  cost_center = null,
+  cost_category = null,
 }) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -50,6 +54,8 @@ export async function logAiCall({
       user_email:  user?.email || null,
       success:     true,
       duration_ms,
+      cost_center,
+      cost_category,
     }).select("id").single();
 
     if (error) return null;
@@ -74,6 +80,8 @@ export async function logAiCall({
  * @param {string} [opts.error_type]      — "timeout" | "parse" | "provider_error" | "auth" | "other"
  * @param {string} [opts.error_message]
  * @param {number} [opts.duration_ms]
+ * @param {string} [opts.cost_center]
+ * @param {string} [opts.cost_category]
  */
 export async function logAiCallError({
   type,
@@ -87,6 +95,8 @@ export async function logAiCallError({
   error_type = "other",
   error_message = null,
   duration_ms = null,
+  cost_center = null,
+  cost_category = null,
 }) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -107,6 +117,8 @@ export async function logAiCallError({
       duration_ms,
       error_type,
       error_message: error_message ? String(error_message).slice(0, 2000) : null,
+      cost_center,
+      cost_category,
     });
 } catch {} // silent
 }
@@ -126,6 +138,8 @@ export async function logProviderCost({
   duration_ms = null,
   error_type = null,
   error_message = null,
+  cost_center = null,
+  cost_category = null,
 }) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -144,6 +158,8 @@ export async function logProviderCost({
       duration_ms,
       error_type,
       error_message: error_message ? String(error_message).slice(0, 2000) : null,
+      cost_center,
+      cost_category,
     });
   } catch {}
 }

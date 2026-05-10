@@ -243,6 +243,10 @@ function ProviderForm({ brandId, providerType, providers, initial, onSaved, rend
   const updateSecret = (k, v) => setSecrets(s => ({ ...s, [k]: v }));
 
   const save = async () => {
+    if (providers.find(p => p.key === providerName)?.not_implemented) {
+      setError("This provider is not implemented. Choose a supported provider before saving.");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       const secretsPayload = {};

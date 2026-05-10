@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
-import { CONTENT_TYPES, FORMATS, FORMAT_MAP, ARCHETYPES, ERAS, RESEARCH_ANGLES, SCRIPT_SYSTEM, TEAMS } from "@/lib/constants";
+import { CONTENT_TYPES, FORMATS, FORMAT_MAP, ARCHETYPES, ERAS } from "@/lib/constants";
 import { supabase } from "@/lib/db";
 import { runPrompt } from "@/lib/ai/runner";
 import { writeInsight } from "@/lib/ai/tools/write-insight";
@@ -14,10 +14,10 @@ import { getAppName, getBrandLanguages } from "@/lib/brandConfig";
 
 const DEFAULT_SETTINGS = {
   brand: {
-    name: "Uncle Carter",
-    voice: "Calm, warm, slightly mischievous. Never reactive. Never loud.",
-    avoid: "Hot takes, highlight reels, clichés, exclamation marks",
-    locked_elements: ["Because the score is never the whole story."],
+    name: "",
+    voice: "",
+    avoid: "",
+    locked_elements: [],
     content_type: "narrative",
     goal_primary: "community",
     goal_secondary: "reach",
@@ -45,9 +45,9 @@ const DEFAULT_SETTINGS = {
       default_hook_type: "",
     },
     programmes: [
-      { id:"standard",           name:"Standard",            color:"#C49A3C", role:"reach",     weight:60, angle_suggestions:["redemption","rivalry","legacy","pressure"], custom_fields:[] },
-      { id:"classics",           name:"Classics",            color:"#4A9B7F", role:"community", weight:25, angle_suggestions:["sacrifice","legacy","brotherhood","loyalty"], custom_fields:[] },
-      { id:"performance_special",name:"Performance Special", color:"#C0666A", role:"balanced",  weight:15, angle_suggestions:["shock","resilience","triumph"], custom_fields:[] },
+      { id:"standard",           name:"Standard",            color:"#C49A3C", role:"reach",     weight:60, angle_suggestions:[], custom_fields:[] },
+      { id:"classics",           name:"Classics",            color:"#4A9B7F", role:"community", weight:25, angle_suggestions:[], custom_fields:[] },
+      { id:"performance_special",name:"Performance Special", color:"#C0666A", role:"balanced",  weight:15, angle_suggestions:[], custom_fields:[] },
       { id:"special_edition",    name:"Special Edition",     color:"#8B7EC8", role:"special",   weight:0,  angle_suggestions:[], custom_fields:[] },
     ],
     content_templates: [
@@ -67,11 +67,11 @@ const DEFAULT_SETTINGS = {
   },
   taxonomy: {
     eras: ERAS,
-    subjects: TEAMS,
-    research_angles: RESEARCH_ANGLES,
+    subjects: [],
+    research_angles: [],
   },
   prompts: {
-    script_system: SCRIPT_SYSTEM,
+    script_system: "",
   },
   quality_gate: {
     factual_anchor_terms: [],

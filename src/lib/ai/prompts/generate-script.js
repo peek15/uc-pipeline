@@ -12,7 +12,7 @@ export const defaults = {
 };
 
 export function build({ story, brand_config = null, content_template = null, instruction = null, current_script = null }) {
-  const brandName = brand_config?.brand_name || "Uncle Carter";
+  const brandName = brand_config?.brand_name || "your brand";
   const template = content_template || brand_config?.content_templates?.find(t => t.id === story?.content_template_id) || null;
   const templateBlock = template ? `
 Selected content template:

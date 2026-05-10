@@ -25,8 +25,8 @@ export const ACCENT = {
 
 // ─── Content Formats ───
 export const FORMATS = [
-  { key: "standard",          label: "Standard",           color: "#C49A3C", desc: "NBA 2000s–present. Reach-leaning entry point." },
-  { key: "classics",          label: "Classics",           color: "#4A9B7F", desc: "Pre-2000s NBA. Differentiator. Community-leaning." },
+  { key: "standard",          label: "Standard",           color: "#C49A3C", desc: "Modern era. Reach-leaning entry point." },
+  { key: "classics",          label: "Classics",           color: "#4A9B7F", desc: "Classic era. Differentiator. Community-leaning." },
   { key: "performance_special",label: "Performance Special",color: "#C0666A", desc: "Historic games & records. Numbers hook, human story." },
   { key: "special_edition",   label: "Special Edition",    color: "#8B7EC8", desc: "Cultural moments. 3–4x/year max." },
 ];
@@ -154,6 +154,11 @@ export const PRODUCTION_STATUS_LABELS = {
   in_assembly:  "assembly",
   produced:     "produced",
 };
+
+// ─── Uncle Carter brand defaults (explicit opt-in) ───────────
+export const UC_TEAMS = TEAMS;
+export const UC_RESEARCH_ANGLES = RESEARCH_ANGLES;
+export const UC_SCRIPT_SYSTEM = SCRIPT_SYSTEM;
 
 /**
  * A story enters the production queue when:

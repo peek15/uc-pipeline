@@ -7,6 +7,8 @@ import { getAiCalls } from "@/lib/ai/audit";
 import { auditRead } from "@/lib/ai/tools/audit-read";
 import { formatCost } from "@/lib/ai/costs";
 import { getBrandName, getContentType, contentObjective, contentChannel } from "@/lib/brandConfig";
+import { getContextSummary, getViewLabel } from "@/lib/agent/agentContext";
+import { TASK_TYPES } from "@/lib/agent/taskTypes";
 
 // ── Model registry ────────────────────────────────────────
 const MODELS = [
@@ -18,7 +20,7 @@ const MODELS = [
 ];
 const PROVIDER_LABEL = { anthropic: "Claude", openai: "OpenAI" };
 
-const SUGGESTIONS = [
+const DEFAULT_SUGGESTIONS = [
   "Approve all stories with score above 70",
   "What's ready for production?",
   "Show me recent AI failures",
@@ -37,14 +39,32 @@ function historyKey(tenant) {
   return `agent_history_${tenant?.brand_profile_id || "default"}`;
 }
 
+// ── Build context block for system prompt ─────────────────
+function buildContextBlock(agentCtx) {
+  if (!agentCtx) return "";
+  const lines = [];
+  if (agentCtx.task_type && agentCtx.task_type !== "general_help") {
+    const tt = TASK_TYPES[agentCtx.task_type];
+    lines.push(`Current task: ${tt?.label || agentCtx.task_type}${tt?.description ? ` — ${tt.description}` : ""}`);
+  }
+  if (agentCtx.source_view)        lines.push(`View: ${getViewLabel(agentCtx.source_view)}`);
+  if (agentCtx.source_entity_type) lines.push(`Entity: ${agentCtx.source_entity_type}${agentCtx.source_entity_id ? ` (id: ${agentCtx.source_entity_id})` : ""}`);
+  if (agentCtx.task_intent)        lines.push(`Intent: ${agentCtx.task_intent}`);
+  if (agentCtx.selected_text)      lines.push(`Selected text: "${String(agentCtx.selected_text).slice(0, 300)}"`);
+  if (agentCtx.billing_snapshot)   lines.push(`Billing: plan=${agentCtx.billing_snapshot.plan_key}, status=${agentCtx.billing_snapshot.subscription_status}`);
+  if (agentCtx.provider_snapshot)  lines.push(`Providers: ${JSON.stringify(agentCtx.provider_snapshot).slice(0, 200)}`);
+  if (agentCtx.brand_snapshot)     lines.push(`Brand: ${JSON.stringify(agentCtx.brand_snapshot).slice(0, 200)}`);
+  if (!lines.length) return "";
+  return `\nACTIVE CONTEXT:\n${lines.map(l => `  ${l}`).join("\n")}`;
+}
+
 // ── Pipeline context ──────────────────────────────────────
-function buildSystem(stories, tab, metrics, settings, extraCtx) {
+function buildSystem(stories, tab, metrics, settings, extraCtx, agentCtx) {
   const brandName = getBrandName(settings);
   const counts = {};
   for (const s of stories) counts[s.status] = (counts[s.status] || 0) + 1;
   const bank = stories.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
 
-  // Core snapshot — top 25, with score + quality gate + content metadata
   const snapshot = stories
     .filter(s => !["rejected","archived"].includes(s.status))
     .slice(0, 25)
@@ -63,7 +83,6 @@ function buildSystem(stories, tab, metrics, settings, extraCtx) {
     ? `\nAI usage (7d): ${metrics.calls} calls · ${metrics.cost} · ${metrics.failed} failures · top: ${metrics.byType}`
     : "";
 
-  // Extra context blocks (on-request)
   let extraBlocks = "";
   if (extraCtx.all_scores) {
     const allScored = stories
@@ -73,14 +92,12 @@ function buildSystem(stories, tab, metrics, settings, extraCtx) {
       .join("\n");
     extraBlocks += `\nAll story scores (high→low):\n${allScored || "(none with scores)"}`;
   }
-  if (extraCtx.debug) {
-    extraBlocks += `\nRecent AI failures:\n${extraCtx.debug || "(none)"}`;
-  }
-  if (extraCtx.cost_detail) {
-    extraBlocks += `\nCost breakdown:\n${extraCtx.cost_detail}`;
-  }
+  if (extraCtx.debug)       extraBlocks += `\nRecent AI failures:\n${extraCtx.debug || "(none)"}`;
+  if (extraCtx.cost_detail) extraBlocks += `\nCost breakdown:\n${extraCtx.cost_detail}`;
 
-  return `You are the pipeline agent for ${brandName}.
+  const contextBlock = buildContextBlock(agentCtx);
+
+  return `You are the Creative Engine assistant${brandName ? ` for ${brandName}` : ""}.
 
 Pipeline state (${new Date().toLocaleDateString()}):
 - Active: ${stories.filter(s => !["rejected","archived"].includes(s.status)).length} · Stages: ${Object.entries(counts).map(([k,v]) => `${k}×${v}`).join(", ")}
@@ -90,6 +107,7 @@ ${metricsBlock}
 Stories (top 25):
 ${snapshot || "(none yet)"}
 ${extraBlocks}
+${contextBlock}
 Navigation — embed to trigger:
   [[nav:pipeline]]  [[nav:research]]  [[nav:create]]  [[nav:calendar]]  [[nav:analyze]]
   [[story:STORY_ID]]  — open story detail
@@ -100,18 +118,19 @@ Write actions — embed when user asks. Multiple tags allowed for bulk:
   [[stage:STORY_ID:STATUS]]  — move to: research / scripted / produced / approved / rejected / archived
 
 Tools (call via tool-use when useful):
-- write_insight — persist a durable finding (recurring failures, workflow gaps, quality issues) into intelligence_insights
-- db_read(table, filter?, limit?) — query stories, performance_snapshots, or intelligence_insights for deeper analysis
-- audit_read(source, story_id?, since?, failures_only?) — read ai_calls or audit_log to diagnose failures or trace story history
+- write_insight — persist a durable finding into intelligence_insights
+- db_read(table, filter?, limit?) — query stories, performance_snapshots, or intelligence_insights
+- audit_read(source, story_id?, since?, failures_only?) — read ai_calls or audit_log
 
 Rules:
-- For bulk operations (e.g. "approve all with score > 70"), embed one tag per matching story
+- For bulk operations, embed one tag per matching story
 - Always narrate what you're doing before the tags
 - Use **bold** for key names, bullet lists for multiple items
-- Be concise — 2-3 sentences unless more detail is requested`;
+- Be concise — 2-3 sentences unless more detail is requested
+- If a task_type context is active, focus on that task before pivoting`;
 }
 
-// ── Action parsing (finds ALL occurrences) ────────────────
+// ── Action parsing ────────────────────────────────────────
 function stripActions(text) {
   return text
     .replace(/\[\[nav:\w+\]\]/g, "")
@@ -199,40 +218,41 @@ function TypingDots() {
 // ── Image helpers ─────────────────────────────────────────
 async function toBase64(file) {
   return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload  = () => resolve({ data: r.result.split(",")[1], mimeType: file.type, name: file.name });
-    r.onerror = reject;
-    r.readAsDataURL(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      const base64 = result.split(",")[1];
+      resolve({ data: base64, mimeType: file.type });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
 }
 
-// ── Message bubble ────────────────────────────────────────
+// ── Bubble ────────────────────────────────────────────────
 function Bubble({ m, streaming }) {
-  const isUser  = m.role === "user";
-  const imgs    = Array.isArray(m.content) ? m.content.filter(p => p.type === "image") : [];
-  const rawText = Array.isArray(m.content) ? (m.content.find(p => p.type === "text")?.text ?? "") : (m.content ?? "");
-  const text    = isUser ? rawText : stripActions(rawText);
-  const isError = !isUser && typeof rawText === "string" && rawText.startsWith("Error:");
+  const isUser = m.role === "user";
+  const imgs   = Array.isArray(m.content) ? m.content.filter(p => p.type === "image") : [];
+  const text   = Array.isArray(m.content) ? (m.content.find(p => p.type === "text")?.text ?? "") : (m.content ?? "");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4 }}>
+      {imgs.length > 0 && (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: isUser ? "flex-end" : "flex-start" }}>
+          {imgs.map((img, i) => (
+            <img key={i} src={`data:${img.mimeType};base64,${img.data}`}
+              style={{ maxWidth: 130, maxHeight: 100, borderRadius: 5, objectFit: "cover", border: "0.5px solid rgba(0,0,0,0.12)" }} />
+          ))}
+        </div>
+      )}
       <div style={{
-        maxWidth: "90%", padding: "8px 11px",
-        borderRadius: isUser ? "10px 10px 3px 10px" : "10px 10px 10px 3px",
-        background: isUser ? "var(--t1)" : isError ? "var(--error-bg)" : "var(--fill2)",
-        color:      isUser ? "var(--bg)" : isError ? "var(--error)"  : "var(--t1)",
-        fontSize: 13, lineHeight: 1.55,
-        border: isUser ? "none" : isError ? "0.5px solid var(--error-border)" : "0.5px solid var(--border)",
-        wordBreak: "break-word",
+        maxWidth: "86%", padding: isUser ? "7px 11px" : "8px 12px",
+        borderRadius: isUser ? "12px 12px 3px 12px" : "3px 12px 12px 12px",
+        background: isUser ? "var(--t1)" : "var(--fill2)",
+        color: isUser ? "var(--bg)" : "var(--t1)",
+        fontSize: 13, lineHeight: 1.5,
+        border: isUser ? "none" : "0.5px solid var(--border)",
       }}>
-        {imgs.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: text ? 6 : 0 }}>
-            {imgs.map((img, i) => (
-              <img key={i} src={`data:${img.mimeType};base64,${img.data}`}
-                style={{ maxWidth: 130, maxHeight: 100, borderRadius: 5, objectFit: "cover", border: "0.5px solid rgba(0,0,0,0.12)" }} />
-            ))}
-          </div>
-        )}
         {m.role === "assistant" && !text && streaming
           ? <TypingDots />
           : isUser
@@ -260,7 +280,10 @@ function ContextToggle({ source, active, loading, onToggle }) {
 }
 
 // ── Main component ────────────────────────────────────────
-export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, onOpenStory, onUpdateStory, tenant, settings = null }) {
+export default function AgentPanel({
+  isOpen, onClose, stories, tab, onNavigate, onOpenStory, onUpdateStory, tenant, settings = null,
+  agent_context = null, onClearContext = null,
+}) {
   const [messages,    setMessages]    = useState([]);
   const [input,       setInput]       = useState("");
   const [streaming,   setStreaming]   = useState(false);
@@ -270,9 +293,9 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   const [providers,   setProviders]   = useState({ anthropic: true, openai: false });
   const [dragOver,    setDragOver]    = useState(false);
   const [metrics,     setMetrics]     = useState(null);
-  const [ctxActive,   setCtxActive]   = useState({});  // which context sources are on
-  const [ctxLoading,  setCtxLoading]  = useState({});  // which are loading
-  const [extraCtx,    setExtraCtx]    = useState({});  // fetched data per source
+  const [ctxActive,   setCtxActive]   = useState({});
+  const [ctxLoading,  setCtxLoading]  = useState({});
+  const [extraCtx,    setExtraCtx]    = useState({});
 
   const scrollRef    = useRef(null);
   const fileRef      = useRef(null);
@@ -280,7 +303,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   const textareaRef  = useRef(null);
   const historyReady = useRef(false);
 
-  // ── Load history from localStorage on mount (text only)
+  // ── Load history
   useEffect(() => {
     if (historyReady.current) return;
     historyReady.current = true;
@@ -293,14 +316,14 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
     } catch {}
   }, [tenant]);
 
-  // ── Persist history (text only, max 30 messages)
+  // ── Persist history (text only, max 30)
   useEffect(() => {
     if (!historyReady.current) return;
     try {
       const toSave = messages.slice(-30).map(m => ({
         role: m.role,
         content: Array.isArray(m.content)
-          ? m.content.filter(p => p.type === "text")  // strip image data
+          ? m.content.filter(p => p.type === "text")
           : m.content,
       }));
       localStorage.setItem(historyKey(tenant), JSON.stringify(toSave));
@@ -317,7 +340,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
     });
   }, [tenant?.brand_profile_id]);
 
-  // ── Fetch base metrics once per panel open
+  // ── Fetch base metrics once per open
   useEffect(() => {
     if (!isOpen || metrics) return;
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -353,10 +376,8 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
     try {
       let data = null;
       if (key === "all_scores") {
-        // Already have stories in props — just flag to use them all
         data = true;
       } else if (key === "debug") {
-        // AI call failures via audit-read (real implementation)
         const rawCalls = metrics?.raw?.length
           ? metrics.raw
           : await auditRead({ source: "ai_calls", failures_only: false, limit: 100, workspace_id: tenant?.workspace_id, brand_profile_id: tenant?.brand_profile_id });
@@ -364,8 +385,6 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
         const failureBlock = failures.length
           ? failures.map(c => `  [${c.type}] ${c.error_message || c.error_type || "unknown"} (${c.created_at ? new Date(c.created_at).toLocaleDateString() : "?"})`).join("\n")
           : "(no recent AI failures)";
-
-        // Durable debug insights written by agents/tools
         const { data: insights } = await supabase
           .from("intelligence_insights")
           .select("summary,status,created_at,agent_name")
@@ -377,7 +396,6 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
         const insightBlock = insights?.length
           ? insights.map(i => `  [insight·${i.status}] ${i.summary} (${new Date(i.created_at).toLocaleDateString()})`).join("\n")
           : "";
-
         data = [failureBlock, insightBlock].filter(Boolean).join("\n") || "(no debug data)";
       } else if (key === "cost_detail") {
         const calls = metrics?.raw || await getAiCalls({ limit: 500 });
@@ -397,7 +415,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
       setCtxActive(s => ({ ...s, [key]: true }));
     } catch {}
     finally { setCtxLoading(s => ({ ...s, [key]: false })); }
-  }, [ctxActive, metrics]);
+  }, [ctxActive, metrics, tenant]);
 
   const selectedModel = MODELS.find(m => m.id === modelId) || MODELS[0];
 
@@ -453,19 +471,27 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
     setMessages([...history, { role: "assistant", content: "" }]);
     setStreaming(true);
 
+    const extraCtxForSystem = ctxActive.all_scores
+      ? { all_scores: true, debug: extraCtx.debug, cost_detail: extraCtx.cost_detail }
+      : { debug: extraCtx.debug, cost_detail: extraCtx.cost_detail };
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token || ""}` },
         body: JSON.stringify({
-          provider:         selectedModel.provider,
-          model:            modelId,
-          messages:         apiHistory,
-          system:           buildSystem(stories, tab, metrics, settings, ctxActive.all_scores ? { all_scores: true, debug: extraCtx.debug, cost_detail: extraCtx.cost_detail } : { debug: extraCtx.debug, cost_detail: extraCtx.cost_detail }),
-          maxTokens:        1500,
-          brand_profile_id: tenant?.brand_profile_id,
-          workspace_id:     tenant?.workspace_id,
+          provider:              selectedModel.provider,
+          model:                 modelId,
+          messages:              apiHistory,
+          system:                buildSystem(stories, tab, metrics, settings, extraCtxForSystem, agent_context),
+          maxTokens:             1500,
+          brand_profile_id:      tenant?.brand_profile_id,
+          workspace_id:          tenant?.workspace_id,
+          task_type:             agent_context?.task_type || null,
+          source_view:           agent_context?.source_view || null,
+          source_entity_type:    agent_context?.source_entity_type || null,
+          source_entity_id:      agent_context?.source_entity_id || null,
         }),
       });
 
@@ -500,7 +526,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
     } catch (err) {
       setMessages(m => { const n = [...m]; n[n.length - 1] = { role: "assistant", content: `Error: ${err.message}` }; return n; });
     } finally { setStreaming(false); }
-  }, [input, pending, messages, streaming, modelId, selectedModel, stories, tab, metrics, settings, ctxActive, extraCtx, runActions]);
+  }, [input, pending, messages, streaming, modelId, selectedModel, stories, tab, metrics, settings, ctxActive, extraCtx, agent_context, tenant, runActions]);
 
   const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
 
@@ -508,6 +534,13 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
   const groups  = Object.entries(MODELS.reduce((acc, m) => { (acc[m.provider] = acc[m.provider] || []).push(m); return acc; }, {}));
   const canSend = (input.trim() || pending.length) && !streaming;
   const activeCtxCount = Object.values(ctxActive).filter(Boolean).length;
+
+  // ── Determine suggestions to show in empty state
+  const contextSummary  = getContextSummary(agent_context);
+  const suggestedActions = agent_context?.suggested_actions;
+  const emptyStateSuggestions = suggestedActions?.length
+    ? suggestedActions
+    : DEFAULT_SUGGESTIONS.map(s => ({ id: s, label: s }));
 
   return (
     <aside
@@ -571,8 +604,26 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           )}
         </div>
 
+        {/* ── Active context strip ── */}
+        {contextSummary && (
+          <div style={{
+            padding: "5px 12px", borderBottom: "0.5px solid var(--border)",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: "rgba(91,143,185,0.07)", flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 500 }}>
+              {TASK_TYPES[agent_context?.task_type]?.label
+                ? `${TASK_TYPES[agent_context.task_type].label} · ${contextSummary}`
+                : contextSummary}
+            </span>
+            {onClearContext && (
+              <button onClick={onClearContext} title="Clear context" style={{ background: "none", border: "none", color: "var(--t4)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>×</button>
+            )}
+          </div>
+        )}
+
         {/* ── Context bar ── */}
-        <div style={{ padding: "6px 12px", borderBottom: "0.5px solid var(--border)", display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ padding: "6px 12px", borderBottom: "0.5px solid var(--border)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           <Database size={10} style={{ color: "var(--t4)", flexShrink: 0 }} />
           <span style={{ fontSize: 10, color: "var(--t4)", marginRight: 2 }}>Context:</span>
           {CONTEXT_SOURCES.map(src => (
@@ -585,20 +636,30 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
           {messages.length === 0 ? (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 24, gap: 16 }}>
               <div style={{ color: "var(--t4)", fontSize: 12, textAlign: "center", lineHeight: 1.8 }}>
-                Ask about the pipeline,<br />navigate views, or run bulk actions.
-                <div style={{ fontSize: 10, marginTop: 4, opacity: 0.6 }}>Drop images · {activeCtxCount > 0 ? `${activeCtxCount} context source${activeCtxCount > 1 ? "s" : ""} active` : "Enable context above for richer queries"}</div>
+                {contextSummary
+                  ? <>Working on <strong style={{ color: "var(--t3)" }}>{contextSummary}</strong>.<br />How can I help?</>
+                  : <>Ask about the pipeline,<br />navigate views, or run bulk actions.</>
+                }
+                <div style={{ fontSize: 10, marginTop: 4, opacity: 0.6 }}>
+                  {activeCtxCount > 0 ? `${activeCtxCount} context source${activeCtxCount > 1 ? "s" : ""} active` : "Drop images · Enable context above for richer queries"}
+                </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
-                {SUGGESTIONS.map(s => (
-                  <button key={s} onClick={() => send(s)} style={{
-                    padding: "7px 12px", borderRadius: 8, fontSize: 12, textAlign: "left",
-                    background: "var(--fill)", border: "0.5px solid var(--border)",
-                    color: "var(--t2)", cursor: "pointer", transition: "background 0.1s",
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.background = "var(--fill2)"}
-                    onMouseLeave={e => e.currentTarget.style.background = "var(--fill)"}
-                  >{s}</button>
-                ))}
+                {emptyStateSuggestions.map(s => {
+                  const label = typeof s === "string" ? s : s.label;
+                  const key   = typeof s === "string" ? s : (s.id || s.label);
+                  const msg   = typeof s === "string" ? s : (s.initial_message || s.label);
+                  return (
+                    <button key={key} onClick={() => send(msg)} style={{
+                      padding: "7px 12px", borderRadius: 8, fontSize: 12, textAlign: "left",
+                      background: "var(--fill)", border: "0.5px solid var(--border)",
+                      color: "var(--t2)", cursor: "pointer", transition: "background 0.1s",
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.background = "var(--fill2)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "var(--fill)"}
+                    >{label}</button>
+                  );
+                })}
               </div>
             </div>
           ) : (
@@ -634,7 +695,7 @@ export default function AgentPanel({ isOpen, onClose, stories, tab, onNavigate, 
               onChange={handleInput}
               onKeyDown={handleKey}
               onPaste={onPaste}
-              placeholder="Ask the agent…"
+              placeholder={contextSummary ? `Ask about ${contextSummary.toLowerCase()}…` : "Ask the assistant…"}
               rows={1}
               style={{
                 flex: 1, resize: "none", overflow: "hidden",

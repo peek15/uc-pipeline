@@ -19,11 +19,12 @@ import SettingsModal from "@/components/SettingsModal";
 import ProductionAlert from "@/components/ProductionAlert";
 import ShortcutsCheatSheet from "@/components/ShortcutsCheatSheet";
 import AgentPanel from "@/components/AgentPanel";
+import { AssistantContext } from "@/lib/agent/AssistantContext";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.24.0";
+const VERSION = "3.25.0";
 
 const TABS = [
   { key: "pipeline",   label: "Content",   Icon: Layers },
@@ -60,6 +61,7 @@ export default function Home() {
   const [researchPrefill, setResearchPrefill] = useState(null); // from ProductionAlert
   const [showCmdK,        setShowCmdK]        = useState(false);
   const [agentOpen,       setAgentOpen]       = useState(false);
+  const [agentContext,    setAgentContext]    = useState(null);
   const [newBrand,        setNewBrand]        = useState({ show: false, name: "", cloneSettings: true, openSettings: false });
   const [workspaces,       setWorkspaces]       = useState([]);
   const [workspacesLoaded, setWorkspacesLoaded] = useState(false);
@@ -270,6 +272,11 @@ export default function Home() {
     await dbDeleteCampaign(id);
     setCampaigns(prev => prev.filter(c => c.id !== id));
     toast("Campaign deleted");
+  }, []);
+
+  const openAssistant = useCallback((ctx = null) => {
+    if (ctx) setAgentContext(ctx);
+    setAgentOpen(true);
   }, []);
 
   const handleUndo = useCallback(async () => {
@@ -547,6 +554,7 @@ export default function Home() {
   const menuBtn = { width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:6, border:"none", background:"transparent", cursor:"pointer", color:"var(--t2)", fontSize:12, fontFamily:"inherit" };
 
   return (
+    <AssistantContext.Provider value={{ openAssistant }}>
     <div style={{ height:"100vh", background:"var(--bg)", color:"var(--t1)", display:"flex", overflow:"hidden" }}>
 
       {/* ── Sidebar ── */}
@@ -799,6 +807,8 @@ export default function Home() {
         onUpdateStory={updateStory}
         tenant={activeTenant}
         settings={appSettings}
+        agent_context={agentContext}
+        onClearContext={() => setAgentContext(null)}
       />
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
@@ -836,5 +846,6 @@ export default function Home() {
 
       <ToastContainer />
     </div>
+    </AssistantContext.Provider>
   );
 }

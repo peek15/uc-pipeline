@@ -8,6 +8,8 @@ import { ORDERED_PLANS } from "@/lib/billing/plans";
 import { getPlanLabel, entitlementLabel } from "@/lib/billing/entitlements";
 import { supabase } from "@/lib/db";
 import { runPrompt } from "@/lib/ai/runner";
+import { useAssistant } from "@/lib/agent/AssistantContext";
+import { buildAgentContext } from "@/lib/agent/agentContext";
 import { writeInsight } from "@/lib/ai/tools/write-insight";
 import ProvidersSection from "@/components/ProvidersSection";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -680,6 +682,7 @@ function RuleBuilder({ rule, onChange, onDelete, index, conflicts, totalRules })
 
 // ── Billing Section ──
 function BillingSection({ billing, billingLoading, billingAction, billingMsg, workspaceId, onCheckout, onPortal, onDismissMsg }) {
+  const { openAssistant } = useAssistant();
   const [callerRole, setCallerRole] = useState(null);
 
   useEffect(() => {
@@ -858,6 +861,20 @@ function BillingSection({ billing, billingLoading, billingAction, billingMsg, wo
           <button onClick={onDismissMsg} style={{ background:"none", border:"none", color:"inherit", cursor:"pointer", fontSize:14, lineHeight:1, flexShrink:0 }}>×</button>
         </div>
       )}
+
+      {/* Assistant entry point */}
+      <button
+        onClick={() => openAssistant(buildAgentContext({
+          source_view: "settings",
+          source_component: "billing",
+          task_type: "billing_help",
+          task_intent: "User opened assistant from Billing settings",
+          billing_snapshot: billing ? { plan_key: billing.plan_key, subscription_status: billing.subscription_status } : null,
+        }))}
+        style={{ alignSelf:"flex-start", padding:"6px 12px", borderRadius:7, fontSize:11, fontWeight:500, background:"transparent", color:"var(--t3)", border:"0.5px solid var(--border)", cursor:"pointer" }}
+      >
+        Ask about plans
+      </button>
     </div>
   );
 }

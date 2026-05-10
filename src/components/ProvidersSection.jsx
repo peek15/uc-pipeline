@@ -9,6 +9,8 @@ import { supabase } from "@/lib/db";
 import { getAiCalls } from "@/lib/ai/audit";
 import { formatCost } from "@/lib/ai/costs";
 import { PageHeader, buttonStyle } from "@/components/OperationalUI";
+import { useAssistant } from "@/lib/agent/AssistantContext";
+import { buildAgentContext } from "@/lib/agent/agentContext";
 
 function csvEscape(value) {
   const text = value == null ? "" : String(value);
@@ -1256,6 +1258,7 @@ function AIUsage({ tenant }) {
 export default function ProvidersSection({ tenant, version = "" }) {
   const activeTenant = useMemo(() => normalizeTenant(tenant), [tenant]);
   const brandProfileId = activeTenant.brand_profile_id;
+  const { openAssistant } = useAssistant();
   const [configs, setConfigs] = useState({});
   const [calls, setCalls] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1296,7 +1299,7 @@ export default function ProvidersSection({ tenant, version = "" }) {
         meta={loading ? "loading" : `${Object.values(configs).filter(Boolean).length} configured`}
       />
 
-      <div style={{ display: "flex", gap: 4, marginBottom: 18, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
         {[
           ["overview", "Overview"],
           ["configure", "Configure"],
@@ -1310,6 +1313,18 @@ export default function ProvidersSection({ tenant, version = "" }) {
             border: tab === key ? "0.5px solid var(--t1)" : "0.5px solid transparent",
           })}>{label}</button>
         ))}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => openAssistant(buildAgentContext({
+            source_view: "providers",
+            source_component: "providers_section",
+            task_type: "provider_help",
+            task_intent: "User opened assistant from Providers section",
+          }))}
+          style={buttonStyle("ghost", { padding: "6px 12px", fontSize: 11, color: "var(--t3)" })}
+        >
+          Ask assistant
+        </button>
       </div>
 
       {loading && <div style={{ fontSize: 12, color: "var(--t3)", padding: "20px 0" }}>Loading providers…</div>}

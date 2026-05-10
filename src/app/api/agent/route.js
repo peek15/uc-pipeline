@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { estimateCost } from "@/lib/ai/costs";
 import { getAuthenticatedUser } from "@/lib/apiAuth";
+import { getCostFieldsForTask } from "@/lib/agent/taskTypes";
 
 async function authenticate(request) {
   return getAuthenticatedUser(request);
@@ -206,7 +207,7 @@ function transformMessagesForOpenAI(messages, system) {
   return out;
 }
 
-async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, workspaceId, userEmail }) {
+async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, workspaceId, userEmail, taskType, costCenter, costCategory }) {
   if (!key) throw new Error("Anthropic API key not configured");
 
   const { readable, writable } = new TransformStream();
@@ -321,8 +322,10 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
           tokens_output:    totalOutputTokens || null,
           cost_estimate:    estimateCost(resolvedModel, totalInputTokens, totalOutputTokens),
           brand_profile_id: profileId,
-          workspace_id:     null,
+          workspace_id:     workspaceId || null,
           user_email:       userEmail || null,
+          cost_center:      costCenter || null,
+          cost_category:    costCategory || null,
           success:          succeeded,
           duration_ms,
         });
@@ -333,7 +336,7 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
 }
 
-async function callOpenAI({ model, system, messages, maxTokens, key, profileId, userEmail }) {
+async function callOpenAI({ model, system, messages, maxTokens, key, profileId, workspaceId, userEmail, taskType, costCenter, costCategory }) {
   if (!key) throw new Error("OpenAI API key not configured");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -402,8 +405,10 @@ async function callOpenAI({ model, system, messages, maxTokens, key, profileId, 
           tokens_output:    completionTokens || null,
           cost_estimate:    estimateCost(resolvedModel, promptTokens, completionTokens),
           brand_profile_id: profileId,
-          workspace_id:     null,
+          workspace_id:     workspaceId || null,
           user_email:       userEmail || null,
+          cost_center:      costCenter || null,
+          cost_category:    costCategory || null,
           success:          succeeded,
           duration_ms,
         });
@@ -449,14 +454,15 @@ export async function POST(request) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (await rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
 
-  const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700, brand_profile_id, workspace_id } = await request.json();
+  const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700, brand_profile_id, workspace_id, task_type, source_view, source_entity_type, source_entity_id } = await request.json();
   const profileId   = brand_profile_id || null;
   const workspaceId = workspace_id || null;
+  const { cost_center: costCenter, cost_category: costCategory } = getCostFieldsForTask(task_type || "general_help");
 
   try {
     const key = await loadLLMKey(provider, profileId);
-    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key, profileId, workspaceId, userEmail: user.email });
-    return await callAnthropic({ model, system, messages, maxTokens, key, tools: [WRITE_INSIGHT_SCHEMA, DB_READ_SCHEMA, AUDIT_READ_SCHEMA], profileId, workspaceId, userEmail: user.email });
+    if (provider === "openai") return await callOpenAI({ model, system, messages, maxTokens, key, profileId, workspaceId, userEmail: user.email, taskType: task_type, costCenter, costCategory });
+    return await callAnthropic({ model, system, messages, maxTokens, key, tools: [WRITE_INSIGHT_SCHEMA, DB_READ_SCHEMA, AUDIT_READ_SCHEMA], profileId, workspaceId, userEmail: user.email, taskType: task_type, costCenter, costCategory });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }

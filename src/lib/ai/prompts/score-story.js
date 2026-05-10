@@ -16,7 +16,9 @@ export function build({ stories, brand_config = null }) {
   const brandName = brand_config?.brand_name || "your brand";
   const contentType = brand_config?.content_type || "short-form video";
   const voice = brand_config?.voice ? `\nBrand voice: ${brand_config.voice}.` : "";
-  return `You are an AI content scorer for "${brandName}", a ${contentType} brand.${voice}
+  const audience = brand_config?.target_audience ? `\nTarget audience: ${brand_config.target_audience}.` : "";
+  const pillars = brand_config?.content_pillars?.length ? `\nContent pillars: ${brand_config.content_pillars.join(", ")}.` : "";
+  return `You are an AI content scorer for "${brandName}", a ${contentType} brand.${voice}${audience}${pillars}
 
 Score each story on 4 dimensions (each out of 25, total out of 100):
 - emotional_depth: Is there real human tension, not just surface-level subject matter?

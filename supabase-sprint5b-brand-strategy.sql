@@ -1,0 +1,97 @@
+-- ══════════════════════════════════════════════════════════════════════
+-- Sprint 5B — Brand Strategy: schema documentation migration
+--
+-- All brand strategy fields are stored in brand_profiles.settings JSONB
+-- using the structure defined in DEFAULT_SETTINGS (SettingsModal.jsx).
+-- No new columns are required; this migration adds a GIN index and
+-- documents the expected JSONB shape for reference.
+--
+-- Safe to run multiple times (IF NOT EXISTS guards).
+-- ══════════════════════════════════════════════════════════════════════
+
+-- GIN index on brand_profiles.settings for efficient JSONB queries
+-- (only if not already present)
+CREATE INDEX IF NOT EXISTS idx_brand_profiles_settings_gin
+  ON brand_profiles USING GIN (settings);
+
+-- ── Expected settings.brand shape (v3.26.0+) ──────────────────────────
+-- settings.brand = {
+--   name:                    text,   -- brand display name
+--   tagline:                 text,   -- one-line positioning
+--   short_description:       text,   -- 2-3 sentence brand description
+--   industry:                text,   -- e.g. "Professional services"
+--   products_services:       text,   -- what the brand sells/offers
+--   target_audience:         text,   -- primary audience description
+--   markets:                 text,   -- geographic markets
+--   voice:                   text,   -- tone/voice description (used in prompts)
+--   visual_style:            text,   -- visual direction
+--   avoid:                   text,   -- content/tone to avoid
+--   brand_values:            text,   -- core values
+--   differentiators:         text,   -- competitive differentiators
+--   competitors_or_references: text, -- reference brands
+--   locked_elements:         text[], -- locked copy/closing lines
+--   content_type:            text,   -- default content type
+--   goal_primary:            text,   -- community|reach|conversion|awareness
+--   goal_secondary:          text,
+--   language_primary:        text,   -- e.g. "EN"
+--   languages_secondary:     text[], -- e.g. ["FR","ES"] — empty for generic
+-- }
+
+-- ── Expected settings.strategy shape (v3.26.0+) ───────────────────────
+-- settings.strategy = {
+--   ...existing operational fields (weekly_cadence, format_mix, etc.)...
+--   content_goals:             text,     -- what content should achieve
+--   target_platforms:          text[],   -- e.g. ["Instagram","LinkedIn"]
+--   content_pillars:           text[],   -- e.g. ["Education","Social proof"]
+--   key_messages:              text,     -- messages to reinforce consistently
+--   preferred_angles:          text,     -- angles that work for this brand
+--   avoid_angles:              text,     -- angles to avoid
+--   calls_to_action:           text,     -- preferred CTAs
+--   claims_to_use_carefully:   text,     -- ROI claims, guarantees, etc.
+--   compliance_sensitivities:  text,     -- regulatory/platform restrictions
+--   programmes: [             -- generic recurring content series
+--     {
+--       id:                 text,
+--       name:               text,
+--       description:        text,
+--       color:              text,    -- hex color
+--       role:               text,    -- reach|community|balanced|special
+--       weight:             integer, -- 0-100 (cadence share)
+--       active:             boolean, -- enabled/disabled
+--       cadence:            text,    -- "weekly", "bi-weekly", etc.
+--       platforms:          text[],
+--       tone:               text,
+--       example_topics:     text,
+--       avoid_topics:       text,
+--       target_audience_desc: text,
+--       primary_goal:       text,
+--       angle_suggestions:  text[],
+--       custom_fields:      {key: text, value: text}[]
+--     }
+--   ],
+--   content_templates: [...]  -- existing template structure
+-- }
+
+-- ── Expected settings.strategy_recommendations shape ──────────────────
+-- settings.strategy_recommendations = [
+--   {
+--     id:             text,   -- uuid
+--     type:           text,   -- content_pillar|programme|campaign|content_idea|platform_strategy|risk_warning
+--     title:          text,
+--     rationale:      text,
+--     target_audience: text,
+--     platforms:      text[],
+--     formats:        text[],
+--     priority:       text,   -- low|medium|high
+--     status:         text,   -- suggested|accepted|dismissed|converted_to_programme|converted_to_campaign|converted_to_content
+--     created_by:     text,   -- agent|user|system
+--     created_at:     timestamptz
+--   }
+-- ]
+
+-- Uncle Carter compatibility note:
+-- The default workspace (00000000-0000-0000-0000-000000000001) has its
+-- brand/strategy settings saved in brand_profiles.settings JSONB.
+-- mergeSettings() applies DB values over DEFAULT_SETTINGS, so UC's saved
+-- values (name, voice, programmes, etc.) take precedence over the new
+-- generic defaults. No re-onboarding required.

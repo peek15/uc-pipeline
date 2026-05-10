@@ -24,11 +24,17 @@ Selected content template:
 - deliverable_type: ${story.deliverable_type || template.deliverable_type || "(unspecified)"}
 - required_fields: ${(template.required_fields || []).join(", ") || "(none)"}
 - workflow_steps: ${(template.workflow_steps || []).join(" > ") || "(default)"}` : "";
+  const audienceBlock = brand_config?.target_audience ? `\nTarget audience: ${brand_config.target_audience}.` : "";
+  const pillarsBlock = brand_config?.content_pillars?.length ? `\nContent pillars: ${brand_config.content_pillars.join(", ")}.` : "";
+  const messagesBlock = brand_config?.key_messages ? `\nKey messages: ${brand_config.key_messages}.` : "";
+  const ctaBlock = brand_config?.calls_to_action ? `\nPreferred CTAs: ${brand_config.calls_to_action}.` : "";
+  const complianceBlock = brand_config?.compliance_sensitivities ? `\nCompliance sensitivities: ${brand_config.compliance_sensitivities}.` : "";
+
   const system = brand_config
     ? `You write production-ready copy for "${brandName}", a ${brand_config.content_type || "narrative"} content brand.
 
 Brand voice: ${brand_config.voice || "clear, specific, emotionally grounded"}.
-Avoid: ${brand_config.avoid || "generic phrasing, hype, filler"}.
+Avoid: ${brand_config.avoid || "generic phrasing, hype, filler"}.${audienceBlock}${pillarsBlock}${messagesBlock}${ctaBlock}${complianceBlock}
 ${templateBlock}
 
 RULES: Match the selected template and deliverable. Short-form video scripts should be 110-150 words. Ads should include offer/proof/CTA logic. Publicity should emphasize newsworthiness and clarity. Educational content should teach one clear idea. No emojis, hashtags, or filler.

@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.18.6
+- App badge/package target: v3.26.0
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -25,6 +25,25 @@ scheduling, provider operations, quality gates, and analytics.
 - Version bump `src/app/page.js`, `package.json`, and `package-lock.json` before push.
 - Do not expose provider secrets in the browser; credentials live in `provider_secrets` and server routes use the service role.
 - Do not remove user/local changes unless explicitly requested.
+
+## Brand Strategy (v3.26.0+)
+- Brand Profile, Content Strategy, and Programmes are the core Creative Engine control center.
+- Brand strategy fields live in `brand_profiles.settings` JSONB — no separate tables. See `supabase-sprint5b-brand-strategy.sql` for shape.
+- `brandConfigForPrompt(settings)` in `src/lib/brandConfig.js` produces the full prompt-safe brand config — use it in all AI prompts.
+- Generic clients must not inherit Uncle Carter/NBA defaults. UC's saved DB values override generic defaults via `mergeSettings()`.
+- UC-specific constants (`UC_TEAMS`, `UC_RESEARCH_ANGLES`, `UC_SCRIPT_SYSTEM`) remain in `src/lib/constants.js` as explicit named exports — do not delete them.
+- Programmes are recurring content series/editorial lanes, not one-off posts. Each programme can be enabled/disabled (`active` field).
+- Strategy/advisory AI help must route through the existing right-side assistant panel via `openAssistant(buildAgentContext({...}))`.
+- Do not add scattered AI audit/strategy/suggestion buttons. Use generic "Ask assistant" entry points that call `openAssistant(ctx)`.
+- Task types `improve_brand_profile`, `suggest_content_pillars`, `suggest_programmes`, `suggest_campaign_ideas`, `suggest_content_ideas` all use `cost_center: "strategy_advisor"`.
+- Do not implement AI onboarding, Studio, or intelligence layer automation unless explicitly instructed.
+
+## Agent Architecture (v3.25.0+)
+- One right-side assistant panel only. No second panel, no scattered AI flows.
+- `AssistantContext.Provider` wraps the app in `page.js`. Use `useAssistant().openAssistant(ctx)` from any component.
+- `buildAgentContext({task_type, source_view, ...})` in `src/lib/agent/agentContext.js` builds typed context.
+- Task types and capabilities are internal — `src/lib/agent/taskTypes.js`. Users see one assistant.
+- `/api/agent` extracts `task_type` from POST body and logs `cost_center`/`cost_category` to `ai_calls`.
 
 ## Recent Updates
 - v3.18.6: Performance snapshot foundation: `performance_snapshots` table added to schema, manual metric saves and Metricool CSV imports write time-series rows through `src/lib/performance.js`, Settings Intelligence shows snapshot count, and Provider Diagnostics probes the table.

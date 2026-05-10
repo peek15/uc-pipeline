@@ -49,10 +49,13 @@ export function getBrandProgrammes(settings) {
       key: p.id || p.key || `programme_${index + 1}`,
       label: p.name || p.label || p.id || `Programme ${index + 1}`,
       color: p.color || FORMATS[index % FORMATS.length]?.color || "var(--t2)",
-      desc: p.role ? `${p.role} programme` : p.desc || "",
+      desc: p.description || (p.role ? `${p.role} programme` : p.desc || ""),
       angle_suggestions: Array.isArray(p.angle_suggestions) ? p.angle_suggestions : [],
       weight: p.weight ?? 0,
       role: p.role || "balanced",
+      active: p.active !== false,
+      cadence: p.cadence || "",
+      platforms: Array.isArray(p.platforms) ? p.platforms : [],
     }));
   }
   return FORMATS;
@@ -95,11 +98,50 @@ export function getBrandArchetypes(settings) {
   return unique.length ? unique : ARCHETYPES;
 }
 
+export function getBrandTargetAudience(settings) {
+  return settings?.brand?.target_audience || "";
+}
+
+export function getBrandIndustry(settings) {
+  return settings?.brand?.industry || "";
+}
+
+export function getBrandContentGoals(settings) {
+  return settings?.strategy?.content_goals || "";
+}
+
+export function getBrandContentPillars(settings) {
+  const p = settings?.strategy?.content_pillars;
+  return Array.isArray(p) ? p : [];
+}
+
+export function getBrandTargetPlatforms(settings) {
+  const p = settings?.strategy?.target_platforms;
+  return Array.isArray(p) ? p : [];
+}
+
+export function getBrandPreferredAngles(settings) {
+  return settings?.strategy?.preferred_angles || "";
+}
+
+export function getBrandAvoidAngles(settings) {
+  return settings?.strategy?.avoid_angles || "";
+}
+
+export function getBrandComplianceSensitivities(settings) {
+  return settings?.strategy?.compliance_sensitivities || "";
+}
+
+export function getActiveProgrammes(settings) {
+  const programmes = getBrandProgrammes(settings);
+  return programmes.filter(p => p.active !== false);
+}
+
 export function getBrandLanguages(settings) {
   const primary = String(settings?.brand?.language_primary || "EN").toLowerCase();
   const secondary = Array.isArray(settings?.brand?.languages_secondary)
     ? settings.brand.languages_secondary.map(l => String(l).toLowerCase())
-    : ["fr", "es", "pt"];
+    : [];
   const keys = [...new Set([primary, ...secondary].filter(Boolean))];
   const known = Object.fromEntries(LANGS.map(l => [l.key, l]));
   return keys.map((key, index) => known[key] || {
@@ -116,6 +158,23 @@ export function getBrandTaxonomy(settings) {
     content_type: getBrandContentType(settings),
     voice: getBrandVoice(settings),
     avoid: getBrandAvoid(settings),
+    target_audience: getBrandTargetAudience(settings),
+    industry: getBrandIndustry(settings),
+    products_services: settings?.brand?.products_services || "",
+    tagline: settings?.brand?.tagline || "",
+    short_description: settings?.brand?.short_description || "",
+    brand_values: settings?.brand?.brand_values || "",
+    differentiators: settings?.brand?.differentiators || "",
+    visual_style: settings?.brand?.visual_style || "",
+    content_goals: getBrandContentGoals(settings),
+    target_platforms: getBrandTargetPlatforms(settings),
+    content_pillars: getBrandContentPillars(settings),
+    key_messages: settings?.strategy?.key_messages || "",
+    preferred_angles: getBrandPreferredAngles(settings),
+    avoid_angles: getBrandAvoidAngles(settings),
+    calls_to_action: settings?.strategy?.calls_to_action || "",
+    claims_to_use_carefully: settings?.strategy?.claims_to_use_carefully || "",
+    compliance_sensitivities: getBrandComplianceSensitivities(settings),
     programmes: getBrandProgrammes(settings),
     programme_map: getBrandProgrammeMap(settings),
     content_templates: getContentTemplates(settings),
@@ -132,16 +191,35 @@ export function getBrandTaxonomy(settings) {
 export function brandConfigForPrompt(settings) {
   const cfg = getBrandTaxonomy(settings);
   return {
-    brand_name: cfg.name,
-    content_type: cfg.content_type,
-    voice: cfg.voice,
-    avoid: cfg.avoid,
-    programmes: cfg.programmes.map(p => ({ id: p.key, name: p.label, role: p.role, desc: p.desc, angles: p.angle_suggestions })),
-    content_templates: cfg.content_templates,
-    archetypes: cfg.archetypes,
-    languages: cfg.languages.map(l => ({ key: l.key, label: l.label, name: l.name })),
-    research_angles: cfg.research_angles,
-    closing_line: cfg.closing_line,
+    brand_name:               cfg.name,
+    content_type:             cfg.content_type,
+    voice:                    cfg.voice,
+    avoid:                    cfg.avoid,
+    target_audience:          cfg.target_audience,
+    industry:                 cfg.industry,
+    products_services:        cfg.products_services,
+    tagline:                  cfg.tagline,
+    short_description:        cfg.short_description,
+    brand_values:             cfg.brand_values,
+    differentiators:          cfg.differentiators,
+    content_goals:            cfg.content_goals,
+    target_platforms:         cfg.target_platforms,
+    content_pillars:          cfg.content_pillars,
+    key_messages:             cfg.key_messages,
+    preferred_angles:         cfg.preferred_angles,
+    avoid_angles:             cfg.avoid_angles,
+    calls_to_action:          cfg.calls_to_action,
+    claims_to_use_carefully:  cfg.claims_to_use_carefully,
+    compliance_sensitivities: cfg.compliance_sensitivities,
+    programmes:       cfg.programmes.filter(p => p.active !== false).map(p => ({
+      id: p.key, name: p.label, role: p.role, desc: p.desc,
+      angles: p.angle_suggestions, cadence: p.cadence, platforms: p.platforms,
+    })),
+    content_templates:        cfg.content_templates,
+    archetypes:               cfg.archetypes,
+    languages:                cfg.languages.map(l => ({ key: l.key, label: l.label, name: l.name })),
+    research_angles:          cfg.research_angles,
+    closing_line:             cfg.closing_line,
   };
 }
 

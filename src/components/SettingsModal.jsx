@@ -20,14 +20,24 @@ import { getAppName, getBrandLanguages } from "@/lib/brandConfig";
 const DEFAULT_SETTINGS = {
   brand: {
     name: "",
+    tagline: "",
+    short_description: "",
+    industry: "",
+    products_services: "",
+    target_audience: "",
+    markets: "",
     voice: "",
+    visual_style: "",
     avoid: "",
+    brand_values: "",
+    differentiators: "",
+    competitors_or_references: "",
     locked_elements: [],
     content_type: "narrative",
     goal_primary: "community",
     goal_secondary: "reach",
     language_primary: "EN",
-    languages_secondary: ["FR","ES","PT"],
+    languages_secondary: [],
   },
   strategy: {
     weekly_cadence: 4,
@@ -49,26 +59,17 @@ const DEFAULT_SETTINGS = {
       default_language:  "EN",
       default_hook_type: "",
     },
-    programmes: [
-      { id:"standard",           name:"Standard",            color:"#C49A3C", role:"reach",     weight:60, angle_suggestions:[], custom_fields:[] },
-      { id:"classics",           name:"Classics",            color:"#4A9B7F", role:"community", weight:25, angle_suggestions:[], custom_fields:[] },
-      { id:"performance_special",name:"Performance Special", color:"#C0666A", role:"balanced",  weight:15, angle_suggestions:[], custom_fields:[] },
-      { id:"special_edition",    name:"Special Edition",     color:"#8B7EC8", role:"special",   weight:0,  angle_suggestions:[], custom_fields:[] },
-    ],
-    content_templates: [
-      {
-        id: "narrative_story",
-        name: "Narrative story",
-        content_type: "narrative",
-        objective: "community",
-        audience: "",
-        channels: ["TikTok", "Instagram Reels", "YouTube Shorts"],
-        deliverable_type: "short video",
-        required_fields: ["subject", "angle", "hook", "script"],
-        workflow_steps: ["research", "script", "translations", "brief", "assets", "review"],
-        distinct_reason: "Default narrative video workflow.",
-      },
-    ],
+    content_goals: "",
+    target_platforms: [],
+    content_pillars: [],
+    key_messages: "",
+    preferred_angles: "",
+    avoid_angles: "",
+    calls_to_action: "",
+    claims_to_use_carefully: "",
+    compliance_sensitivities: "",
+    programmes: [],
+    content_templates: [],
   },
   taxonomy: {
     eras: ERAS,
@@ -93,6 +94,7 @@ const DEFAULT_SETTINGS = {
     visual:   { provider:"stub", model:"", status:"not_configured" },
     assembly: { provider:"capcut_export", status:"configured" },
   },
+  strategy_recommendations: [],
 };
 
 // Defensive merge: ensures all top-level keys from DEFAULT_SETTINGS exist
@@ -1148,6 +1150,7 @@ function WorkspaceMembersPanel({ workspaceId, appName }) {
 
 export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant, onRunPredictions, runningPredictions=false }) {
   const VERSION_NUM = version;
+  const { openAssistant } = useAssistant();
   const [section,  setSection]  = usePersistentState("settings_section", "brand");
   const [settings, setSettings] = useState(mergeSettings(initialSettings));
   const [saved,    setSaved]    = useState(false);
@@ -1501,7 +1504,12 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   };
 
   const addProgramme = (preset) => {
-    const newProg = preset || { id:crypto.randomUUID(), name:"New Programme", color:"#888", role:"balanced", weight:0, angle_suggestions:[], custom_fields:[] };
+    const newProg = preset || {
+      id: crypto.randomUUID(), name: "New Programme", color: "#888", role: "balanced", weight: 0,
+      description: "", target_audience_desc: "", primary_goal: "", platforms: [], cadence: "",
+      tone: "", example_topics: "", avoid_topics: "", active: true,
+      angle_suggestions: [], custom_fields: [],
+    };
     upd("strategy.programmes", [...programmes, newProg]);
   };
 
@@ -1900,8 +1908,8 @@ ${fileText.slice(0,3000)}` : text };
                 <button onClick={()=>addProgramme()} style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
                   <Plus size={12}/> New programme
                 </button>
-                <button onClick={()=>{suggestProgrammes();runStratAudit();}} disabled={progRunning||stratRunning} style={{ padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                  {progRunning||stratRunning?"Analysing...":"AI audit"}
+                <button onClick={()=>openAssistant(buildAgentContext({ workspace_id:WORKSPACE_ID, brand_profile_id:BRAND_PROFILE_ID, source_view:"settings", source_component:"programmes", source_entity_type:"brand_profile", task_type:"suggest_programmes", brand_snapshot:{ name:settings.brand?.name, content_type:settings.brand?.content_type }, suggested_actions:[{id:"suggest_programmes",label:"Suggest programmes for this brand"},{id:"suggest_campaign_ideas",label:"Suggest campaign ideas"},{id:"identify_gaps",label:"Identify gaps in current programmes"}] }))} style={{ padding:"5px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
+                  Ask assistant
                 </button>
               </>)}
               <button onClick={onClose} style={{ width:28, height:28, borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -2001,6 +2009,75 @@ ${fileText.slice(0,3000)}` : text };
                 ))}
               </div>
 
+              {/* Extended brand identity */}
+              <div style={{ borderTop:"0.5px solid var(--border2)", paddingTop:18 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:14 }}>Brand identity</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Industry</div>
+                      <input value={settings.brand.industry||""} onChange={e=>upd("brand.industry",e.target.value)} style={inputStyle} placeholder="E.g. Professional services, Retail, SaaS..."/>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Tagline</div>
+                      <input value={settings.brand.tagline||""} onChange={e=>upd("brand.tagline",e.target.value)} style={inputStyle} placeholder="One-line brand positioning"/>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Short description</div>
+                    <textarea value={settings.brand.short_description||""} onChange={e=>upd("brand.short_description",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="What does this brand do and for whom?"/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Target audience</div>
+                    <textarea value={settings.brand.target_audience||""} onChange={e=>upd("brand.target_audience",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Who is the primary audience? Job role, demographics, interests..."/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Products &amp; services</div>
+                    <textarea value={settings.brand.products_services||""} onChange={e=>upd("brand.products_services",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="What does the brand sell or offer?"/>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Markets</div>
+                      <input value={settings.brand.markets||""} onChange={e=>upd("brand.markets",e.target.value)} style={inputStyle} placeholder="UK, US, Global..."/>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Visual style</div>
+                      <input value={settings.brand.visual_style||""} onChange={e=>upd("brand.visual_style",e.target.value)} style={inputStyle} placeholder="Clean minimal, bold, warm editorial..."/>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Brand values</div>
+                    <textarea value={settings.brand.brand_values||""} onChange={e=>upd("brand.brand_values",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Transparency, innovation, community..."/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Differentiators</div>
+                    <textarea value={settings.brand.differentiators||""} onChange={e=>upd("brand.differentiators",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="What makes this brand different from competitors?"/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Competitors or references</div>
+                    <input value={settings.brand.competitors_or_references||""} onChange={e=>upd("brand.competitors_or_references",e.target.value)} style={inputStyle} placeholder="Brands to differentiate from or reference for tone"/>
+                  </div>
+                </div>
+              </div>
+
+              {/* Assistant entry point */}
+              <button
+                onClick={()=>openAssistant(buildAgentContext({
+                  workspace_id:WORKSPACE_ID, brand_profile_id:BRAND_PROFILE_ID,
+                  source_view:"settings", source_component:"brand_profile", source_entity_type:"brand_profile",
+                  task_type:"improve_brand_profile",
+                  brand_snapshot:{ name:settings.brand?.name, industry:settings.brand?.industry, content_type:settings.brand?.content_type, voice:settings.brand?.voice },
+                  suggested_actions:[
+                    {id:"improve_brand_profile",label:"Review and improve this brand profile"},
+                    {id:"suggest_content_pillars",label:"Suggest content pillars"},
+                    {id:"identify_missing",label:"Find missing brand information"},
+                  ],
+                }))}
+                style={{ alignSelf:"flex-start", padding:"6px 12px", borderRadius:7, fontSize:11, fontWeight:500, background:"transparent", color:"var(--t3)", border:"0.5px solid var(--border)", cursor:"pointer" }}
+              >
+                Ask assistant about this brand profile
+              </button>
+
               {/* Context Library */}
               <div>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
@@ -2055,6 +2132,75 @@ ${fileText.slice(0,3000)}` : text };
           {/* ── Strategy ── */}
           {section==="strategy" && (
             <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+              {/* Content strategy fields */}
+              <div>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:14 }}>Content strategy</div>
+                <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Content goals</div>
+                    <textarea value={settings.strategy?.content_goals||""} onChange={e=>upd("strategy.content_goals",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="What should the content achieve? E.g. Build trust, generate leads, grow following..."/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Target platforms</div>
+                    <input value={(settings.strategy?.target_platforms||[]).join(", ")} onChange={e=>upd("strategy.target_platforms",e.target.value.split(",").map(s=>s.trim()).filter(Boolean))} style={inputStyle} placeholder="Instagram, LinkedIn, YouTube, TikTok..."/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Content pillars</div>
+                    <input value={(settings.strategy?.content_pillars||[]).join(", ")} onChange={e=>upd("strategy.content_pillars",e.target.value.split(",").map(s=>s.trim()).filter(Boolean))} style={inputStyle} placeholder="E.g. Education, Inspiration, Behind the scenes, Social proof..."/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Key messages</div>
+                    <textarea value={settings.strategy?.key_messages||""} onChange={e=>upd("strategy.key_messages",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Core messages to reinforce consistently across all content"/>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Preferred angles</div>
+                      <textarea value={settings.strategy?.preferred_angles||""} onChange={e=>upd("strategy.preferred_angles",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Angles that work well for this brand"/>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Avoid angles</div>
+                      <textarea value={settings.strategy?.avoid_angles||""} onChange={e=>upd("strategy.avoid_angles",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Angles to avoid — sensitive, off-brand, or risky"/>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Calls to action</div>
+                    <input value={settings.strategy?.calls_to_action||""} onChange={e=>upd("strategy.calls_to_action",e.target.value)} style={inputStyle} placeholder="E.g. Book a call, Visit the link, Download the guide..."/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Claims to handle carefully</div>
+                    <textarea value={settings.strategy?.claims_to_use_carefully||""} onChange={e=>upd("strategy.claims_to_use_carefully",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="ROI claims, guarantees, testimonials, before/after comparisons..."/>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Compliance sensitivities</div>
+                    <textarea value={settings.strategy?.compliance_sensitivities||""} onChange={e=>upd("strategy.compliance_sensitivities",e.target.value)} rows={2} style={{ ...inputStyle, resize:"vertical" }} placeholder="Regulated categories, platform restrictions, legal/regulatory notes..."/>
+                  </div>
+                </div>
+              </div>
+
+              {/* Assistant entry point */}
+              <button
+                onClick={()=>openAssistant(buildAgentContext({
+                  workspace_id:WORKSPACE_ID, brand_profile_id:BRAND_PROFILE_ID,
+                  source_view:"settings", source_component:"content_strategy", source_entity_type:"brand_profile",
+                  task_type:"suggest_content_pillars",
+                  brand_snapshot:{ name:settings.brand?.name, content_type:settings.brand?.content_type, content_goals:settings.strategy?.content_goals },
+                  suggested_actions:[
+                    {id:"suggest_content_pillars",label:"Suggest content pillars"},
+                    {id:"suggest_campaign_ideas",label:"Suggest campaign ideas"},
+                    {id:"suggest_content_ideas",label:"Suggest content ideas"},
+                    {id:"identify_risky_claims",label:"Identify risky claims in this strategy"},
+                  ],
+                }))}
+                style={{ alignSelf:"flex-start", padding:"6px 12px", borderRadius:7, fontSize:11, fontWeight:500, background:"transparent", color:"var(--t3)", border:"0.5px solid var(--border)", cursor:"pointer" }}
+              >
+                Ask assistant about this strategy
+              </button>
+
+              <div style={{ borderTop:"0.5px solid var(--border2)", paddingTop:4 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:14 }}>Publishing rhythm</div>
+              </div>
+
               <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
                 Set your publishing rhythm and editorial defaults. Programme weights (how often each format appears) are configured in <button onClick={()=>setSection("programmes")} style={{ fontSize:12, color:"var(--t1)", background:"none", border:"none", cursor:"pointer", textDecoration:"underline", padding:0 }}>Programmes</button>.
               </div>
@@ -2150,69 +2296,21 @@ ${fileText.slice(0,3000)}` : text };
           {section==="programmes" && (
             <div>
               <div style={{ fontSize:12, color:"var(--t3)", marginBottom:14, lineHeight:1.6 }}>
-                Programmes define your content formats — name, role, cadence weight, and angle suggestions. The auto-fill and intelligence layer use these to plan and score content.
+                Programmes are recurring content series — editorial lanes that give your content strategy structure and cadence. Each programme has a role, weight, and angle focus. Use the assistant to brainstorm new ones.
               </div>
 
-              {/* AI audit */}
-              <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-                <button onClick={()=>{suggestProgrammes();runStratAudit();}} disabled={progRunning||stratRunning} style={{ padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                  {progRunning||stratRunning?"Analysing...":"AI audit & suggest"}
-                </button>
-              </div>
-
-              {/* AI suggested programmes */}
-              {progAudit && Array.isArray(progAudit) && progAudit.length>0 && (
-                <div style={{ padding:"12px 14px", borderRadius:9, background:"rgba(196,154,60,0.06)", border:"1px solid rgba(196,154,60,0.2)", marginBottom:16 }}>
-                  <div style={{ fontSize:11, fontWeight:600, color:"#C49A3C", marginBottom:10 }}>⚡ AI suggested programmes</div>
-                  {progAudit.map((p,i)=>(
-                    <div key={i} style={{ marginBottom:10, borderRadius:9, border:"0.5px solid var(--border)", overflow:"hidden", borderLeft:`3px solid ${p.color||"var(--border)"}` }}>
-                      <div style={{ padding:"12px 14px", background:"var(--fill2)" }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:13, fontWeight:500, color:"var(--t1)", marginBottom:3 }}>{p.name}</div>
-                            <div style={{ display:"flex", gap:8, marginBottom:6 }}>
-                              <span style={{ fontSize:11, color:"var(--t3)" }}>{p.role}</span>
-                              <span style={{ fontSize:11, color:"var(--t3)" }}>·</span>
-                              <span style={{ fontSize:11, color:"var(--t3)" }}>{p.weight}% of slots</span>
-                            </div>
-                            <div style={{ fontSize:12, color:"var(--t2)", lineHeight:1.5 }}>{p.rationale}</div>
-                          </div>
-                          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                            <button onClick={()=>{ addProgramme({id:crypto.randomUUID(),...p,angle_suggestions:p.angle_suggestions||[],custom_fields:[]}); setProgAudit(a=>a.filter((_,j)=>j!==i)); }} style={{ padding:"5px 12px", borderRadius:6, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
-                              Add
-                            </button>
-                            <button onClick={()=>setProgExpandIdx(i===progExpandIdx?null:i)} style={{ padding:"5px 10px", borderRadius:6, fontSize:12, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                              {i===progExpandIdx?"↑":"Discuss"}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      {i===progExpandIdx && (
-                        <ProgDiscuss programme={p} brandName={settings.brand.name}/>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Strategy audit result */}
-              {stratAudit && (
-                <div style={{ padding:"12px 14px", borderRadius:9, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:16, fontSize:12, color:"var(--t2)", lineHeight:1.7, whiteSpace:"pre-wrap" }}>
-                  {stratAudit}
-                  <div style={{ marginTop:10 }}>
-                    <textarea value={stratContext} onChange={e=>setStratContext(e.target.value)} placeholder="Add context for follow-up..." rows={2} style={{ width:"100%", padding:"7px 10px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", resize:"none", fontFamily:"inherit" }}/>
-                    <button onClick={runStratAudit} disabled={stratRunning} style={{ marginTop:6, padding:"5px 12px", borderRadius:6, fontSize:11, fontWeight:500, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", cursor:"pointer" }}>
-                      Re-audit with context
-                    </button>
+              {/* Empty state */}
+              {programmes.length === 0 && (
+                <div style={{ padding:"20px 16px", borderRadius:10, border:"1px dashed var(--border)", marginBottom:16, textAlign:"center" }}>
+                  <div style={{ fontSize:13, fontWeight:500, color:"var(--t2)", marginBottom:8 }}>No programmes yet</div>
+                  <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.6, marginBottom:14, maxWidth:340, margin:"0 auto 14px" }}>
+                    Examples: Product spotlight, Founder insights, Case studies, Educational tips, Industry commentary, Behind the scenes, Customer stories, Market insight
                   </div>
+                  <button onClick={()=>addProgramme()} style={{ padding:"7px 18px", borderRadius:7, fontSize:12, fontWeight:500, background:"var(--t1)", color:"var(--bg)", border:"none", cursor:"pointer" }}>
+                    Add first programme
+                  </button>
                 </div>
               )}
-
-              {/* Programme platform intelligence note */}
-              <div style={{ padding:"10px 12px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
-                <div style={{ width:8, height:8, borderRadius:"50%", background:"var(--t4)", flexShrink:0 }}/>
-                <div style={{ fontSize:11, color:"var(--t4)" }}>Platform benchmark suggestions unlock when 5+ clients + 50 videos per client in your vertical are active on Creative Engine.</div>
-              </div>
 
               {/* Programme cards */}
               {programmes.map((prog, i) => (
@@ -2228,56 +2326,63 @@ ${fileText.slice(0,3000)}` : text };
                     <select value={prog.role||"balanced"} onChange={e=>updProg(i,{...prog,role:e.target.value})} style={{ fontSize:11, padding:"3px 8px", borderRadius:5, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none" }}>
                       {ROLES.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
                     </select>
+                    <button onClick={()=>updProg(i,{...prog,active:prog.active===false})} title={prog.active===false?"Enable":"Disable"} style={{ fontSize:10, padding:"2px 7px", borderRadius:5, border:"0.5px solid var(--border)", background:prog.active===false?"var(--fill2)":"rgba(74,155,127,0.12)", color:prog.active===false?"var(--t4)":"#4A9B7F", cursor:"pointer", flexShrink:0 }}>
+                      {prog.active===false?"off":"on"}
+                    </button>
                     <button onClick={()=>delProg(i)} style={{ width:24, height:24, borderRadius:5, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                       <Trash2 size={12} color="var(--t4)"/>
                     </button>
                   </div>
 
                   {/* Body */}
-                  <div style={{ padding:"12px 14px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                    {/* Weight */}
-                    <div>
-                      <div style={{ fontSize:11, color:"var(--t3)", marginBottom:6 }}>Weekly slot share</div>
-                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-                        <input type="number" min="0" max="100" step="5" value={prog.weight||0}
-                          onChange={e=>updProg(i,{...prog,weight:Math.min(100,Math.max(0,parseInt(e.target.value)||0))})}
-                          style={{ width:48, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}/>
-                        <span style={{ fontSize:12, color:"var(--t3)" }}>%</span>
-                      </div>
-                      <div style={{ position:"relative", height:3, borderRadius:2, background:"var(--bg3)" }}>
-                        <div style={{ position:"absolute", left:0, top:0, height:"100%", width:`${prog.weight||0}%`, background:prog.color||"var(--t3)", borderRadius:2, transition:"width 0.15s" }}/>
-                        <input type="range" min="0" max="100" step="5" value={prog.weight||0}
-                          onChange={e=>updProg(i,{...prog,weight:parseInt(e.target.value)})}
-                          style={{ position:"absolute", inset:0, width:"100%", opacity:0, cursor:"pointer", height:"100%", margin:0 }}/>
-                      </div>
-                    </div>
-
-                    {/* Angle suggestions */}
-                    <div>
-                      <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Content angle suggestions</div>
-                      <input value={(prog.angle_suggestions||[]).join(", ")} onChange={e=>updProg(i,{...prog,angle_suggestions:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)})}
-                        style={{ width:"100%", padding:"6px 8px", borderRadius:6, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}
-                        placeholder="redemption, rivalry, legacy..."/>
-                    </div>
-
-                    {/* Custom fields */}
-                    <div style={{ gridColumn:"1/-1" }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                        <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Custom fields</div>
-                        <button onClick={()=>updProg(i,{...prog,custom_fields:[...(prog.custom_fields||[]),{key:"",value:""}]})} style={{ fontSize:10, color:"var(--t3)", background:"transparent", border:"none", cursor:"pointer", display:"flex", alignItems:"center", gap:3 }}>
-                          <Plus size={10}/> Add field
-                        </button>
-                      </div>
-                      {(prog.custom_fields||[]).length===0 && <div style={{ fontSize:11, color:"var(--t4)" }}>No custom fields — add any metadata specific to this programme.</div>}
-                      {(prog.custom_fields||[]).map((cf,fi)=>(
-                        <div key={fi} style={{ display:"flex", gap:6, marginBottom:4, alignItems:"center" }}>
-                          <input value={cf.key} onChange={e=>{ const cfs=[...(prog.custom_fields||[])]; cfs[fi]={...cf,key:e.target.value}; updProg(i,{...prog,custom_fields:cfs}); }} placeholder="Field name" style={{ flex:1, padding:"5px 8px", borderRadius:5, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:11, outline:"none" }}/>
-                          <input value={cf.value} onChange={e=>{ const cfs=[...(prog.custom_fields||[])]; cfs[fi]={...cf,value:e.target.value}; updProg(i,{...prog,custom_fields:cfs}); }} placeholder="Default value" style={{ flex:1, padding:"5px 8px", borderRadius:5, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:11, outline:"none" }}/>
-                          <button onClick={()=>{ const cfs=(prog.custom_fields||[]).filter((_,j)=>j!==fi); updProg(i,{...prog,custom_fields:cfs}); }} style={{ width:20, height:20, border:"none", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                            <X size={11} color="var(--t4)"/>
-                          </button>
+                  <div style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:12 }}>
+                    {/* Active + weight row */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div>
+                        <div style={{ fontSize:11, color:"var(--t3)", marginBottom:6 }}>Weekly slot share</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                          <input type="number" min="0" max="100" step="5" value={prog.weight||0}
+                            onChange={e=>updProg(i,{...prog,weight:Math.min(100,Math.max(0,parseInt(e.target.value)||0))})}
+                            style={{ width:48, padding:"4px 8px", borderRadius:6, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:13, outline:"none", textAlign:"center", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}/>
+                          <span style={{ fontSize:12, color:"var(--t3)" }}>%</span>
                         </div>
-                      ))}
+                        <div style={{ position:"relative", height:3, borderRadius:2, background:"var(--bg3)" }}>
+                          <div style={{ position:"absolute", left:0, top:0, height:"100%", width:`${prog.weight||0}%`, background:prog.color||"var(--t3)", borderRadius:2, transition:"width 0.15s" }}/>
+                          <input type="range" min="0" max="100" step="5" value={prog.weight||0}
+                            onChange={e=>updProg(i,{...prog,weight:parseInt(e.target.value)})}
+                            style={{ position:"absolute", inset:0, width:"100%", opacity:0, cursor:"pointer", height:"100%", margin:0 }}/>
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize:11, color:"var(--t3)", marginBottom:6 }}>Angle suggestions</div>
+                        <input value={(prog.angle_suggestions||[]).join(", ")} onChange={e=>updProg(i,{...prog,angle_suggestions:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)})}
+                          style={{ width:"100%", padding:"6px 8px", borderRadius:6, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}
+                          placeholder="product launch, founder story, how-to..."/>
+                      </div>
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--t3)", marginBottom:4 }}>Description</div>
+                      <textarea value={prog.description||""} onChange={e=>updProg(i,{...prog,description:e.target.value})} rows={2}
+                        style={{ width:"100%", padding:"6px 8px", borderRadius:6, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none", resize:"vertical", fontFamily:"inherit" }}
+                        placeholder="What kind of content lives in this programme? Who is it for?"/>
+                    </div>
+
+                    {/* Cadence + platforms */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      <div>
+                        <div style={{ fontSize:11, color:"var(--t3)", marginBottom:4 }}>Cadence</div>
+                        <input value={prog.cadence||""} onChange={e=>updProg(i,{...prog,cadence:e.target.value})}
+                          style={{ width:"100%", padding:"6px 8px", borderRadius:6, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}
+                          placeholder="Weekly, bi-weekly, monthly..."/>
+                      </div>
+                      <div>
+                        <div style={{ fontSize:11, color:"var(--t3)", marginBottom:4 }}>Platforms</div>
+                        <input value={(prog.platforms||[]).join(", ")} onChange={e=>updProg(i,{...prog,platforms:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)})}
+                          style={{ width:"100%", padding:"6px 8px", borderRadius:6, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", fontSize:12, outline:"none" }}
+                          placeholder="Instagram, LinkedIn, YouTube..."/>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -46,8 +46,13 @@ Content template:
 - workflow_steps: ${(template.workflow_steps || []).join(" > ") || "(default)"}` : "";
   const voice = brand_config?.voice ? `\nBrand voice: ${brand_config.voice}.` : "";
   const avoid = brand_config?.avoid ? `\nAvoid: ${brand_config.avoid}.` : "";
+  const audience = brand_config?.target_audience ? `\nTarget audience: ${brand_config.target_audience}.` : "";
+  const pillars = brand_config?.content_pillars?.length ? `\nContent pillars: ${brand_config.content_pillars.join(", ")}.` : "";
+  const preferred = brand_config?.preferred_angles ? `\nPreferred angles: ${brand_config.preferred_angles}.` : "";
+  const avoidAngles = brand_config?.avoid_angles ? `\nAvoid these angles: ${brand_config.avoid_angles}.` : "";
+  const goals = brand_config?.content_goals ? `\nContent goals: ${brand_config.content_goals}.` : "";
 
-  return `You are a content ideation engine for "${brandName}", a ${contentType} content brand. Find ${count} distinct content ideas that fit this brand and the selected template.${voice}${avoid}
+  return `You are a content ideation engine for "${brandName}", a ${contentType} content brand. Find ${count} distinct content ideas that fit this brand and the selected template.${voice}${avoid}${audience}${pillars}${preferred}${avoidAngles}${goals}
 ${templateBlock}
 
 Return JSON objects with:

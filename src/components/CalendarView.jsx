@@ -1,7 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
 import { X, ChevronLeft, ChevronRight, Plus, RefreshCw, ShieldCheck, AlertCircle } from "lucide-react";
-import { ACCENT, FORMAT_MAP, FORMATS } from "@/lib/constants";
+import { FORMAT_MAP, FORMATS } from "@/lib/constants";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
 import { getBrandLanguages, getBrandProgrammeMap, getStoryScript } from "@/lib/brandConfig";
@@ -58,7 +58,7 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
         <span style={{ fontSize:11, color:"var(--t4)" }}>·</span>
         <span style={{ fontSize:11, color:"var(--t3)" }}>{ready.length} ready unscheduled</span>
         {FORMATS.filter(f=>f.key!=="special_edition").map(f => (
-          <span key={f.key} style={{ fontSize:10, padding:"1px 7px", borderRadius:99, background:`${f.color}15`, color:f.color, border:`1px solid ${f.color}25`, fontWeight:600 }}>
+          <span key={f.key} style={{ fontSize:10, padding:"1px 7px", borderRadius:99, background:"var(--fill2)", color:"var(--t3)", border:"1px solid var(--border)", fontWeight:600 }}>
             {f.label} {fmtCounts[f.key]||0}
           </span>
         ))}
@@ -76,6 +76,7 @@ function gateStatus(story) {
 }
 
 function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
+  const [expanded, setExpanded] = useState(false);
   const scoreColor = audit.score >= 85 ? "var(--success)" : audit.score >= 65 ? "var(--warning)" : "var(--error)";
   const issueRows = [
     { key:"missing", label:"Open slots", value:audit.missingSlots, tone:audit.missingSlots ? "var(--warning)" : "var(--success)" },
@@ -97,7 +98,7 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
           </div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-          <span style={{ fontSize:18, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:scoreColor }}>{audit.score}</span>
+          <span style={{ fontSize:12, fontWeight:650, fontFamily:"var(--font-mono)", color:"var(--t3)" }}>readiness {audit.score}</span>
           <button onClick={onSafeFill} disabled={!audit.missingSlots || !audit.safeReadyCount} style={{
             padding:"6px 12px", borderRadius:7, fontSize:12, fontWeight:600,
             background:audit.missingSlots&&audit.safeReadyCount?"var(--t1)":"var(--fill2)",
@@ -112,16 +113,20 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
         </div>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:8, marginBottom:12 }}>
-        {issueRows.map(row => (
-          <div key={row.key} style={{ padding:"9px 10px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:8, marginBottom:expanded ? 12 : 0 }}>
+        {issueRows.slice(0, expanded ? issueRows.length : 2).map(row => (
+          <div key={row.key} style={{ padding:"9px 10px", borderRadius:8, background:"transparent", border:"0.5px solid var(--border2)" }}>
             <div style={{ fontSize:10, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>{row.label}</div>
-            <div style={{ fontSize:17, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:row.tone }}>{row.value}</div>
+            <div style={{ fontSize:17, fontWeight:700, fontFamily:"var(--font-mono)", color:"var(--t1)" }}>{row.value}</div>
           </div>
         ))}
       </div>
 
-      {(audit.formatGaps.length || audit.qualityFlags.length || audit.sequenceIssues.length) ? (
+      {!expanded && (audit.formatGaps.length || audit.qualityFlags.length || audit.sequenceIssues.length) && (
+        <button onClick={() => setExpanded(true)} style={buttonStyle("ghost", { marginTop:10 })}>Show planner details</button>
+      )}
+
+      {expanded && (audit.formatGaps.length || audit.qualityFlags.length || audit.sequenceIssues.length) ? (
         <div style={{ display:"grid", gap:6 }}>
           {audit.formatGaps.slice(0,3).map(gap => (
             <div key={gap.format} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"var(--t3)" }}>
@@ -143,7 +148,7 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
           ))}
         </div>
       ) : (
-        <div style={{ fontSize:11, color:"var(--success)" }}>Week looks balanced against current cadence, quality, and sequence rules.</div>
+        expanded && <div style={{ fontSize:11, color:"var(--t3)" }}>Week looks balanced against current cadence, quality, and sequence rules.</div>
       )}
     </Panel>
   );
@@ -691,9 +696,9 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
                       }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
-                            {fmtObj && <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:`${fmtObj.color}15`, color:fmtObj.color, border:`1px solid ${fmtObj.color}25` }}>{fmtObj.label}</span>}
+	                            {fmtObj && <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:"var(--fill2)", color:"var(--t3)", border:"1px solid var(--border)" }}>{fmtObj.label}</span>}
                             <span style={{ fontSize:9, color:"var(--t4)" }}>·</span>
-                            <span style={{ fontSize:10, color:ACCENT[s.archetype]||"var(--t3)", fontWeight:500 }}>{s.archetype}</span>
+	                            <span style={{ fontSize:10, color:"var(--t3)", fontWeight:500 }}>{s.archetype}</span>
                             {s.platform_target && <span style={{ fontSize:9, color:"var(--t4)", marginLeft:2 }}>{s.platform_target}</span>}
                           </div>
                           <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
@@ -754,8 +759,8 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
                             <div style={{ width:3, height:32, borderRadius:2, background:ac, flexShrink:0 }}/>
                             <div style={{ flex:1, minWidth:0 }}>
                               <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:1 }}>
-                                {fmtObj && <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:`${fmtObj.color}15`, color:fmtObj.color }}>{fmtObj.label}</span>}
-                                <span style={{ fontSize:10, color:ACCENT[s.archetype]||"var(--t3)" }}>{s.archetype}</span>
+                                {fmtObj && <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, background:"var(--fill2)", color:"var(--t3)" }}>{fmtObj.label}</span>}
+                                <span style={{ fontSize:10, color:"var(--t3)" }}>{s.archetype}</span>
                                 {i===0 && <span style={{ fontSize:9, color:"var(--success)", fontWeight:600 }}>· Suggested</span>}
                               </div>
                               <div style={{ fontSize:12, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
@@ -806,7 +811,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
               {FORMATS.filter(f=>f.key!=="special_edition").map(f => {
                 const count = ready.filter(s=>s.format===f.key).length;
                 return (
-                  <span key={f.key} style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:`${f.color}15`, color:f.color, border:`1px solid ${f.color}25`, fontWeight:600 }}>
+	                  <span key={f.key} style={{ fontSize:11, padding:"3px 10px", borderRadius:99, background:"var(--fill2)", color:"var(--t3)", border:"1px solid var(--border)", fontWeight:600 }}>
                     {f.label} · {count}
                   </span>
                 );

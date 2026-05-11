@@ -66,7 +66,7 @@ export function SectionHeader({ title, description, meta, action }) {
 
 export function Panel({ children, style }) {
   return (
-    <div style={{ padding: "var(--ce-card-padding)", borderRadius: "var(--ce-radius)", background: "var(--bg2)", border: "0.5px solid var(--border)", ...style }}>
+    <div style={{ padding: "var(--ce-card-padding)", borderRadius: "var(--ce-radius)", background: "var(--bg2)", border: "0.5px solid var(--border2)", ...style }}>
       {children}
     </div>
   );
@@ -90,7 +90,7 @@ export function EmptyState({ title, description, action, actionLabel, meta, styl
 export function Pill({ children, tone = "neutral", active = false, style }) {
   const tones = {
     neutral: { background: active ? "var(--t1)" : "var(--fill2)", color: active ? "var(--bg)" : "var(--t3)", border: active ? "0.5px solid var(--t1)" : "0.5px solid var(--border)" },
-    success: { background: "var(--success-bg)", color: "var(--success)", border: "0.5px solid rgba(74,155,127,0.24)" },
+    success: { background: "var(--fill2)", color: "var(--t2)", border: "0.5px solid var(--border)" },
     warning: { background: "var(--warning-bg)", color: "var(--warning)", border: "0.5px solid rgba(196,154,60,0.30)" },
     error: { background: "var(--error-bg)", color: "var(--error)", border: "0.5px solid var(--error-border)" },
   };
@@ -132,7 +132,7 @@ export function InlineTextInput({ value, placeholder, onSave, multiline = true, 
 
 export function StatCard({ label, value, tone = "var(--t1)", suffix }) {
   return (
-    <div style={{ padding: "10px 12px", borderRadius: 8, background: "var(--fill2)", border: "0.5px solid var(--border)" }}>
+    <div style={{ padding: "10px 12px", borderRadius: 8, background: "transparent", border: "0.5px solid var(--border2)" }}>
       <div style={{ ...labelStyle, marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "var(--font-mono)", color: tone, letterSpacing: 0 }}>
         {value}{suffix && <span style={{ fontSize: 11, color: "var(--t3)", fontWeight: 400 }}>{suffix}</span>}

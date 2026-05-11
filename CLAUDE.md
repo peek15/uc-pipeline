@@ -228,6 +228,28 @@ scheduling, provider operations, quality gates, and analytics.
 - Source/work review should stay on demand through review/source affordances; never fake sources or work traces.
 - AI help must route through the existing assistant panel and structured context. Do not create new visible agents or scattered AI buttons.
 
+## Sprint 10A Sobriety Rules
+- Creative Engine UI should be more sober than colorful: default surfaces are neutral, with color reserved for active navigation, primary action, real warnings, approval/compliance state, focus, and rare emphasis.
+- Default non-critical pills, tags, programme labels, and metadata should be neutral. Do not color every programme, tag, status, or metadata item by default.
+- Home is a calm cockpit for next action, readiness, and attention, not a dashboard or analytics surface.
+- Strategy is the primary editable surface for Brand Profile, Content Strategy, Programmes, and Risk/Claims Guidance.
+- Settings is admin/technical configuration. If strategy mirrors remain there, present them as compatibility/admin fallback, not the main strategy workflow.
+- Create may use subtle readiness/progress bars only for real production completeness. Progress bars remain avoided elsewhere except true file uploads with real percentage.
+- Calendar should be planning/readiness with secondary or collapsed audit detail, not an audit board.
+- Analyze remains Workspace signals and early deterministic transparency, not advanced analytics.
+- Avoid UC-specific visual language in generic UI.
+- Do not add new AI buttons or a second assistant surface.
+
+## Sprint 10B Pipeline Display Preference
+- Pipeline display density is an Appearance preference, not a brand/workspace strategy setting.
+- Allowed modes are `essential` and `detailed`; default is `essential`.
+- Persist the preference as a user/interface setting. Use `ce_pipeline_display_mode` localStorage unless a clean user preferences system exists.
+- Do not store Pipeline display density in `brand_profiles`, workspace settings, or strategy JSON.
+- Essential mode hides detailed AI scoring, reach/community signals, tags, and internal metadata from the default Pipeline row.
+- Detailed mode may show AI scores and useful metadata, but must remain visually sober.
+- This setting must never change scoring, ranking, generation, API calls, database fields, or saved content data.
+- Keep progress/readiness bars only where they represent real readiness, especially in Create.
+
 ## Agent Panel
 - Component: `src/components/AgentPanel.jsx`
 - API route: `src/app/api/agent/route.js`

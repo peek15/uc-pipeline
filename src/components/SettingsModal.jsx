@@ -884,12 +884,12 @@ function BillingSection({ billing, billingLoading, billingAction, billingMsg, wo
 
 // ── Section nav ──
 const SECTIONS = [
-  { key:"brand",       label:"Brand Profile" },
-  { key:"strategy",    label:"Content Strategy" },
-  { key:"programmes",  label:"Programmes" },
+  { key:"workspace",   label:"Workspace" },
+  { key:"brand",       label:"Brand profile mirror" },
+  { key:"strategy",    label:"Strategy mirror" },
+  { key:"programmes",  label:"Programmes mirror" },
   { key:"rules",       label:"Rules & Alerts" },
   { key:"appearance",  label:"Appearance" },
-  { key:"workspace",   label:"Workspace" },
   { key:"privacy",     label:"Privacy & Data" },
   { key:"providers",   label:"Providers" },
   { key:"intelligence",label:"Intelligence" },
@@ -1150,10 +1150,10 @@ function WorkspaceMembersPanel({ workspaceId, appName }) {
   );
 }
 
-export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant, onRunPredictions, runningPredictions=false, onRunOnboarding }) {
+export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant, onRunPredictions, runningPredictions=false, onRunOnboarding, pipelineDisplayMode = "essential", onPipelineDisplayModeChange }) {
   const VERSION_NUM = version;
   const { openAssistant } = useAssistant();
-  const [section,  setSection]  = usePersistentState("settings_section", "brand");
+  const [section,  setSection]  = usePersistentState("settings_section", "workspace");
   const [settings, setSettings] = useState(mergeSettings(initialSettings));
   const [saved,    setSaved]    = useState(false);
   const [saving,   setSaving]   = useState(false);
@@ -1912,10 +1912,10 @@ ${fileText.slice(0,3000)}` : text };
 
         {/* ── Left nav ── */}
         <div style={{ width:200, borderRight:"1px solid var(--border2)", padding:"20px 0", flexShrink:0, display:"flex", flexDirection:"column" }}>
-          <div style={{ padding:"0 16px 16px", borderBottom:"1px solid var(--border2)", marginBottom:8 }}>
-            <div style={{ fontSize:13, fontWeight:600, color:"var(--t1)" }}>Settings</div>
-            <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>{settings.brand.name}</div>
-          </div>
+	          <div style={{ padding:"0 16px 16px", borderBottom:"1px solid var(--border2)", marginBottom:8 }}>
+	            <div style={{ fontSize:13, fontWeight:600, color:"var(--t1)" }}>Settings</div>
+	            <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>Admin and technical configuration</div>
+	          </div>
           {SECTIONS.map(s=>(
             <button key={s.key} onClick={()=>setSection(s.key)} style={{
               display:"flex", alignItems:"center", justifyContent:"space-between",
@@ -1985,8 +1985,8 @@ ${fileText.slice(0,3000)}` : text };
             <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
 
               {/* Onboarding */}
-              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, marginBottom:16 }}>
-                Define your brand voice, content type, and goals. The AI uses this to generate scripts, score stories, and make recommendations that match your brand.
+	              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, marginBottom:16 }}>
+	                Strategy is the primary place to edit brand profile details. This settings mirror remains for compatibility and technical fallback.
               </div>
               {obStep==="chat" ? (
                 <div style={{ borderRadius:10, border:"1px solid var(--border)", overflow:"hidden" }}>
@@ -2196,7 +2196,8 @@ ${fileText.slice(0,3000)}` : text };
 
               {/* Content strategy fields */}
               <div>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:14 }}>Content strategy</div>
+	                <div style={{ fontSize:11, fontWeight:600, color:"var(--t4)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 }}>Content strategy mirror</div>
+	                <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.5, marginBottom:14 }}>Edit day-to-day strategic direction from the Strategy tab. Settings keeps these fields available as an admin fallback.</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
                   <div>
                     <div style={{ fontSize:11, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>Content goals</div>
@@ -2357,7 +2358,7 @@ ${fileText.slice(0,3000)}` : text };
           {section==="programmes" && (
             <div>
               <div style={{ fontSize:12, color:"var(--t3)", marginBottom:14, lineHeight:1.6 }}>
-                Programmes are recurring content series — editorial lanes that give your content strategy structure and cadence. Each programme has a role, weight, and angle focus. Use the assistant to brainstorm new ones.
+	                Programmes are now primarily edited from Strategy. This settings mirror remains available for compatibility, template configuration, and admin fallback.
               </div>
 
               {/* Empty state */}
@@ -2791,9 +2792,9 @@ ${fileText.slice(0,3000)}` : text };
                 </div>
               </div>
 
-              {/* Density */}
-              <div>
-                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Density</div>
+	              {/* Density */}
+	              <div>
+	                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Density</div>
                 <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Affects card spacing and padding throughout the app.</div>
                 <div style={{ display:"flex", gap:8 }}>
                   {[{key:"compact",label:"Compact",hint:"Smaller cards, more stories visible"},{key:"comfortable",label:"Comfortable",hint:"Balanced (default)"},{key:"spacious",label:"Spacious",hint:"More breathing room"}].map(d=>(
@@ -2802,10 +2803,31 @@ ${fileText.slice(0,3000)}` : text };
                       <div style={{ fontSize:10, color:(settings.appearance?.density||"comfortable")===d.key?"rgba(255,255,255,0.6)":"var(--t3)", marginTop:2 }}>{d.hint}</div>
                     </button>
                   ))}
-                </div>
-              </div>
+	                </div>
+	              </div>
 
-              {/* Default tab */}
+	              {/* Pipeline display */}
+	              <div>
+	                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Pipeline display</div>
+	                <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Choose how much scoring and metadata Creative Engine shows in Pipeline.</div>
+	                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8 }}>
+	                  {[
+	                    { key:"essential", label:"Essential", hint:"Shows status, next action, and readiness." },
+	                    { key:"detailed", label:"Detailed", hint:"Adds AI scores, reach/community signals, tags, and scoring details." },
+	                  ].map(option => {
+	                    const selected = (pipelineDisplayMode || "essential") === option.key;
+	                    return (
+	                      <button key={option.key} onClick={() => onPipelineDisplayModeChange?.(option.key)} style={{ padding:"10px 12px", borderRadius:9, border:`0.5px solid ${selected ? "var(--t1)" : "var(--border)"}`, background:selected ? "var(--t1)" : "var(--fill2)", cursor:"pointer", textAlign:"left" }}>
+	                        <div style={{ fontSize:12, fontWeight:600, color:selected ? "var(--bg)" : "var(--t1)" }}>{option.label}</div>
+	                        <div style={{ fontSize:10, color:selected ? "rgba(255,255,255,0.68)" : "var(--t3)", marginTop:2, lineHeight:1.4 }}>{option.hint}</div>
+	                      </button>
+	                    );
+	                  })}
+	                </div>
+	                <div style={{ fontSize:10, color:"var(--t4)", marginTop:8 }}>Saved on this device as an interface preference. It does not change scoring, ranking, generation, or brand strategy.</div>
+	              </div>
+
+	              {/* Default tab */}
               <div>
                 <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Default tab on load</div>
                 <select value={settings.appearance?.default_tab||"pipeline"} onChange={e=>upd("appearance.default_tab",e.target.value)} style={selStyle}>

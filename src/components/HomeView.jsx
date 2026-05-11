@@ -1,6 +1,6 @@
 "use client";
-import { ArrowRight, CheckCircle, FileText, Layers, Search, ShieldAlert, Target } from "lucide-react";
-import { EmptyState, PageHeader, Panel, Pill, SectionHeader, SourceReviewButton, StatCard, buttonStyle, labelStyle } from "@/components/OperationalUI";
+import { ArrowRight, CheckCircle, Circle, FileText, Layers, Search, ShieldAlert, Target } from "lucide-react";
+import { EmptyState, PageHeader, Panel, SectionHeader, SourceReviewButton, StatCard, buttonStyle } from "@/components/OperationalUI";
 import { getActiveProgrammes, getBrandName, getBrandProgrammes, getBrandTargetPlatforms } from "@/lib/brandConfig";
 
 function countWhere(stories, statuses) {
@@ -55,33 +55,34 @@ export default function HomeView({ stories = [], settings = null, onNavigate, on
     <div className="anim-fade">
       <PageHeader
         title="Workspace overview"
-        description="A calm cockpit for readiness, next actions, and operational signals. This is not an analytics dashboard."
+        description="A calm cockpit for readiness, next actions, and operational signals."
         meta={brandName}
       />
 
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1.4fr) minmax(260px,0.8fr)", gap:16, alignItems:"start" }}>
-        <Panel style={{ minHeight:174 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1.45fr) minmax(260px,0.75fr)", gap:18, alignItems:"start" }}>
+        <Panel style={{ minHeight:168, padding:"22px 24px" }}>
           <SectionHeader
             title="Next action"
             description={nextAction.desc}
             action={<button onClick={nextAction.action} style={buttonStyle("primary")}><ArrowRight size={13}/>{nextAction.label}</button>}
           />
-          <div style={{ fontSize:22, fontWeight:700, color:"var(--t1)", letterSpacing:0, marginTop:12 }}>{nextAction.title}</div>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:18 }}>
+          <div style={{ fontSize:24, fontWeight:700, color:"var(--t1)", letterSpacing:0, marginTop:16, maxWidth:620 }}>{nextAction.title}</div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,minmax(0,1fr))", gap:"7px 14px", marginTop:22, maxWidth:560 }}>
             {r.checks.map(check => (
-              <Pill key={check.label} tone={check.done ? "success" : "warning"}>{check.done ? "Ready" : "Needs attention"} · {check.label}</Pill>
+              <div key={check.label} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:check.done ? "var(--t2)" : "var(--t3)" }}>
+                {check.done ? <CheckCircle size={13} color="var(--t3)" /> : <Circle size={13} color="var(--t4)" />}
+                <span>{check.label}</span>
+              </div>
             ))}
           </div>
         </Panel>
 
-        <Panel>
+        <Panel style={{ padding:"18px 20px" }}>
           <SectionHeader title="Workspace readiness" meta={`${r.done}/${r.total}`} />
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             {r.checks.map(check => (
-              <div key={check.label} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:check.done?"var(--t2)":"var(--t3)" }}>
-                <span style={{ width:18, height:18, borderRadius:99, display:"inline-flex", alignItems:"center", justifyContent:"center", background:check.done?"var(--success-bg)":"var(--fill2)", color:check.done?"var(--success)":"var(--t4)", flexShrink:0 }}>
-                  {check.done ? <CheckCircle size={11}/> : "·"}
-                </span>
+              <div key={check.label} style={{ display:"flex", alignItems:"center", gap:9, fontSize:12, color:check.done?"var(--t2)":"var(--t3)" }}>
+                {check.done ? <CheckCircle size={13} color="var(--t3)" /> : <Circle size={13} color="var(--t4)" />}
                 <span>{check.label}</span>
               </div>
             ))}
@@ -91,8 +92,8 @@ export default function HomeView({ stories = [], settings = null, onNavigate, on
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4, minmax(0,1fr))", gap:10, marginTop:16 }}>
         <StatCard label="In progress" value={inProgress} />
-        <StatCard label="Needs approval" value={needsApproval} tone={needsApproval ? "var(--warning)" : "var(--t1)"} />
-        <StatCard label="Ready to export" value={readyToExport} tone={readyToExport ? "var(--success)" : "var(--t1)"} />
+        <StatCard label="Needs approval" value={needsApproval} />
+        <StatCard label="Ready to export" value={readyToExport} />
         <StatCard label="Published / logged" value={published} />
       </div>
 
@@ -104,11 +105,11 @@ export default function HomeView({ stories = [], settings = null, onNavigate, on
             meta={`${r.activeProgrammes.length} active`}
             action={<button onClick={() => onNavigate?.("strategy")} style={buttonStyle("ghost")}>Review</button>}
           />
-          {r.activeProgrammes.length ? (
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {r.activeProgrammes.slice(0,4).map(programme => (
-                <div key={programme.key} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderTop:"1px solid var(--border2)" }}>
-                  <span style={{ width:8, height:8, borderRadius:2, background:programme.color || "var(--accent)", flexShrink:0 }} />
+	          {r.activeProgrammes.length ? (
+	            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+	              {r.activeProgrammes.slice(0,4).map(programme => (
+	                <div key={programme.key} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 0", borderTop:"1px solid var(--border2)" }}>
+	                  <span style={{ width:5, height:5, borderRadius:99, background:"var(--t4)", flexShrink:0 }} />
                   <div style={{ minWidth:0, flex:1 }}>
                     <div style={{ fontSize:12, fontWeight:650, color:"var(--t1)" }}>{programme.label}</div>
                     <div style={{ fontSize:11, color:"var(--t3)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{programme.cadence || programme.desc || "Active programme"}</div>
@@ -142,7 +143,7 @@ export default function HomeView({ stories = [], settings = null, onNavigate, on
       </div>
 
       <Panel style={{ marginTop:16 }}>
-        <SectionHeader title="Recent outputs" action={<button onClick={() => onNavigate?.("pipeline")} style={buttonStyle("ghost")}>Open Pipeline</button>} />
+        <SectionHeader title="Recent work" action={<button onClick={() => onNavigate?.("pipeline")} style={buttonStyle("ghost")}>Open Pipeline</button>} />
         {recent.length ? (
           <div style={{ display:"grid", gap:7 }}>
             {recent.map(item => (
@@ -152,7 +153,7 @@ export default function HomeView({ stories = [], settings = null, onNavigate, on
                   <div style={{ fontSize:12, color:"var(--t1)", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.title}</div>
                   <div style={{ fontSize:11, color:"var(--t3)" }}>{item.status || "content item"}</div>
                 </div>
-                <Pill>{item.content_type || "content"}</Pill>
+                <span style={{ fontSize:11, color:"var(--t4)" }}>{item.content_type || "content"}</span>
               </div>
             ))}
           </div>

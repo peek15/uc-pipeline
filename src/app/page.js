@@ -27,7 +27,8 @@ import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.33.0";
+const VERSION = "3.35.0";
+const PIPELINE_DISPLAY_STORAGE_KEY = "ce_pipeline_display_mode";
 
 const PRIMARY_TABS = [
   { key: "home",       label: "Home",      Icon: HomeIcon },
@@ -56,6 +57,7 @@ export default function Home() {
   useEffect(() => { storiesRef.current = stories; }, [stories]);
   const [tab, setTab]                 = usePersistentState("tab", "home");
   const [createMode, setCreateMode]   = usePersistentState("create_mode", "write");
+  const [pipelineDisplayMode, setPipelineDisplayMode] = useState("essential");
   const [sidebarOpen, setSidebarOpen] = usePersistentState("sidebar_open", true);
   const [selected, setSelected]       = useState(null);
   const [loading, setLoading]         = useState(true);
@@ -89,6 +91,19 @@ export default function Home() {
     }
     if (params.get("settings") === "1") setShowSettings(true);
   }, [setTab]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PIPELINE_DISPLAY_STORAGE_KEY);
+      if (saved === "essential" || saved === "detailed") setPipelineDisplayMode(saved);
+    } catch {}
+  }, []);
+
+  const updatePipelineDisplayMode = useCallback((mode) => {
+    const next = mode === "detailed" ? "detailed" : "essential";
+    setPipelineDisplayMode(next);
+    try { localStorage.setItem(PIPELINE_DISPLAY_STORAGE_KEY, next); } catch {}
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -840,10 +855,20 @@ export default function Home() {
                 <HomeView stories={stories} settings={appSettings} tenant={activeTenant} onNavigate={setTab} onOpenSettings={() => setShowSettings(true)} onRunOnboarding={runOnboarding} />
               </div>
               <div style={{ display: tab==="strategy" ? "block" : "none" }}>
-                <StrategyView settings={appSettings} tenant={activeTenant} onOpenSettings={() => setShowSettings(true)} onRunOnboarding={runOnboarding} onOpenAssistant={openAssistant} />
+                <StrategyView
+                  settings={appSettings}
+                  tenant={activeTenant}
+                  onRunOnboarding={runOnboarding}
+                  onOpenAssistant={openAssistant}
+                  onSettingsChange={(s) => {
+                    setAppSettings(s);
+                    setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p));
+                    try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {}
+                  }}
+                />
               </div>
               <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
-                <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} campaigns={campaigns} />
+                <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} campaigns={campaigns} displayMode={pipelineDisplayMode} onDisplayModeChange={updatePipelineDisplayMode} />
               </div>
               <div style={{ display: tab==="research"   ? "block" : "none" }}>
                 <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} tenant={activeTenant} />
@@ -879,7 +904,7 @@ export default function Home() {
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} settings={appSettings} tenant={activeTenant} onOpenAssistant={openAssistant} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} onRunPredictions={runPredictions} runningPredictions={runningPredictions} onRunOnboarding={runOnboarding} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} onRunPredictions={runPredictions} runningPredictions={runningPredictions} onRunOnboarding={runOnboarding} pipelineDisplayMode={pipelineDisplayMode} onPipelineDisplayModeChange={updatePipelineDisplayMode} />
       <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
 
       {newBrand.show && (

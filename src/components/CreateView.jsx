@@ -9,7 +9,7 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/shortcuts";
 import { PageHeader, Panel, Pill, EmptyState, buttonStyle } from "@/components/OperationalUI";
 import AssetLibraryModal from "@/components/AssetLibraryModal";
-import { brandConfigForPrompt, getBrandLanguages, getBrandProgrammeMap, getContentTemplate, getContentTypeLabel, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
+import { brandConfigForPrompt, getBrandLanguages, getContentTemplate, getContentTypeLabel, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import {
   AssetMatchesSection,
@@ -156,11 +156,6 @@ function stepForMode(mode, current, steps = null) {
   const next = available.find(step => step.mode === mode) || available[0];
   if (next) return next.key;
   return current;
-}
-
-function programmeColor(story, settings) {
-  const programme = getBrandProgrammeMap(settings)[story?.format];
-  return programme?.color || "var(--border)";
 }
 
 function CampaignStrip({ story, campaigns, stories }) {
@@ -875,7 +870,6 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
               {filteredQueue.length ? filteredQueue.map(story => {
                 const isSelected = selected?.id === story.id;
                 const progress = createProgress(story, settings);
-                const ac = programmeColor(story, settings);
                 return (
                   <button key={story.id} onClick={() => setSelectedId(story.id)}
                     style={{
@@ -885,7 +879,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                       padding: "10px 12px",
                       borderRadius: 8,
                       border: "1px solid transparent",
-                      borderLeft: `3px solid ${ac}`,
+                      borderLeft: isSelected ? "3px solid var(--t2)" : "3px solid var(--border2)",
                       background: isSelected ? "var(--bg)" : "transparent",
                       boxShadow: isSelected ? "var(--shadow-sm)" : "none",
                       cursor: "pointer",
@@ -893,14 +887,14 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     <div style={{ fontSize: 13, fontWeight: isSelected ? 700 : 600, color: "var(--t1)", lineHeight: 1.3, marginBottom: 5 }}>{story.title || "(untitled)"}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--t3)", fontSize: 11, marginBottom: 8, flexWrap: "wrap" }}>
                       <span>{getContentTypeLabel(story, settings)}</span>
-                      {story.archetype && <><span style={{ color: "var(--t4)" }}>·</span><span>{story.archetype}</span></>}
+                      {story.archetype && <><span style={{ color: "var(--t4)" }}>·</span><span>Angle: {story.archetype}</span></>}
                       {story.era && <><span style={{ color: "var(--t4)" }}>·</span><span>{story.era}</span></>}
                       <span style={{ color: "var(--t4)" }}>·</span>
                       <span>{nextAction(story, settings)}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ flex: 1, height: 4, borderRadius: 999, overflow: "hidden", background: "var(--bg3)" }}>
-                        <div style={{ width: `${progress.percent}%`, height: "100%", background: progress.done >= 5 ? "var(--success)" : "var(--t2)" }} />
+                      <div style={{ flex: 1, height: 3, borderRadius: 999, overflow: "hidden", background: "var(--bg3)" }}>
+                        <div style={{ width: `${progress.percent}%`, height: "100%", background: "var(--t2)" }} />
                       </div>
                       <span style={{ fontSize: 10, color: progress.done >= 5 ? "var(--success)" : "var(--t3)", fontFamily: "var(--font-mono)" }}>{progress.done}/{progress.total}</span>
                     </div>
@@ -927,8 +921,8 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     </div>
                     <Pill active>{nextAction(selected, settings)}</Pill>
                   </div>
-                  <div style={{ height: 4, borderRadius: 999, background: "var(--bg3)", overflow: "hidden", margin: "12px 0" }}>
-                    <div style={{ width: `${selectedProgress.percent}%`, height: "100%", background: selectedProgress.done >= selectedProgress.total ? "var(--success)" : "var(--t2)" }} />
+	                  <div style={{ height: 3, borderRadius: 999, background: "var(--bg3)", overflow: "hidden", margin: "12px 0" }}>
+	                    <div style={{ width: `${selectedProgress.percent}%`, height: "100%", background: "var(--t2)" }} />
                   </div>
                   <CampaignStrip story={selected} campaigns={campaigns} stories={stories} />
                   <TemplateStrip story={selected} settings={settings} />

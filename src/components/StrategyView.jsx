@@ -1,7 +1,10 @@
 "use client";
-import { Bot, Edit3, RefreshCw, ShieldAlert, Target } from "lucide-react";
-import { EmptyState, PageHeader, Panel, Pill, SectionHeader, SourceReviewButton, buttonStyle, labelStyle } from "@/components/OperationalUI";
+import { useEffect, useMemo, useState } from "react";
+import { Bot, Check, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { EmptyState, PageHeader, Panel, SectionHeader, SourceReviewButton, buttonStyle, labelStyle } from "@/components/OperationalUI";
 import { buildAgentContext, buildBrandSnapshot } from "@/lib/agent/agentContext";
+import { supabase } from "@/lib/db";
+import { tenantStorageKey } from "@/lib/brand";
 import {
   getActiveProgrammes,
   getBrandAvoid,
@@ -17,49 +20,192 @@ import {
   getBrandVoice,
 } from "@/lib/brandConfig";
 
-function asList(value) {
+function cloneSettings(settings) {
+  return JSON.parse(JSON.stringify(settings || { brand: {}, strategy: {} }));
+}
+
+function asArray(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (!value) return [];
   return String(value).split(/\n|,/).map(v => v.trim()).filter(Boolean);
 }
 
-function SummaryField({ label, value, fallback, action, actionLabel }) {
-  const hasValue = Array.isArray(value) ? value.length > 0 : Boolean(value);
+function setPath(obj, path, value) {
+  const parts = path.split(".");
+  const next = cloneSettings(obj);
+  let cursor = next;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    cursor[key] = cursor[key] && typeof cursor[key] === "object" ? cursor[key] : {};
+    cursor = cursor[key];
+  }
+  cursor[parts[parts.length - 1]] = value;
+  return next;
+}
+
+function Field({ label, children }) {
   return (
-    <div style={{ padding:"10px 0", borderTop:"1px solid var(--border2)" }}>
-      <div style={{ ...labelStyle, marginBottom:4 }}>{label}</div>
-      {hasValue ? (
-        Array.isArray(value) ? (
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{value.map(item => <Pill key={item}>{item}</Pill>)}</div>
-        ) : (
-          <div style={{ fontSize:12, color:"var(--t2)", lineHeight:1.55 }}>{value}</div>
-        )
-      ) : (
-        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center" }}>
-          <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.45 }}>{fallback}</div>
-          {action && actionLabel && <button onClick={action} style={buttonStyle("ghost", { flexShrink:0 })}>{actionLabel}</button>}
-        </div>
-      )}
+    <label style={{ display:"block" }}>
+      <div style={{ ...labelStyle, marginBottom:5 }}>{label}</div>
+      {children}
+    </label>
+  );
+}
+
+const inputStyle = {
+  width:"100%",
+  padding:"8px 10px",
+  borderRadius:7,
+  background:"var(--fill2)",
+  border:"0.5px solid var(--border)",
+  color:"var(--t1)",
+  fontSize:13,
+  outline:"none",
+  fontFamily:"inherit",
+  boxSizing:"border-box",
+};
+
+function TextInput({ value, onChange, placeholder }) {
+  return <input value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={inputStyle} />;
+}
+
+function TextArea({ value, onChange, placeholder, rows = 3 }) {
+  return <textarea value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows} style={{ ...inputStyle, resize:"vertical", lineHeight:1.55 }} />;
+}
+
+function CsvInput({ value, onChange, placeholder }) {
+  return <TextInput value={asArray(value).join(", ")} onChange={v => onChange(asArray(v))} placeholder={placeholder} />;
+}
+
+function SaveBar({ dirty, saving, saved, onSave, onReset }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, padding:"10px 12px", borderRadius:9, background:"var(--bg2)", border:"0.5px solid var(--border2)", marginBottom:16 }}>
+      <div style={{ fontSize:12, color:dirty ? "var(--t2)" : "var(--t3)" }}>
+        {saved ? "Strategy saved." : dirty ? "Unsaved strategy edits." : "Strategy is up to date."}
+      </div>
+      <div style={{ display:"flex", gap:8 }}>
+        {dirty && <button onClick={onReset} style={buttonStyle("ghost")}>Discard</button>}
+        <button onClick={onSave} disabled={!dirty || saving} style={buttonStyle("primary", { opacity:!dirty || saving ? 0.5 : 1, cursor:!dirty || saving ? "not-allowed" : "pointer" })}>
+          <Check size={13}/>{saving ? "Saving..." : "Save strategy"}
+        </button>
+      </div>
     </div>
   );
 }
 
-export default function StrategyView({ settings = null, tenant = null, onOpenSettings, onRunOnboarding, onOpenAssistant }) {
-  const brandName = getBrandName(settings);
-  const voice = getBrandVoice(settings);
-  const avoid = getBrandAvoid(settings);
-  const industry = getBrandIndustry(settings);
-  const audience = getBrandTargetAudience(settings);
-  const goals = getBrandContentGoals(settings);
-  const pillars = getBrandContentPillars(settings);
-  const platforms = getBrandTargetPlatforms(settings);
-  const avoidAngles = asList(getBrandAvoidAngles(settings));
-  const sensitivities = asList(getBrandComplianceSensitivities(settings));
-  const claims = asList(settings?.strategy?.claims_to_use_carefully);
-  const programmes = getBrandProgrammes(settings);
-  const activeProgrammes = getActiveProgrammes(settings);
-  const hasBrandProfile = Boolean(brandName || voice || audience || industry);
-  const hasStrategy = Boolean(goals || pillars.length || platforms.length);
+function ProgrammeEditor({ programmes, onChange }) {
+  const updateProgramme = (index, patch) => {
+    onChange(programmes.map((programme, i) => i === index ? { ...programme, ...patch } : programme));
+  };
+  const addProgramme = () => {
+    onChange([
+      ...programmes,
+      {
+        key: `programme_${Date.now()}`,
+        label: "New programme",
+        role: "",
+        cadence: "",
+        desc: "",
+        platforms: [],
+        active: true,
+      },
+    ]);
+  };
+  const removeProgramme = (index) => onChange(programmes.filter((_, i) => i !== index));
+
+  return (
+    <div style={{ display:"grid", gap:10 }}>
+      {programmes.map((programme, index) => (
+        <div key={programme.key || index} style={{ padding:"12px 0", borderTop:"1px solid var(--border2)" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"minmax(160px,1fr) minmax(130px,0.7fr) auto", gap:8, alignItems:"start" }}>
+            <Field label="Name">
+              <TextInput value={programme.label || programme.name || ""} onChange={value => updateProgramme(index, { label:value, name:value })} placeholder="Product education" />
+            </Field>
+            <Field label="Cadence">
+              <TextInput value={programme.cadence || ""} onChange={value => updateProgramme(index, { cadence:value })} placeholder="Weekly" />
+            </Field>
+            <button onClick={() => removeProgramme(index)} style={buttonStyle("ghost", { marginTop:20, padding:"7px 9px" })} aria-label="Remove programme">
+              <Trash2 size={13}/>
+            </button>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginTop:8 }}>
+            <Field label="Goal / role">
+              <TextInput value={programme.role || programme.goal || ""} onChange={value => updateProgramme(index, { role:value, goal:value })} placeholder="Build trust with high-intent buyers" />
+            </Field>
+            <Field label="Platforms">
+              <CsvInput value={programme.platforms || []} onChange={value => updateProgramme(index, { platforms:value })} placeholder="LinkedIn, YouTube" />
+            </Field>
+          </div>
+          <div style={{ marginTop:8 }}>
+            <Field label="Description">
+              <TextArea value={programme.desc || programme.description || ""} onChange={value => updateProgramme(index, { desc:value, description:value })} placeholder="What kind of content belongs in this programme?" rows={2} />
+            </Field>
+          </div>
+          <label style={{ display:"inline-flex", alignItems:"center", gap:8, marginTop:8, fontSize:12, color:"var(--t3)" }}>
+            <input type="checkbox" checked={programme.active !== false} onChange={e => updateProgramme(index, { active:e.target.checked })} />
+            Active programme
+          </label>
+        </div>
+      ))}
+      <button onClick={addProgramme} style={buttonStyle("secondary", { justifySelf:"start" })}><Plus size={13}/>Add programme</button>
+    </div>
+  );
+}
+
+export default function StrategyView({ settings = null, tenant = null, onRunOnboarding, onOpenAssistant, onSettingsChange }) {
+  const [draft, setDraft] = useState(() => cloneSettings(settings));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setDraft(cloneSettings(settings));
+  }, [settings]);
+
+  const brandName = getBrandName(draft);
+  const voice = getBrandVoice(draft);
+  const avoid = getBrandAvoid(draft);
+  const industry = getBrandIndustry(draft);
+  const audience = getBrandTargetAudience(draft);
+  const goals = getBrandContentGoals(draft);
+  const pillars = getBrandContentPillars(draft);
+  const platforms = getBrandTargetPlatforms(draft);
+  const avoidAngles = asArray(getBrandAvoidAngles(draft));
+  const sensitivities = asArray(getBrandComplianceSensitivities(draft));
+  const claims = draft?.strategy?.claims_to_use_carefully || "";
+  const programmes = draft?.strategy?.programmes || [];
+  const activeProgrammes = getActiveProgrammes(draft);
+  const dirty = useMemo(() => JSON.stringify(draft || {}) !== JSON.stringify(settings || {}), [draft, settings]);
+
+  const updatePath = (path, value) => setDraft(current => setPath(current, path, value));
+
+  const saveStrategy = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const next = cloneSettings(draft);
+      if (tenant?.workspace_id && tenant?.brand_profile_id) {
+        await supabase.from("brand_profiles").upsert({
+          id: tenant.brand_profile_id,
+          workspace_id: tenant.workspace_id,
+          name: next.brand?.name || "Brand profile",
+          identity_voice: next.brand?.voice,
+          identity_avoid: next.brand?.avoid,
+          goal_primary: next.brand?.goal_primary,
+          goal_secondary: next.brand?.goal_secondary,
+          language_primary: next.brand?.language_primary,
+          languages_secondary: next.brand?.languages_secondary,
+          settings: next,
+          brief_doc: JSON.stringify(next),
+        });
+      }
+      onSettingsChange?.(next);
+      try { localStorage.setItem(tenantStorageKey("settings", tenant), JSON.stringify(next)); } catch {}
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const askAssistant = () => {
     onOpenAssistant?.(buildAgentContext({
@@ -70,7 +216,7 @@ export default function StrategyView({ settings = null, tenant = null, onOpenSet
       source_entity_type: "brand_profile",
       source_entity_id: tenant?.brand_profile_id,
       task_type: "improve_brand_profile",
-      brand_snapshot: buildBrandSnapshot(settings),
+      brand_snapshot: buildBrandSnapshot(draft),
       settings_snapshot: {
         goals,
         pillars,
@@ -79,9 +225,10 @@ export default function StrategyView({ settings = null, tenant = null, onOpenSet
         compliance_sensitivities: sensitivities,
       },
       suggested_actions: [
+        { id: "explain_strategy", label: "Explain this strategy", task_type: "explain_strategy", requires_confirmation: false },
         { id: "improve_profile", label: "Improve brand profile", task_type: "improve_brand_profile", requires_confirmation: true },
-        { id: "content_pillars", label: "Suggest content pillars", task_type: "suggest_content_pillars", requires_confirmation: true },
         { id: "programmes", label: "Suggest programmes", task_type: "suggest_programmes", requires_confirmation: true },
+        { id: "claims", label: "Refine claims guidance", task_type: "explain_claims_guidance", requires_confirmation: true },
       ],
       requires_user_approval: true,
     }));
@@ -91,95 +238,73 @@ export default function StrategyView({ settings = null, tenant = null, onOpenSet
     <div className="anim-fade">
       <PageHeader
         title="Strategy"
-        description="The strategic control surface for Brand Profile, Content Strategy, Programmes, and risk guidance. Editing still lives in Settings while this surface matures."
+        description="The editable control surface for Brand Profile, Content Strategy, Programmes, and risk guidance."
         meta={brandName || "No brand profile"}
         action={
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
             <button onClick={askAssistant} style={buttonStyle("secondary")}><Bot size={13}/>Ask assistant</button>
             <button onClick={() => onRunOnboarding?.(true)} style={buttonStyle("ghost")}><RefreshCw size={13}/>Refresh strategy</button>
-            <button onClick={onOpenSettings} style={buttonStyle("primary")}><Edit3 size={13}/>Edit in Settings</button>
           </div>
         }
       />
 
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(280px,0.8fr)", gap:16, alignItems:"start" }}>
+      <SaveBar dirty={dirty} saving={saving} saved={saved} onSave={saveStrategy} onReset={() => setDraft(cloneSettings(settings))} />
+
+      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)", gap:18, alignItems:"start" }}>
         <Panel>
-          <SectionHeader title="Brand Profile" description="What Creative Engine should understand before generating content." />
-          {hasBrandProfile ? (
-            <>
-              <SummaryField label="Brand" value={brandName} fallback="No brand name saved." action={onOpenSettings} actionLabel="Edit" />
-              <SummaryField label="Industry" value={industry} fallback="Industry is not specified." action={onOpenSettings} actionLabel="Edit" />
-              <SummaryField label="Audience" value={audience} fallback="Priority audience needs confirmation." action={onRunOnboarding} actionLabel="Run onboarding" />
-              <SummaryField label="Voice" value={voice} fallback="Brand voice is not yet defined." action={onOpenSettings} actionLabel="Edit" />
-              <SummaryField label="Avoid" value={avoid} fallback="No avoid guidance saved." action={onOpenSettings} actionLabel="Edit" />
-            </>
-          ) : (
-            <EmptyState title="Run onboarding to create a brand profile" description="Creative Engine needs source-backed brand context before it can operate reliably." action={() => onRunOnboarding?.(false)} actionLabel="Run onboarding" />
-          )}
+          <SectionHeader title="Brand Profile" description="Core business context used across Ideas, Pipeline, Create, compliance, and export." />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            <Field label="Brand name"><TextInput value={brandName} onChange={value => updatePath("brand.name", value)} placeholder="Brand name" /></Field>
+            <Field label="Industry"><TextInput value={industry} onChange={value => updatePath("brand.industry", value)} placeholder="SaaS, retail, services..." /></Field>
+            <Field label="Short description"><TextArea value={draft?.brand?.short_description || ""} onChange={value => updatePath("brand.short_description", value)} placeholder="What does this brand do and for whom?" rows={2} /></Field>
+            <Field label="Products / services"><TextArea value={draft?.brand?.products_services || ""} onChange={value => updatePath("brand.products_services", value)} placeholder="Priority offers, services, or product lines" rows={2} /></Field>
+            <Field label="Audience"><TextArea value={audience} onChange={value => updatePath("brand.target_audience", value)} placeholder="Primary audience and buyer context" rows={2} /></Field>
+            <Field label="Voice"><TextArea value={voice} onChange={value => updatePath("brand.voice", value)} placeholder="Tone, style, vocabulary, and communication standards" rows={2} /></Field>
+            <Field label="Avoid"><TextArea value={avoid} onChange={value => updatePath("brand.avoid", value)} placeholder="What the brand should avoid sounding like or doing" rows={2} /></Field>
+            <Field label="Differentiators"><TextArea value={draft?.brand?.differentiators || ""} onChange={value => updatePath("brand.differentiators", value)} placeholder="What makes this brand meaningfully different?" rows={2} /></Field>
+          </div>
         </Panel>
 
         <Panel>
-          <SectionHeader title="Setup status" description="Useful enough to operate, not a score of brand quality." />
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            <Pill tone={hasBrandProfile ? "success" : "warning"}>{hasBrandProfile ? "Ready" : "Needs setup"} · Brand profile</Pill>
-            <Pill tone={hasStrategy ? "success" : "warning"}>{hasStrategy ? "Ready" : "Needs setup"} · Content strategy</Pill>
-            <Pill tone={activeProgrammes.length ? "success" : "warning"}>{activeProgrammes.length ? `${activeProgrammes.length} active` : "Needs setup"} · Programmes</Pill>
-            <Pill tone={sensitivities.length || claims.length ? "success" : "warning"}>{sensitivities.length || claims.length ? "Guidance present" : "Needs guidance"} · Claims/risk</Pill>
-          </div>
-          <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.5, marginTop:14 }}>
-            Settings remains the editing/configuration surface for now. Strategy is the product review surface.
+          <SectionHeader
+            title="Content Strategy"
+            description="Direction for what Creative Engine should create and why."
+            action={<SourceReviewButton work={["Read saved brand settings", "Checked strategy fields", "Prepared editable strategy summary"]} />}
+          />
+          <div style={{ display:"grid", gap:10 }}>
+            <Field label="Content goals"><TextArea value={goals} onChange={value => updatePath("strategy.content_goals", value)} placeholder="What should content achieve?" rows={2} /></Field>
+            <Field label="Target platforms"><CsvInput value={platforms} onChange={value => updatePath("strategy.target_platforms", value)} placeholder="LinkedIn, YouTube, TikTok..." /></Field>
+            <Field label="Content pillars"><CsvInput value={pillars} onChange={value => updatePath("strategy.content_pillars", value)} placeholder="Education, proof, product, founder POV..." /></Field>
+            <Field label="Key messages"><TextArea value={draft?.strategy?.key_messages || ""} onChange={value => updatePath("strategy.key_messages", value)} placeholder="Core messages to repeat consistently" rows={2} /></Field>
+            <Field label="Preferred angles"><TextArea value={draft?.strategy?.preferred_angles || ""} onChange={value => updatePath("strategy.preferred_angles", value)} placeholder="Angles that are especially useful for this brand" rows={2} /></Field>
+            <Field label="Angles to avoid"><TextArea value={avoidAngles.join(", ")} onChange={value => updatePath("strategy.avoid_angles", value)} placeholder="Sensitive, off-brand, or overused angles" rows={2} /></Field>
+            <Field label="Calls to action"><TextInput value={draft?.strategy?.calls_to_action || ""} onChange={value => updatePath("strategy.calls_to_action", value)} placeholder="Book a call, download, request demo..." /></Field>
           </div>
         </Panel>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)", gap:16, marginTop:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1.2fr) minmax(280px,0.8fr)", gap:18, marginTop:18, alignItems:"start" }}>
         <Panel>
-          <SectionHeader title="Content Strategy" action={<SourceReviewButton work={["Read saved brand settings", "Summarized strategy fields", "Checked missing guidance"]} />} />
-          <SummaryField label="Goals" value={goals} fallback="Main content goals are not defined." action={onOpenSettings} actionLabel="Edit" />
-          <SummaryField label="Pillars" value={pillars} fallback="No content pillars are saved." action={onOpenSettings} actionLabel="Edit" />
-          <SummaryField label="Platforms" value={platforms} fallback="Target platforms need confirmation." action={onOpenSettings} actionLabel="Edit" />
-          <SummaryField label="Avoid angles" value={avoidAngles} fallback="No avoid-angle guidance saved." action={onOpenSettings} actionLabel="Edit" />
-        </Panel>
-
-        <Panel>
-          <SectionHeader title="Risk / Claims Guidance" description="Warnings and sensitivity guidance for future compliance checks." />
-          {sensitivities.length || claims.length ? (
-            <>
-              <SummaryField label="Compliance sensitivities" value={sensitivities} fallback="" />
-              <SummaryField label="Claims to use carefully" value={claims} fallback="" />
-            </>
+          <SectionHeader title="Programmes" description="Recurring content lanes that make the strategy operational." meta={`${activeProgrammes.length}/${programmes.length} active`} />
+          {programmes.length ? (
+            <ProgrammeEditor programmes={programmes} onChange={value => updatePath("strategy.programmes", value)} />
           ) : (
-            <EmptyState title="Add risk and claims guidance" description="This helps the assistant and compliance checks avoid risky claims before export." action={onOpenSettings} actionLabel="Edit guidance" meta="Needs confirmation" />
+            <EmptyState title="Create programmes" description="Programmes define repeatable output lanes. Add one here or refresh strategy from onboarding." action={() => updatePath("strategy.programmes", [{ key:"programme_1", label:"Product Education", role:"Build understanding", cadence:"Weekly", desc:"Explain the offer, use cases, objections, and proof.", platforms:platforms.slice(0,2), active:true }])} actionLabel="Add first programme" />
           )}
         </Panel>
-      </div>
 
-      <Panel style={{ marginTop:16 }}>
-        <SectionHeader title="Programmes" description="Recurring content lanes that make Creative Engine operational." meta={`${activeProgrammes.length}/${programmes.length} active`} />
-        {programmes.length ? (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:10 }}>
-            {programmes.map(programme => (
-              <div key={programme.key} style={{ padding:"12px", borderRadius:"var(--ce-radius)", background:"var(--fill2)", border:"1px solid var(--border)", opacity:programme.active === false ? 0.58 : 1 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start", marginBottom:7 }}>
-                  <div style={{ minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:"var(--t1)" }}>{programme.label}</div>
-                    <div style={{ fontSize:11, color:"var(--t3)", marginTop:2 }}>{programme.cadence || programme.role || "Programme"}</div>
-                  </div>
-                  <Pill tone={programme.active === false ? "neutral" : "success"}>{programme.active === false ? "Inactive" : "Active"}</Pill>
-                </div>
-                <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.45 }}>{programme.desc || "No description saved yet."}</div>
-                {programme.platforms?.length > 0 && (
-                  <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginTop:10 }}>
-                    {programme.platforms.slice(0,3).map(platform => <Pill key={platform}>{platform}</Pill>)}
-                  </div>
-                )}
-              </div>
-            ))}
+        <Panel>
+          <SectionHeader title="Risk / Claims Guidance" description="Used by compliance checks and safer assistant rewrites." />
+          <div style={{ display:"grid", gap:10 }}>
+            <Field label="Compliance sensitivities">
+              <TextArea value={draft?.strategy?.compliance_sensitivities || sensitivities.join(", ")} onChange={value => updatePath("strategy.compliance_sensitivities", value)} placeholder="Regulated topics, restricted claims, platform-sensitive themes..." rows={3} />
+            </Field>
+            <Field label="Claims to use carefully">
+              <TextArea value={claims} onChange={value => updatePath("strategy.claims_to_use_carefully", value)} placeholder="ROI, guarantees, health, finance, before/after, sustainability..." rows={3} />
+            </Field>
           </div>
-        ) : (
-          <EmptyState title="Create programmes" description="Programmes define repeatable output lanes. Run onboarding or edit Settings to create the first set." action={() => onRunOnboarding?.(true)} actionLabel="Draft programmes" />
-        )}
-      </Panel>
+        </Panel>
+      </div>
     </div>
   );
 }

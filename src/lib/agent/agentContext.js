@@ -25,7 +25,7 @@ export function buildAgentContext({
   source_view         = null,
   source_component    = null,
   // source_entity_type examples: story | script | content_item |
-  //   programme | brand_profile | audit_result | provider_config |
+  //   programme | brand_profile | audit_result | compliance_check | approval | content_export | provider_config |
   //   billing_plan | workspace
   source_entity_type  = null,
   source_entity_id    = null,
@@ -87,6 +87,7 @@ const VIEW_LABELS = {
   programmes:       "Programmes",
   compliance:       "Compliance",
   providers:        "Providers",
+  onboarding:       "Onboarding",
 };
 
 const ENTITY_LABELS = {
@@ -96,9 +97,13 @@ const ENTITY_LABELS = {
   programme:      "Programme",
   brand_profile:  "Brand profile",
   audit_result:   "Audit result",
+  compliance_check: "Compliance check",
+  approval:       "Approval",
+  content_export: "Content export",
   provider_config:"Provider config",
   billing_plan:   "Billing plan",
   workspace:      "Workspace",
+  onboarding_session: "Onboarding session",
 };
 
 export function getViewLabel(source_view) {

@@ -22,9 +22,10 @@ import AgentPanel from "@/components/AgentPanel";
 import { AssistantContext } from "@/lib/agent/AssistantContext";
 import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
+import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.26.0";
+const VERSION = "3.29.0";
 
 const TABS = [
   { key: "pipeline",   label: "Content",   Icon: Layers },
@@ -70,6 +71,16 @@ export default function Home() {
     if (tab === "script") { setCreateMode("write"); setTab("create"); }
     if (tab === "production") { setCreateMode("produce"); setTab("create"); }
   }, [tab, setCreateMode, setTab]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const requestedTab = params.get("tab");
+    if (requestedTab && ["pipeline", "research", "create", "campaigns", "calendar", "analyze"].includes(requestedTab)) {
+      setTab(requestedTab);
+    }
+    if (params.get("settings") === "1") setShowSettings(true);
+  }, [setTab]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -518,6 +529,8 @@ export default function Home() {
   const bankSize = stories.filter(s=>["approved","scripted","produced"].includes(s.status)).length;
   const brandName = getBrandName(appSettings);
   const currentBrandLabel = brandProfiles.find(p => p.id === activeTenant.brand_profile_id)?.name || brandName;
+  const showOnboardingPrompt = shouldPromptOnboarding(appSettings);
+  const onboardingUrl = `/onboarding?workspace_id=${encodeURIComponent(activeTenant.workspace_id || "")}&brand_profile_id=${encodeURIComponent(activeTenant.brand_profile_id || "")}&mode=${brandProfiles.length <= 1 ? "workspace_setup" : "brand_setup"}`;
 
   const Spinner = () => (
     <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -775,6 +788,18 @@ export default function Home() {
                 settings={appSettings}
               />
 
+              {showOnboardingPrompt && (
+                <div style={{ marginBottom:18, padding:"14px 16px", borderRadius:8, border:"0.5px solid rgba(196,154,60,0.30)", background:"rgba(196,154,60,0.08)", display:"flex", justifyContent:"space-between", gap:14, alignItems:"center", flexWrap:"wrap" }}>
+                  <div style={{ minWidth:240 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:"var(--t1)", marginBottom:3 }}>Strategy setup is incomplete</div>
+                    <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.5 }}>Run Smart Onboarding to draft Brand Profile, Content Strategy, Programmes, risks, and first content ideas before saving them to workspace settings.</div>
+                  </div>
+                  <button onClick={() => { window.location.href = onboardingUrl; }} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:"var(--t1)", color:"var(--bg)", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                    Run onboarding
+                  </button>
+                </div>
+              )}
+
               {/* All views mounted always — CSS visibility preserves state */}
               <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
                 <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} campaigns={campaigns} />
@@ -812,8 +837,8 @@ export default function Home() {
       />
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
-      {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} settings={appSettings} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} onRunPredictions={runPredictions} runningPredictions={runningPredictions} />
+      {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} settings={appSettings} tenant={activeTenant} onOpenAssistant={openAssistant} />}
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} onRunPredictions={runPredictions} runningPredictions={runningPredictions} onRunOnboarding={(refresh=false) => { window.location.href = `/onboarding?workspace_id=${encodeURIComponent(activeTenant.workspace_id || "")}&brand_profile_id=${encodeURIComponent(activeTenant.brand_profile_id || "")}&mode=${refresh ? "strategy_refresh" : "brand_setup"}`; }} />
       <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
 
       {newBrand.show && (

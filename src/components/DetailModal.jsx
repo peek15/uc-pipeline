@@ -1,9 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Circle, Check, FileText, Film, Award, Archive, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { X, Circle, Check, FileText, Film, Award, Archive, ChevronLeft, ChevronRight, RefreshCw, ShieldAlert, AlertTriangle, Download, Bot } from "lucide-react";
 import { STAGES, ACCENT, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES, CONTENT_TYPES, CHANNELS } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
+import { supabase } from "@/lib/db";
 import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentTemplates, getContentType, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
+import { buildAgentContext, buildBrandSnapshot } from "@/lib/agent/agentContext";
+import { ACKNOWLEDGEMENT_TEXT, COMPLIANCE_DISCLAIMER, warningLabel } from "@/lib/compliance";
 
 const ICONS = { accepted:Circle, approved:Check, scripted:FileText, produced:Film, published:Award, rejected:X, archived:Archive };
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
@@ -33,7 +36,20 @@ function ScoreRow({ label, value, max=100, muted=false }) {
   );
 }
 
-export default function DetailModal({ story, stories=[], onClose, onDelete, onStageChange, onUpdate, settings = null }) {
+async function authToken() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token;
+}
+
+const complianceTone = {
+  clear: { color: "#4A9B7F", label: "Clear" },
+  warning: { color: "#C49A3C", label: "Warnings" },
+  needs_acknowledgement: { color: "#C49A3C", label: "Needs acknowledgement" },
+  blocked: { color: "var(--error)", label: "Blocked" },
+  failed: { color: "var(--error)", label: "Failed" },
+};
+
+export default function DetailModal({ story, stories=[], onClose, onDelete, onStageChange, onUpdate, settings = null, tenant = null, onOpenAssistant = null }) {
   const [currentId, setCurrentId] = useState(story.id);
   const [editing,   setEditing]   = useState(false);
 
@@ -56,6 +72,8 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const [localAngle,     setLocalAngle]     = useState(current.emotional_angle||"");
   const [localReach,     setLocalReach]     = useState(current.reach_score??50);
   const [localPtCleared, setLocalPtCleared] = useState(current.pt_review_cleared||false);
+  const [compliance, setCompliance] = useState({ check: null, approval: null, exportPayload: null, acknowledged: false, loading: false, error: null });
+  const [exportType, setExportType] = useState("copy_package");
 
   // Reset local state when navigating
   useEffect(() => {
@@ -71,6 +89,8 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
     setLocalAngle(current.emotional_angle||"");
     setLocalReach(current.reach_score??50);
     setLocalPtCleared(current.pt_review_cleared||false);
+    setCompliance({ check: null, approval: null, exportPayload: null, acknowledged: false, loading: false, error: null });
+    setExportType("copy_package");
     setEditing(false);
   }, [currentId]);
 
@@ -110,6 +130,113 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
     onUpdate(current.id, qualityGatePatch(gate));
   };
 
+  const apiPost = async (url, payload) => {
+    const token = await authToken();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `API ${res.status}`);
+    return json;
+  };
+
+  const runComplianceCheck = async () => {
+    setCompliance(prev => ({ ...prev, loading: true, error: null, exportPayload: null }));
+    try {
+      const json = await apiPost("/api/compliance/check", {
+        workspace_id: tenant?.workspace_id || current.workspace_id,
+        brand_profile_id: tenant?.brand_profile_id || current.brand_profile_id,
+        story_id: current.id,
+      });
+      setCompliance(prev => ({ ...prev, check: json.check, loading: false, acknowledged: false }));
+    } catch (e) {
+      setCompliance(prev => ({ ...prev, loading: false, error: e.message }));
+    }
+  };
+
+  const acknowledgeWarnings = async () => {
+    if (!compliance.check) return;
+    setCompliance(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      await apiPost("/api/compliance/acknowledge", {
+        workspace_id: tenant?.workspace_id || current.workspace_id,
+        compliance_check_id: compliance.check.id,
+        story_id: current.id,
+        acknowledgement_text: ACKNOWLEDGEMENT_TEXT,
+      });
+      setCompliance(prev => ({ ...prev, acknowledged: true, loading: false }));
+    } catch (e) {
+      setCompliance(prev => ({ ...prev, loading: false, error: e.message }));
+    }
+  };
+
+  const approveForExport = async () => {
+    setCompliance(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const json = await apiPost("/api/approval/approve", {
+        workspace_id: tenant?.workspace_id || current.workspace_id,
+        story_id: current.id,
+        compliance_check_id: compliance.check?.id,
+      });
+      setCompliance(prev => ({ ...prev, approval: json.approval, loading: false }));
+    } catch (e) {
+      setCompliance(prev => ({ ...prev, loading: false, error: e.message }));
+    }
+  };
+
+  const exportContent = async () => {
+    setCompliance(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const json = await apiPost("/api/export/content", {
+        workspace_id: tenant?.workspace_id || current.workspace_id,
+        story_id: current.id,
+        export_type: exportType,
+      });
+      setCompliance(prev => ({ ...prev, exportPayload: json.export_payload, loading: false }));
+    } catch (e) {
+      setCompliance(prev => ({ ...prev, loading: false, error: e.message }));
+    }
+  };
+
+  const openComplianceAssistant = () => {
+    if (!onOpenAssistant) return;
+    onOpenAssistant(buildAgentContext({
+      workspace_id: tenant?.workspace_id || current.workspace_id,
+      brand_profile_id: tenant?.brand_profile_id || current.brand_profile_id,
+      source_view: "compliance",
+      source_component: "content_detail_compliance",
+      source_entity_type: "compliance_check",
+      source_entity_id: compliance.check?.id || current.id,
+      task_type: "explain_compliance_warning",
+      audit_snapshot: compliance.check ? {
+        status: compliance.check.status,
+        risk_level: compliance.check.risk_level,
+        risk_score: compliance.check.risk_score,
+        warnings: compliance.check.warnings,
+        summary: compliance.check.summary,
+      } : null,
+      content_snapshot: {
+        id: current.id,
+        title: current.title,
+        format: current.format,
+        status: current.status,
+        hook: current.hook,
+        script_excerpt: getStoryScript(current, "en")?.slice(0, 600) || null,
+      },
+      brand_snapshot: buildBrandSnapshot(settings),
+      suggested_actions: [
+        { id: "explain", label: "Explain this warning", task_type: "explain_compliance_warning" },
+        { id: "rewrite", label: "Rewrite safely", task_type: "safer_rewrite", requires_confirmation: true },
+        { id: "cta", label: "Suggest safer CTA", task_type: "suggest_safer_cta" },
+        { id: "claims", label: "Reduce claim risk", task_type: "reduce_claim_risk", requires_confirmation: true },
+        { id: "summary", label: "Prepare approval summary", task_type: "prepare_approval_summary" },
+      ],
+      requires_user_approval: true,
+    }));
+  };
+
   const st      = STAGES[current.status]||STAGES.accepted;
   const Icon    = ICONS[current.status]||Circle;
   const ac      = ACCENT[current.archetype]||"var(--border)";
@@ -124,6 +251,12 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const gateIssues = Array.isArray(gate?.issues) ? gate.issues : [];
   const gateWarnings = Number(current.quality_gate_warnings ?? gate?.warningCount) || 0;
   const gateBlockers = Number(current.quality_gate_blockers ?? gate?.blockerCount) || 0;
+  const check = compliance.check;
+  const checkTone = complianceTone[check?.status] || { color: "var(--t3)", label: "Not checked" };
+  const checkWarnings = Array.isArray(check?.warnings) ? check.warnings : [];
+  const requiresAck = check?.status === "needs_acknowledgement";
+  const canApproveNow = check && check.status !== "blocked" && (!requiresAck || compliance.acknowledged);
+  const approved = compliance.approval?.approval_status === "approved";
 
   const sel = { width:"100%", padding:"7px 10px", borderRadius:7, fontSize:12, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t1)", outline:"none", fontFamily:"inherit" };
 
@@ -275,6 +408,71 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
                 </div>
               </div>
             )}
+
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Compliance</div>
+                <span style={{fontSize:10,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:checkTone.color}}>
+                  {check ? checkTone.label : "Not checked"}
+                </span>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:7,padding:"9px 10px",borderRadius:7,background:"var(--fill2)",border:"1px solid var(--border)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:7,color:checkTone.color,fontSize:12,fontWeight:600}}>
+                  <ShieldAlert size={14}/>
+                  <span>{check ? `AI audit: ${check.status === "clear" ? "Clear" : warningLabel(checkWarnings.length)}` : "AI audit not run"}</span>
+                  {check?.risk_score!=null&&<span style={{marginLeft:"auto",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>{check.risk_score}</span>}
+                </div>
+                <div style={{fontSize:11,color:"var(--t3)",lineHeight:1.45}}>{check?.summary || COMPLIANCE_DISCLAIMER}</div>
+                {checkWarnings.slice(0,4).map(w=>(
+                  <div key={`${w.code}-${w.message}`} style={{fontSize:11,color:w.risk_level==="critical"?"var(--error)":w.risk_level==="high"?"#C49A3C":"var(--t3)",display:"flex",gap:6,lineHeight:1.35}}>
+                    <AlertTriangle size={12} style={{flexShrink:0,marginTop:1}}/>
+                    <span>{w.message}</span>
+                  </div>
+                ))}
+                {requiresAck&&!compliance.acknowledged&&(
+                  <div style={{fontSize:11,color:"var(--t2)",lineHeight:1.45,padding:"7px 8px",borderRadius:6,background:"var(--bg2)",border:"1px solid var(--border2)"}}>
+                    {ACKNOWLEDGEMENT_TEXT}
+                  </div>
+                )}
+                {approved&&(
+                  <div style={{fontSize:11,color:"#4A9B7F",fontWeight:600}}>Approved for export</div>
+                )}
+                {compliance.exportPayload&&(
+                  <textarea readOnly value={compliance.exportPayload.markdown || compliance.exportPayload.copy_package || JSON.stringify(compliance.exportPayload, null, 2)}
+                    style={{height:88,resize:"vertical",borderRadius:6,border:"1px solid var(--border)",background:"var(--bg2)",color:"var(--t2)",fontSize:11,padding:8,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}/>
+                )}
+                {compliance.error&&<div style={{fontSize:11,color:"var(--error)"}}>{compliance.error}</div>}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  <button onClick={runComplianceCheck} disabled={compliance.loading} style={{padding:"5px 9px",borderRadius:6,fontSize:11,fontWeight:600,background:"var(--t1)",color:"var(--bg)",border:"1px solid var(--t1)",cursor:compliance.loading?"wait":"pointer",display:"flex",alignItems:"center",gap:4}}>
+                    <ShieldAlert size={12}/>{check?"Re-check":"Run check"}
+                  </button>
+                  {checkWarnings.length>0&&(
+                    <button onClick={openComplianceAssistant} style={{padding:"5px 9px",borderRadius:6,fontSize:11,fontWeight:600,background:"var(--fill2)",color:"var(--t2)",border:"1px solid var(--border)",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                      <Bot size={12}/>Ask assistant
+                    </button>
+                  )}
+                  {requiresAck&&!compliance.acknowledged&&(
+                    <button onClick={acknowledgeWarnings} disabled={compliance.loading} style={{padding:"5px 9px",borderRadius:6,fontSize:11,fontWeight:600,background:"var(--fill2)",color:"var(--t2)",border:"1px solid var(--border)",cursor:compliance.loading?"wait":"pointer"}}>
+                      Acknowledge
+                    </button>
+                  )}
+                  <button onClick={approveForExport} disabled={!canApproveNow||compliance.loading||approved} style={{padding:"5px 9px",borderRadius:6,fontSize:11,fontWeight:600,background:approved?"rgba(74,155,127,0.12)":"var(--fill2)",color:approved?"#4A9B7F":"var(--t2)",border:"1px solid var(--border)",cursor:!canApproveNow||compliance.loading||approved?"not-allowed":"pointer"}}>
+                    Approve for export
+                  </button>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <select value={exportType} onChange={e=>setExportType(e.target.value)} style={{...sel,padding:"4px 7px",fontSize:11,flex:1}}>
+                    <option value="copy_package">Copy package</option>
+                    <option value="markdown">Markdown</option>
+                    <option value="json">JSON</option>
+                    <option value="internal">Internal draft</option>
+                  </select>
+                  <button onClick={exportContent} disabled={compliance.loading||(!approved&&exportType!=="internal")} style={{padding:"5px 9px",borderRadius:6,fontSize:11,fontWeight:600,background:"var(--fill2)",color:"var(--t2)",border:"1px solid var(--border)",cursor:compliance.loading||(!approved&&exportType!=="internal")?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:4}}>
+                    <Download size={12}/>Export
+                  </button>
+                </div>
+              </div>
+            </div>
 
             {/* Intelligence metadata */}
             <div>

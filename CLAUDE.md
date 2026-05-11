@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.26.0
+- App badge/package target: v3.29.0
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -14,7 +14,7 @@ scheduling, provider operations, quality gates, and analytics.
 ## Stack
 - Next.js 14 App Router
 - Supabase auth/db/storage
-- Google OAuth limited to the configured allowed domain
+- Google OAuth sign-in is open to Google accounts; workspace access is gated by `workspace_members` RLS.
 - Anthropic and OpenAI agent/chat support
 - Provider abstraction for LLM, voice, visual, licensed image, and storage services
 
@@ -36,7 +36,39 @@ scheduling, provider operations, quality gates, and analytics.
 - Strategy/advisory AI help must route through the existing right-side assistant panel via `openAssistant(buildAgentContext({...}))`.
 - Do not add scattered AI audit/strategy/suggestion buttons. Use generic "Ask assistant" entry points that call `openAssistant(ctx)`.
 - Task types `improve_brand_profile`, `suggest_content_pillars`, `suggest_programmes`, `suggest_campaign_ideas`, `suggest_content_ideas` all use `cost_center: "strategy_advisor"`.
-- Do not implement AI onboarding, Studio, or intelligence layer automation unless explicitly instructed.
+- Do not implement Studio or intelligence layer automation unless explicitly instructed.
+
+## Smart Onboarding (v3.27.0+)
+- Onboarding is a full-screen smart wizard at `/onboarding`, not the right-side assistant panel.
+- It is triggered for new or incomplete workspaces/brand profiles and can be re-run manually from Settings.
+- It uses the same assistant/orchestration concepts (`task_type`, `agent_context`, `workspace_id`, `brand_profile_id`, `cost_center`, `cost_category`) but does not create a second backend agent.
+- Source-first onboarding is preferred over static questionnaires: infer from user-provided URLs, files, notes, and manual answers, then ask only missing clarifications.
+- Show uncertainty and ask for confirmation instead of hallucinating. Do not fake PDF/image/website analysis.
+- User approval is required before writing drafts to final Brand Profile, Content Strategy, Programmes, and recommendations.
+- Do not force Drive, S3, GCS, or bucket/asset-library connection upfront.
+- Data privacy hardening follows onboarding; keep Sprint 6 privacy copy lightweight.
+
+## Privacy / Data Protection (v3.28.0+)
+- Data classes are centralized in `src/lib/privacy/privacyTypes.js`: D0 public, D1 business standard, D2 confidential, D3 sensitive, D4 secret.
+- Privacy modes are `standard`, `confidential`, `enhanced_privacy`, and `enterprise_custom`.
+- D4 secrets must never be routed to AI/media providers. D2/D3 must be blocked from standard or unknown-retention providers unless an approved no-retention/client-owned route is configured.
+- Provider privacy assumptions live in `src/lib/privacy/providerPrivacyProfiles.js`; unknown retention is never treated as safe for confidential/sensitive data.
+- AI/provider calls should use the privacy gateway/minimization helpers before provider execution and log metadata only: data class, privacy mode, provider profile, operation, cost fields, payload hash, and sanitized errors.
+- Do not store raw prompts, raw model responses, raw uploaded document text, base64 media, provider request bodies, provider response bodies, or provider secrets in logs by default.
+- Prompt minimization and redaction are rule-based for now; preserve utility, redact obvious secrets/PII, truncate large payloads, and send selected snippets rather than whole files.
+- Privacy Settings are owner/admin writable only. Editor/viewer may read current mode if workspace policy allows.
+- Export/delete routes are request/manifest scaffolds only; destructive deletion requires a separate reviewed job.
+
+## Compliance / Approval / Export (v3.29.0+)
+- Creative Engine compliance checks are warnings and workflow support, not legal advice or guarantees.
+- Users remain responsible for final review, claims, asset rights, publication, advertising use, and legal/platform compliance.
+- Do not add mandatory Peek Media human review by default.
+- High-risk warnings requiring acknowledgement must be acknowledged before approval/export.
+- Approval and export events must be workspace-scoped and logged in the Sprint 8 compliance tables.
+- AI help for compliance must route through the existing assistant panel with `task_type` and structured context.
+- Do not create separate AI compliance panels or scattered AI rewrite/audit buttons.
+- Use Sprint 7 privacy helpers and safe logging for compliance tasks. Do not log raw full content unnecessarily.
+- Do not implement publishing automation unless explicitly requested.
 
 ## Agent Architecture (v3.25.0+)
 - One right-side assistant panel only. No second panel, no scattered AI flows.

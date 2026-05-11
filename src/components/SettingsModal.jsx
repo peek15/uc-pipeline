@@ -16,6 +16,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { uploadAsset, listAssets, deleteAsset, updateAssetSummary, extractTextFromFile, ASSET_TYPES } from "@/lib/assets";
 import { normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { getAppName, getBrandLanguages } from "@/lib/brandConfig";
+import { DATA_CLASSES, PRIVACY_MODES } from "@/lib/privacy/privacyTypes";
 
 const DEFAULT_SETTINGS = {
   brand: {
@@ -889,6 +890,7 @@ const SECTIONS = [
   { key:"rules",       label:"Rules & Alerts" },
   { key:"appearance",  label:"Appearance" },
   { key:"workspace",   label:"Workspace" },
+  { key:"privacy",     label:"Privacy & Data" },
   { key:"providers",   label:"Providers" },
   { key:"intelligence",label:"Intelligence" },
   { key:"billing",     label:"Billing" },
@@ -1148,7 +1150,7 @@ function WorkspaceMembersPanel({ workspaceId, appName }) {
   );
 }
 
-export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant, onRunPredictions, runningPredictions=false }) {
+export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsChange, initialSettings, version="", tenant, onRunPredictions, runningPredictions=false, onRunOnboarding }) {
   const VERSION_NUM = version;
   const { openAssistant } = useAssistant();
   const [section,  setSection]  = usePersistentState("settings_section", "brand");
@@ -1178,6 +1180,10 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [generatingInsights,   setGeneratingInsights]   = useState(false);
   const [snapshotCount,        setSnapshotCount]        = useState(0);
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0);
+  const [privacySettings, setPrivacySettings] = useState(null);
+  const [privacyLoading,  setPrivacyLoading]  = useState(false);
+  const [privacySaving,   setPrivacySaving]   = useState(false);
+  const [privacyError,    setPrivacyError]    = useState(null);
   const autoScannedRef = useRef(false);
   const appName = getAppName(settings);
   const languageSummary = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join(" → ");
@@ -1268,6 +1274,61 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     autoScannedRef.current = false;
     loadInsights();
   }, [isOpen, section, WORKSPACE_ID, BRAND_PROFILE_ID]);
+
+  useEffect(() => {
+    if (!isOpen || section !== "privacy" || !WORKSPACE_ID) return;
+    loadPrivacySettings();
+  }, [isOpen, section, WORKSPACE_ID, BRAND_PROFILE_ID]);
+
+  const getToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token;
+  };
+
+  const loadPrivacySettings = async () => {
+    setPrivacyLoading(true);
+    setPrivacyError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/privacy/settings?workspace_id=${encodeURIComponent(WORKSPACE_ID)}&brand_profile_id=${encodeURIComponent(BRAND_PROFILE_ID || "")}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load privacy settings");
+      setPrivacySettings(json);
+    } catch (e) {
+      setPrivacyError(e.message);
+    } finally {
+      setPrivacyLoading(false);
+    }
+  };
+
+  const savePrivacySettings = async (patch) => {
+    const next = { ...(privacySettings || {}), ...patch };
+    setPrivacySettings(next);
+    setPrivacySaving(true);
+    setPrivacyError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/privacy/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          workspace_id: WORKSPACE_ID,
+          brand_profile_id: BRAND_PROFILE_ID,
+          privacy_mode: next.privacy_mode,
+          default_data_class: next.default_data_class,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to save privacy settings");
+      setPrivacySettings(prev => ({ ...(prev || {}), ...json }));
+    } catch (e) {
+      setPrivacyError(e.message);
+    } finally {
+      setPrivacySaving(false);
+    }
+  };
 
   // Auto-scan once per modal session when >= 3 new corrections are waiting
   useEffect(() => {
@@ -1499,7 +1560,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
         },
       });
       if (parsed) setProgAudit(parsed);
-    } catch(e) { console.error(e); }
+    } catch(e) { setProgAudit({ warnings:["Programme suggestions failed."] }); }
     setProgRunning(false);
   };
 
@@ -1567,7 +1628,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
       try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(settings)); } catch {}
       setSaved(true);
       setTimeout(()=>setSaved(false), 2000);
-    } catch(e) { console.error(e); }
+    } catch(e) { setSaved(false); }
     setSaving(false);
   };
 
@@ -1594,7 +1655,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
         },
       });
       setSuggestions(parsed || []);
-    } catch(e) { console.error(e); }
+    } catch(e) { setSuggestions([]); }
     setSuggestRunning(false);
   };
 
@@ -1645,7 +1706,7 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
         upd("strategy.rules", reordered);
         setAuditResult(`✓ Resolved: ${parsed.explanation}\n\nChanges:\n${(parsed.changes||[]).map(c=>`• ${c}`).join("\n")}`);
       }
-    } catch(e) { console.error(e); }
+    } catch(e) { setAuditResult("Conflict resolution failed — try again."); }
     setResolving(false);
   };
 
@@ -2777,7 +2838,106 @@ ${fileText.slice(0,3000)}` : text };
                 ))}
               </div>
 
+              <div style={{ padding:"14px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)", display:"flex", justifyContent:"space-between", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                <div style={{ minWidth:220 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--t1)", marginBottom:3 }}>Smart onboarding</div>
+                  <div style={{ fontSize:11, color:"var(--t3)", lineHeight:1.5 }}>
+                    Re-run source-first onboarding for this brand. A new onboarding session is created, and final strategy settings are changed only after approval.
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  <button onClick={() => onRunOnboarding?.(false)} style={{ padding:"7px 12px", borderRadius:7, border:"0.5px solid var(--border)", background:"var(--t1)", color:"var(--bg)", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                    Run onboarding
+                  </button>
+                  <button onClick={() => onRunOnboarding?.(true)} style={{ padding:"7px 12px", borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", color:"var(--t2)", fontSize:12, fontWeight:500, cursor:"pointer" }}>
+                    Refresh strategy
+                  </button>
+                </div>
+              </div>
+
               <WorkspaceMembersPanel workspaceId={WORKSPACE_ID} appName={appName} />
+            </div>
+          )}
+
+          {/* ── Privacy & Data Handling ── */}
+          {section==="privacy" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+              <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6 }}>
+                Privacy modes control how Creative Engine minimizes prompts, blocks high-risk routing, and describes provider handling. Providers necessarily process prompts during inference; no-training and no-retention are different controls, and unknowns are treated conservatively.
+              </div>
+
+              {privacyLoading && <div style={{ fontSize:12, color:"var(--t4)" }}>Loading privacy settings...</div>}
+              {privacyError && <div style={{ fontSize:12, color:"var(--error)", lineHeight:1.5 }}>{privacyError}</div>}
+
+              <div style={{ padding:"14px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>
+                <div style={{ fontSize:11, fontWeight:700, color:"var(--t4)", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Current privacy mode</div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8 }}>
+                  {[
+                    { key:PRIVACY_MODES.STANDARD, label:"Standard", desc:"Normal SME content production. Commercial AI APIs may be used; raw logs disabled by Creative Engine." },
+                    { key:PRIVACY_MODES.CONFIDENTIAL, label:"Confidential", desc:"Stricter minimization. Confidential data blocked from unknown-retention providers." },
+                    { key:PRIVACY_MODES.ENHANCED_PRIVACY, label:"Enhanced Privacy", desc:"Confidential/sensitive data requires approved zero/no-retention or client-owned routes." },
+                    { key:PRIVACY_MODES.ENTERPRISE_CUSTOM, label:"Enterprise Custom", desc:"Custom routing, client-owned storage/credentials, and bespoke security settings." },
+                  ].map(mode => {
+                    const selectedMode = (privacySettings?.privacy_mode || PRIVACY_MODES.STANDARD) === mode.key;
+                    const disabled = !privacySettings?.can_manage || privacySaving;
+                    return (
+                      <button key={mode.key} onClick={() => savePrivacySettings({ privacy_mode:mode.key })} disabled={disabled} style={{ padding:"12px", borderRadius:8, border:`0.5px solid ${selectedMode ? "var(--t1)" : "var(--border)"}`, background:selectedMode ? "var(--t1)" : "var(--bg)", color:selectedMode ? "var(--bg)" : "var(--t2)", textAlign:"left", cursor:disabled?"not-allowed":"pointer", opacity:disabled&&!selectedMode?0.65:1 }}>
+                        <div style={{ fontSize:13, fontWeight:700, marginBottom:4 }}>{mode.label}</div>
+                        <div style={{ fontSize:11, lineHeight:1.45, color:selectedMode ? "rgba(255,255,255,0.72)" : "var(--t3)" }}>{mode.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {!privacySettings?.can_manage && (
+                  <div style={{ fontSize:11, color:"var(--t4)", marginTop:10 }}>Only workspace owners and admins can change privacy mode.</div>
+                )}
+              </div>
+
+              <div style={{ padding:"14px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>
+                <div style={{ fontSize:11, fontWeight:700, color:"var(--t4)", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Default brand data class</div>
+                <select
+                  value={privacySettings?.default_data_class || DATA_CLASSES.D1_BUSINESS_STANDARD}
+                  disabled={!privacySettings?.can_manage || privacySaving}
+                  onChange={e => savePrivacySettings({ default_data_class:e.target.value })}
+                  style={selStyle}
+                >
+                  <option value={DATA_CLASSES.D0_PUBLIC}>D0 Public</option>
+                  <option value={DATA_CLASSES.D1_BUSINESS_STANDARD}>D1 Business Standard</option>
+                  <option value={DATA_CLASSES.D2_CONFIDENTIAL}>D2 Confidential</option>
+                  <option value={DATA_CLASSES.D3_SENSITIVE}>D3 Sensitive</option>
+                </select>
+                <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.5, marginTop:8 }}>
+                  D4 Secret is reserved for keys/tokens/credentials and is always blocked from AI/media providers.
+                </div>
+              </div>
+
+              <div style={{ padding:"14px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>
+                <div style={{ fontSize:11, fontWeight:700, color:"var(--t4)", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Provider transparency</div>
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, color:"var(--t2)" }}>
+                    <thead>
+                      <tr style={{ color:"var(--t4)", textAlign:"left" }}>
+                        {["Provider","Purpose","Data processed","Retention","No-training","Enhanced"].map(h => <th key={h} style={{ padding:"7px 8px", borderBottom:"0.5px solid var(--border)" }}>{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(privacySettings?.providers || []).map(row => (
+                        <tr key={row.name}>
+                          <td style={{ padding:"8px", borderBottom:"0.5px solid var(--border2)", fontWeight:600, color:"var(--t1)" }}>{row.name}</td>
+                          <td style={{ padding:"8px", borderBottom:"0.5px solid var(--border2)" }}>{row.purpose}</td>
+                          <td style={{ padding:"8px", borderBottom:"0.5px solid var(--border2)" }}>{row.data_processed}</td>
+                          <td style={{ padding:"8px", borderBottom:"0.5px solid var(--border2)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{row.retention_profile}</td>
+                          <td style={{ padding:"8px", borderBottom:"0.5px solid var(--border2)" }}>{String(row.no_training_status)}</td>
+                          <td style={{ padding:"8px", borderBottom:"0.5px solid var(--border2)", color:row.enhanced_privacy_compatible ? "var(--success)" : "var(--warning)" }}>{row.enhanced_privacy_compatible ? "Yes" : "No/TBD"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.5, marginTop:10 }}>
+                  This is an internal transparency layer, not final legal copy. Unknown retention is not treated as safe for confidential or sensitive data.
+                </div>
+              </div>
             </div>
           )}
 

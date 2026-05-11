@@ -14,11 +14,11 @@
 // ═══════════════════════════════════════════════════════════
 
 import { createClient } from "@supabase/supabase-js";
+import { getAuthenticatedUser, requireWorkspaceOwnerOrAdmin } from "@/lib/apiAuth";
+import { summarizeError } from "@/lib/privacy/safeLogging";
 
 const SUPABASE_URL              = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY         = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const ALLOWED_DOMAIN            = process.env.NEXT_PUBLIC_ALLOWED_DOMAIN || "peekmedia.cc";
 
 function serviceClient() {
   if (!SUPABASE_SERVICE_ROLE_KEY) {
@@ -30,14 +30,7 @@ function serviceClient() {
 }
 
 async function authenticate(request) {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return null;
-  const token = authHeader.split(" ")[1];
-  const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data: { user }, error } = await supa.auth.getUser(token);
-  if (error || !user) return null;
-  if (!user.email?.endsWith(`@${ALLOWED_DOMAIN}`)) return null;
-  return user;
+  return getAuthenticatedUser(request);
 }
 
 function ok(payload)          { return Response.json(payload); }
@@ -58,6 +51,10 @@ function filterEmpty(obj) {
     if (v != null && v !== "") out[k] = v;
   }
   return out;
+}
+
+function providerStatusError(provider, status) {
+  return `${provider} ${status}: provider returned an error. Raw provider body was not stored.`;
 }
 
 async function resolveWorkspaceId(svc, brandProfileId) {
@@ -86,6 +83,8 @@ export async function POST(request) {
 
   const svc = serviceClient();
   const rowWorkspaceId = workspace_id || await resolveWorkspaceId(svc, brand_profile_id);
+  const member = await requireWorkspaceOwnerOrAdmin(svc, user, rowWorkspaceId);
+  if (member.error) return err(member.error, member.status);
 
   if (action === "load") {
     if (!provider_type) return err("Missing provider_type");
@@ -174,7 +173,8 @@ export async function POST(request) {
     try {
       testResult = await runProviderTest(provider_type, row.provider_name, row.secrets, row.config);
     } catch (e) {
-      testResult = { ok: false, error: e?.message || String(e) };
+      const safe = summarizeError(e);
+      testResult = { ok: false, error: safe.error_message };
     }
 
     await svc.from("provider_secrets").update({
@@ -243,8 +243,7 @@ async function testVoice(name, secrets, config, t0) {
     try {
       const res = await fetch("https://api.elevenlabs.io/v1/user", { headers: { "xi-api-key": key } });
       if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        return { ok: false, error: `ElevenLabs ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+        return { ok: false, error: providerStatusError("ElevenLabs", res.status), latency_ms: Date.now() - t0 };
       }
       return { ok: true, latency_ms: Date.now() - t0 };
     } catch (e) {
@@ -258,8 +257,7 @@ async function testVoice(name, secrets, config, t0) {
     try {
       const res = await fetch("https://api.play.ht/api/v2/voices", { headers: { "AUTHORIZATION": key, "X-USER-ID": userId } });
       if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        return { ok: false, error: `PlayHT ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+        return { ok: false, error: providerStatusError("PlayHT", res.status), latency_ms: Date.now() - t0 };
       }
       return { ok: true, latency_ms: Date.now() - t0 };
     } catch (e) {
@@ -283,8 +281,7 @@ async function testVisualAtmospheric(name, secrets, config, t0) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        return { ok: false, error: `Replicate ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+        return { ok: false, error: providerStatusError("Replicate", res.status), latency_ms: Date.now() - t0 };
       }
       return { ok: true, latency_ms: Date.now() - t0 };
     } catch (e) {
@@ -304,8 +301,7 @@ async function testVisualAtmospheric(name, secrets, config, t0) {
         headers: { Authorization: `Bearer ${key}` },
       });
       if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        return { ok: false, error: `OpenAI ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+        return { ok: false, error: providerStatusError("OpenAI", res.status), latency_ms: Date.now() - t0 };
       }
       return { ok: true, latency_ms: Date.now() - t0 };
     } catch (e) {
@@ -328,8 +324,7 @@ async function testVisualLicensed(name, secrets, config, t0) {
         headers: { Authorization: key },
       });
       if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        return { ok: false, error: `Pexels ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+        return { ok: false, error: providerStatusError("Pexels", res.status), latency_ms: Date.now() - t0 };
       }
       return { ok: true, latency_ms: Date.now() - t0 };
     } catch (e) {
@@ -352,8 +347,7 @@ async function testLLMOpenAI(name, secrets, config, t0) {
       headers: { Authorization: `Bearer ${key}` },
     });
     if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      return { ok: false, error: `OpenAI ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+      return { ok: false, error: providerStatusError("OpenAI", res.status), latency_ms: Date.now() - t0 };
     }
     return { ok: true, latency_ms: Date.now() - t0 };
   } catch (e) {
@@ -369,8 +363,7 @@ async function testLLMAnthropic(name, secrets, config, t0) {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
     });
     if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      return { ok: false, error: `Anthropic ${res.status}: ${t.slice(0, 200)}`, latency_ms: Date.now() - t0 };
+      return { ok: false, error: providerStatusError("Anthropic", res.status), latency_ms: Date.now() - t0 };
     }
     return { ok: true, latency_ms: Date.now() - t0 };
   } catch (e) {

@@ -6,6 +6,9 @@
 
 import { supabase } from "@/lib/db";
 import { estimateCost } from "./costs";
+import { DEFAULT_DATA_CLASS, DEFAULT_PRIVACY_MODE, normalizeDataClass, normalizePrivacyMode } from "@/lib/privacy/privacyTypes";
+import { getProviderPrivacyProfile } from "@/lib/privacy/providerPrivacyProfiles";
+import { hashPayload, summarizeError } from "@/lib/privacy/safeLogging";
 
 /**
  * Log a successful AI call.
@@ -36,6 +39,11 @@ export async function logAiCall({
   duration_ms = null,
   cost_center = null,
   cost_category = null,
+  data_class = DEFAULT_DATA_CLASS,
+  privacy_mode = DEFAULT_PRIVACY_MODE,
+  provider_privacy_profile = null,
+  payload_hash = null,
+  metadata_json = {},
 }) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -56,6 +64,12 @@ export async function logAiCall({
       duration_ms,
       cost_center,
       cost_category,
+      operation_type: type,
+      data_class: normalizeDataClass(data_class),
+      privacy_mode: normalizePrivacyMode(privacy_mode),
+      provider_privacy_profile: provider_privacy_profile || getProviderPrivacyProfile(provider_name)?.provider_key || null,
+      payload_hash: payload_hash || hashPayload({ type, provider_name, model_version, story_id, brand_profile_id, workspace_id }),
+      metadata_json: { ...metadata_json, raw_payload_logged: false },
     }).select("id").single();
 
     if (error) return null;
@@ -97,10 +111,16 @@ export async function logAiCallError({
   duration_ms = null,
   cost_center = null,
   cost_category = null,
+  data_class = DEFAULT_DATA_CLASS,
+  privacy_mode = DEFAULT_PRIVACY_MODE,
+  provider_privacy_profile = null,
+  payload_hash = null,
+  metadata_json = {},
 }) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     const cost_estimate = estimateCost(model_version, tokens_input, tokens_output);
+    const safeError = summarizeError({ name: error_type, message: error_message });
 
     await supabase.from("ai_calls").insert({
       type,
@@ -115,10 +135,16 @@ export async function logAiCallError({
       user_email:    user?.email || null,
       success:       false,
       duration_ms,
-      error_type,
-      error_message: error_message ? String(error_message).slice(0, 2000) : null,
+      error_type:    safeError.error_type,
+      error_message: safeError.error_message,
       cost_center,
       cost_category,
+      operation_type: type,
+      data_class: normalizeDataClass(data_class),
+      privacy_mode: normalizePrivacyMode(privacy_mode),
+      provider_privacy_profile: provider_privacy_profile || getProviderPrivacyProfile(provider_name)?.provider_key || null,
+      payload_hash: payload_hash || hashPayload({ type, provider_name, model_version, story_id, brand_profile_id, workspace_id }),
+      metadata_json: { ...metadata_json, raw_payload_logged: false },
     });
 } catch {} // silent
 }
@@ -140,9 +166,15 @@ export async function logProviderCost({
   error_message = null,
   cost_center = null,
   cost_category = null,
+  data_class = DEFAULT_DATA_CLASS,
+  privacy_mode = DEFAULT_PRIVACY_MODE,
+  provider_privacy_profile = null,
+  payload_hash = null,
+  metadata_json = {},
 }) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
+    const safeError = error_message ? summarizeError({ name: error_type, message: error_message }) : {};
     await supabase.from("ai_calls").insert({
       type,
       provider_name,
@@ -156,10 +188,16 @@ export async function logProviderCost({
       user_email: user?.email || null,
       success,
       duration_ms,
-      error_type,
-      error_message: error_message ? String(error_message).slice(0, 2000) : null,
+      error_type: safeError.error_type || error_type,
+      error_message: safeError.error_message || null,
       cost_center,
       cost_category,
+      operation_type: type,
+      data_class: normalizeDataClass(data_class),
+      privacy_mode: normalizePrivacyMode(privacy_mode),
+      provider_privacy_profile: provider_privacy_profile || getProviderPrivacyProfile(provider_name)?.provider_key || null,
+      payload_hash: payload_hash || hashPayload({ type, provider_name, model_version, story_id, brand_profile_id, workspace_id }),
+      metadata_json: { ...metadata_json, raw_payload_logged: false },
     });
   } catch {}
 }

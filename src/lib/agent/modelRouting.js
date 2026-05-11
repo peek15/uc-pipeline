@@ -25,6 +25,7 @@ const CAPABILITY_TIER = {
   [CAPABILITIES.strategy]:          TIERS.strong,
   [CAPABILITIES.compliance]:        TIERS.strong,
   [CAPABILITIES.analytics_future]:  TIERS.medium,
+  [CAPABILITIES.onboarding]:        TIERS.medium,
   [CAPABILITIES.onboarding_future]: TIERS.medium,
   [CAPABILITIES.studio_future]:     TIERS.strong,
 };

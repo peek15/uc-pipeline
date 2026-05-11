@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { getAuthenticatedUser } from "@/lib/apiAuth";
+import { getAuthenticatedUser, requireWorkspaceMember } from "@/lib/apiAuth";
+import { preparePrivacyCheckedAI } from "@/lib/privacy/aiPrivacyGateway";
+import { DEFAULT_DATA_CLASS, DEFAULT_PRIVACY_MODE } from "@/lib/privacy/privacyTypes";
+import { summarizeError } from "@/lib/privacy/safeLogging";
 
 async function authenticate(request) {
   return getAuthenticatedUser(request);
@@ -43,7 +46,14 @@ export async function POST(request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return Response.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
 
-  const { prompt, maxTokens = 1000, stream = false, model = "sonnet" } = await request.json();
+  const { prompt, maxTokens = 1000, stream = false, model = "sonnet", workspace_id, brand_profile_id, data_class = DEFAULT_DATA_CLASS, privacy_mode = DEFAULT_PRIVACY_MODE, operation_type = "claude" } = await request.json();
+
+  const workspaceId = workspace_id || process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE_ID || "00000000-0000-0000-0000-000000000001";
+  const svc = serviceClient();
+  if (svc) {
+    const member = await requireWorkspaceMember(svc, user, workspaceId);
+    if (member.error) return Response.json({ error: member.error }, { status: member.status });
+  }
 
   const modelId = model === "haiku"
     ? "claude-haiku-4-5-20251001"
@@ -52,6 +62,19 @@ export async function POST(request) {
     : "claude-sonnet-4-6";
 
   try {
+    const prepared = preparePrivacyCheckedAI({
+      workspaceId,
+      brandProfileId: brand_profile_id || null,
+      userId: user.id,
+      operationType: operation_type,
+      providerKey: "anthropic",
+      model: modelId,
+      messages: [{ role: "user", content: prompt }],
+      dataClass: data_class,
+      privacyMode: privacy_mode,
+      costCenter: "legacy_claude",
+      costCategory: "generation",
+    });
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -63,13 +86,14 @@ export async function POST(request) {
         model: modelId,
         max_tokens: maxTokens,
         stream,
-        messages: [{ role: "user", content: prompt }],
+        messages: prepared.messages,
       }),
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      return Response.json({ error: err.error?.message || `Claude API ${res.status}` }, { status: res.status });
+      const providerErr = await res.json().catch(() => ({}));
+      const safe = summarizeError(providerErr.error?.message || `Claude API ${res.status}`);
+      return Response.json({ error: safe.error_message }, { status: res.status });
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -148,6 +172,8 @@ export async function POST(request) {
     });
 
   } catch (err) {
-    return Response.json({ error: err.message }, { status: 500 });
+    const safe = summarizeError(err);
+    const status = err.code === "PROVIDER_PRIVACY_BLOCKED" || err.code === "D4_SECRET_BLOCKED" ? 403 : 500;
+    return Response.json({ error: safe.error_message, error_type: safe.error_type }, { status });
   }
 }

@@ -20,7 +20,11 @@
 // ═══════════════════════════════════════════════════════════
 
 import { createClient } from "@supabase/supabase-js";
-import { getAuthenticatedUser, makeServiceClient } from "@/lib/apiAuth";
+import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
+import { assertProviderAllowedForData } from "@/lib/privacy/providerPrivacyProfiles";
+import { DEFAULT_DATA_CLASS, DEFAULT_PRIVACY_MODE, normalizeDataClass, normalizePrivacyMode } from "@/lib/privacy/privacyTypes";
+import { buildProviderSafePayload } from "@/lib/privacy/promptMinimization";
+import { summarizeError } from "@/lib/privacy/safeLogging";
 
 const SUPABASE_URL              = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -37,7 +41,7 @@ async function loadProviderRow(brand_profile_id, provider_type) {
   const svc = serviceClient();
   const { data, error } = await svc
     .from("provider_secrets")
-    .select("provider_name, secrets, config")
+    .select("provider_name, secrets, config, workspace_id")
     .eq("brand_profile_id", brand_profile_id)
     .eq("provider_type", provider_type)
     .eq("active", true)
@@ -47,8 +51,20 @@ async function loadProviderRow(brand_profile_id, provider_type) {
   return data;
 }
 
+async function resolveWorkspaceIdForBrand(svc, brandProfileId) {
+  const { data } = await svc
+    .from("brand_profiles")
+    .select("workspace_id")
+    .eq("id", brandProfileId)
+    .maybeSingle();
+  return data?.workspace_id || null;
+}
+
 function ok(payload)          { return Response.json(payload); }
 function err(msg, status=400) { return Response.json({ error: msg }, { status }); }
+function providerStatusError(provider, status) {
+  return `${provider} ${status}: provider returned an error. Raw provider body was not stored.`;
+}
 
 // ═══════════════════════════════════════════════════════════
 // Main handler
@@ -61,18 +77,30 @@ export async function POST(request) {
   let body;
   try { body = await request.json(); } catch { return err("Invalid JSON"); }
 
-  const { action, brand_profile_id, params = {} } = body || {};
+  const { action, brand_profile_id, workspace_id, params = {}, data_class = DEFAULT_DATA_CLASS, privacy_mode = DEFAULT_PRIVACY_MODE } = body || {};
   if (!action) return err("Missing action");
   if (!brand_profile_id) return err("Missing brand_profile_id");
 
   try {
-    if (action === "voice.generate")    return await voiceGenerate(brand_profile_id, params);
-    if (action === "visual.generate")   return await visualGenerate(brand_profile_id, params);
-    if (action === "licensed.search")   return await licensedSearch(brand_profile_id, params);
+    const svc = serviceClient();
+    const workspaceId = workspace_id || await resolveWorkspaceIdForBrand(svc, brand_profile_id);
+    if (!workspaceId) return err("Could not resolve workspace", 400);
+    const member = await requireWorkspaceMember(svc, user, workspaceId);
+    if (member.error) return err(member.error, member.status);
+
+    const privacy = {
+      dataClass: normalizeDataClass(data_class),
+      privacyMode: normalizePrivacyMode(privacy_mode),
+      workspaceId,
+    };
+    if (action === "voice.generate")    return await voiceGenerate(brand_profile_id, params, privacy);
+    if (action === "visual.generate")   return await visualGenerate(brand_profile_id, params, privacy);
+    if (action === "licensed.search")   return await licensedSearch(brand_profile_id, params, privacy);
     return err(`Unknown action: ${action}`);
   } catch (e) {
-    console.error(`[provider-call] ${action} error:`, e);
-    return err(e?.message || String(e), 500);
+    const safe = summarizeError(e);
+    const status = e.code === "PROVIDER_PRIVACY_BLOCKED" ? 403 : 500;
+    return err(safe.error_message, status);
   }
 }
 
@@ -83,12 +111,20 @@ export async function POST(request) {
 // params: { text, voice_id, language?, model_id? }
 // returns: { audio_base64, mime, duration_ms?, cost_estimate, provider_name }
 
-async function voiceGenerate(brand_profile_id, params) {
+async function voiceGenerate(brand_profile_id, params, privacy) {
   const { text, voice_id, language = "en", model_id } = params;
   if (!text)     return err("Missing text");
   if (!voice_id) return err("Missing voice_id");
 
   const row = await loadProviderRow(brand_profile_id, "voice");
+  const profile = assertProviderAllowedForData({ providerKey: row.provider_name, dataClass: privacy.dataClass, privacyMode: privacy.privacyMode, operationType: "voice.generate" });
+  const safePayload = buildProviderSafePayload({
+    messages: [{ role: "user", content: text }],
+    dataClass: privacy.dataClass,
+    privacyMode: privacy.privacyMode,
+    operationType: "voice.generate",
+  });
+  const safeText = safePayload.sanitizedMessages[0]?.content || text;
   const t0 = Date.now();
 
   if (row.provider_name === "stub") {
@@ -121,7 +157,7 @@ async function voiceGenerate(brand_profile_id, params) {
           "Accept":       "audio/mpeg",
         },
         body: JSON.stringify({
-          text,
+          text: safeText,
           model_id: model,
           voice_settings: {
             stability:        cfg.stability        ?? 0.5,
@@ -134,8 +170,7 @@ async function voiceGenerate(brand_profile_id, params) {
     );
 
     if (!elevenRes.ok) {
-      const errText = await elevenRes.text().catch(() => "");
-      return err(`ElevenLabs ${elevenRes.status}: ${errText.slice(0, 300)}`, 502);
+      return err(providerStatusError("ElevenLabs", elevenRes.status), 502);
     }
 
     const buf = await elevenRes.arrayBuffer();
@@ -143,13 +178,14 @@ async function voiceGenerate(brand_profile_id, params) {
 
     // Cost estimate: ElevenLabs charges per character
     // Creator plan = $22 / 100k chars => $0.00022/char
-    const cost_estimate = text.length * 0.00022;
+    const cost_estimate = safeText.length * 0.00022;
 
     return ok({
       audio_base64: audioBase64,
       mime: "audio/mp3",
       cost_estimate,
       provider_name: "elevenlabs",
+      provider_privacy_profile: profile.provider_key,
       latency_ms: Date.now() - t0,
     });
   }
@@ -164,11 +200,19 @@ async function voiceGenerate(brand_profile_id, params) {
 // params: { prompt, aspect?, count? }
 // returns: { images: [{ url, cost_estimate, prompt }], provider_name }
 
-async function visualGenerate(brand_profile_id, params) {
+async function visualGenerate(brand_profile_id, params, privacy) {
   const { prompt, aspect = "9:16", count = 1 } = params;
   if (!prompt) return err("Missing prompt");
 
   const row = await loadProviderRow(brand_profile_id, "visual_atmospheric");
+  const profile = assertProviderAllowedForData({ providerKey: row.provider_name, dataClass: privacy.dataClass, privacyMode: privacy.privacyMode, operationType: "visual.generate" });
+  const safePayload = buildProviderSafePayload({
+    messages: [{ role: "user", content: prompt }],
+    dataClass: privacy.dataClass,
+    privacyMode: privacy.privacyMode,
+    operationType: "visual.generate",
+  });
+  const safePrompt = safePayload.sanitizedMessages[0]?.content || prompt;
   const t0 = Date.now();
 
   if (row.provider_name === "stub") {
@@ -176,7 +220,7 @@ async function visualGenerate(brand_profile_id, params) {
       images: Array.from({ length: count }, (_, i) => ({
         url: `https://placehold.co/720x1280/333/fff?text=stub+${i + 1}`,
         cost_estimate: 0,
-        prompt,
+        prompt: safePrompt,
       })),
       provider_name: "stub",
       latency_ms: 0,
@@ -205,7 +249,7 @@ async function visualGenerate(brand_profile_id, params) {
           },
           body: JSON.stringify({
             input: {
-              prompt,
+              prompt: safePrompt,
               aspect_ratio:  aspectStr,
               output_format: "png",
               output_quality: cfg.quality || 90,
@@ -214,8 +258,7 @@ async function visualGenerate(brand_profile_id, params) {
           }),
         }).then(async r => {
           if (!r.ok) {
-            const t = await r.text().catch(() => "");
-            throw new Error(`Replicate ${r.status}: ${t.slice(0, 200)}`);
+            throw new Error(providerStatusError("Replicate", r.status));
           }
           return r.json();
         })
@@ -225,13 +268,14 @@ async function visualGenerate(brand_profile_id, params) {
     const images = predictions.map(p => ({
       url: Array.isArray(p.output) ? p.output[0] : p.output,
       cost_estimate: 0.04,    // Flux 1.1 Pro pricing
-      prompt,
+              prompt: safePrompt,
       replicate_id: p.id,
     })).filter(i => i.url);
 
     return ok({
       images,
       provider_name: "flux",
+      provider_privacy_profile: profile.provider_key,
       latency_ms: Date.now() - t0,
     });
   }
@@ -250,11 +294,19 @@ async function visualGenerate(brand_profile_id, params) {
 // params: { query, count?, orientation? }
 // returns: { images: [{ url, photographer, source_url, cost_estimate }], provider_name }
 
-async function licensedSearch(brand_profile_id, params) {
+async function licensedSearch(brand_profile_id, params, privacy) {
   const { query, count = 6, orientation = "portrait" } = params;
   if (!query) return err("Missing query");
 
   const row = await loadProviderRow(brand_profile_id, "visual_licensed");
+  const profile = assertProviderAllowedForData({ providerKey: row.provider_name, dataClass: privacy.dataClass, privacyMode: privacy.privacyMode, operationType: "licensed.search" });
+  const safePayload = buildProviderSafePayload({
+    messages: [{ role: "user", content: query }],
+    dataClass: privacy.dataClass,
+    privacyMode: privacy.privacyMode,
+    operationType: "licensed.search",
+  });
+  const safeQuery = safePayload.sanitizedMessages[0]?.content || query;
   const t0 = Date.now();
 
   if (row.provider_name === "stub") {
@@ -275,7 +327,7 @@ async function licensedSearch(brand_profile_id, params) {
     if (!apiKey) return err("Pexels api_key not set");
 
     const url = new URL("https://api.pexels.com/v1/search");
-    url.searchParams.set("query",       query);
+    url.searchParams.set("query",       safeQuery);
     url.searchParams.set("per_page",    String(Math.min(count, 80)));
     url.searchParams.set("orientation", orientation);
     url.searchParams.set("size",        "large");
@@ -284,8 +336,7 @@ async function licensedSearch(brand_profile_id, params) {
       headers: { Authorization: apiKey },
     });
     if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      return err(`Pexels ${res.status}: ${t.slice(0, 200)}`, 502);
+      return err(providerStatusError("Pexels", res.status), 502);
     }
     const data = await res.json();
     const images = (data.photos || []).map(p => ({
@@ -301,6 +352,7 @@ async function licensedSearch(brand_profile_id, params) {
     return ok({
       images,
       provider_name: "pexels",
+      provider_privacy_profile: profile.provider_key,
       latency_ms: Date.now() - t0,
     });
   }

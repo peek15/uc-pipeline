@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { Layers, Search, Clock, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot, Target } from "lucide-react";
+import { Home as HomeIcon, Layers, Search, CalendarDays, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot, Target, Briefcase } from "lucide-react";
 import { STAGES } from "@/lib/constants";
 import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile, getCampaigns, upsertCampaign, deleteCampaign as dbDeleteCampaign, getWorkspaces, createWorkspace } from "@/lib/db";
 import { batchPredict } from "@/lib/prediction";
@@ -12,6 +12,8 @@ import ResearchView from "@/components/ResearchView";
 import CalendarView from "@/components/CalendarView";
 import CreateView from "@/components/CreateView";
 import AnalyzeView from "@/components/AnalyzeView";
+import HomeView from "@/components/HomeView";
+import StrategyView from "@/components/StrategyView";
 import DetailModal from "@/components/DetailModal";
 import LoginScreen from "@/components/LoginScreen";
 import { ToastContainer, toast } from "@/components/Toast";
@@ -25,16 +27,22 @@ import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.29.0";
+const VERSION = "3.33.0";
 
-const TABS = [
-  { key: "pipeline",   label: "Content",   Icon: Layers },
-  { key: "research",   label: "Research",  Icon: Search },
+const PRIMARY_TABS = [
+  { key: "home",       label: "Home",      Icon: HomeIcon },
+  { key: "strategy",   label: "Strategy",  Icon: Target },
+  { key: "research",   label: "Ideas",     Icon: Search },
+  { key: "pipeline",   label: "Pipeline",  Icon: Layers },
   { key: "create",     label: "Create",    Icon: Wrench },
-  { key: "campaigns",  label: "Campaigns", Icon: Target },
-  { key: "calendar",   label: "Schedule",  Icon: Clock },
-  { key: "analyze",    label: "Insights",  Icon: BarChart3 },
+  { key: "calendar",   label: "Calendar",  Icon: CalendarDays },
+  { key: "analyze",    label: "Analyze",   Icon: BarChart3 },
 ];
+const SECONDARY_TABS = [
+  { key: "campaigns",  label: "Campaigns", Icon: Briefcase },
+];
+const TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
+const TAB_KEYS = TABS.map(t => t.key);
 
 export default function Home() {
   const [tenant, setTenant] = usePersistentState("active_tenant", defaultTenant());
@@ -46,7 +54,7 @@ export default function Home() {
   const [stories, setStories]         = useState([]);
   const storiesRef = useRef([]);
   useEffect(() => { storiesRef.current = stories; }, [stories]);
-  const [tab, setTab]                 = usePersistentState("tab", "pipeline");
+  const [tab, setTab]                 = usePersistentState("tab", "home");
   const [createMode, setCreateMode]   = usePersistentState("create_mode", "write");
   const [sidebarOpen, setSidebarOpen] = usePersistentState("sidebar_open", true);
   const [selected, setSelected]       = useState(null);
@@ -76,7 +84,7 @@ export default function Home() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const requestedTab = params.get("tab");
-    if (requestedTab && ["pipeline", "research", "create", "campaigns", "calendar", "analyze"].includes(requestedTab)) {
+    if (requestedTab && TAB_KEYS.includes(requestedTab)) {
       setTab(requestedTab);
     }
     if (params.get("settings") === "1") setShowSettings(true);
@@ -290,6 +298,10 @@ export default function Home() {
     setAgentOpen(true);
   }, []);
 
+  const runOnboarding = useCallback((refresh = false) => {
+    window.location.href = `/onboarding?workspace_id=${encodeURIComponent(activeTenant.workspace_id || "")}&brand_profile_id=${encodeURIComponent(activeTenant.brand_profile_id || "")}&mode=${refresh ? "strategy_refresh" : "brand_setup"}`;
+  }, [activeTenant]);
+
   const handleUndo = useCallback(async () => {
     if (!undoStack.length) return;
     const last = undoStack[undoStack.length - 1];
@@ -407,7 +419,7 @@ export default function Home() {
  // v3.11.4 — Global keyboard shortcuts driven by SHORTCUTS registry.
   // Cross-platform (metaKey || ctrlKey).
   useEffect(() => {
-    const TAB_KEYS = ["pipeline","research","create","campaigns","calendar","analyze"];
+    const navKeys = TAB_KEYS;
     const handler = (e) => {
       if (shouldIgnoreFromInput()) return;
 
@@ -432,10 +444,10 @@ export default function Home() {
       if (matches(e, SHORTCUTS.tabPrev.combo) || matches(e, SHORTCUTS.tabNext.combo)) {
         e.preventDefault();
         setTab(prev => {
-          const idx = TAB_KEYS.indexOf(prev);
+          const idx = navKeys.indexOf(prev);
           const safe = idx === -1 ? 0 : idx;
-          if (e.key === "ArrowRight") return TAB_KEYS[Math.min(safe + 1, TAB_KEYS.length - 1)];
-          return TAB_KEYS[Math.max(safe - 1, 0)];
+          if (e.key === "ArrowRight") return navKeys[Math.min(safe + 1, navKeys.length - 1)];
+          return navKeys[Math.max(safe - 1, 0)];
         });
       }
     };
@@ -625,7 +637,7 @@ export default function Home() {
 
           {/* Nav items */}
           <nav style={{ flex:1, padding: sidebarOpen ? "0 8px" : "0 4px", overflowY:"auto" }}>
-            {TABS.map(t => {
+            {PRIMARY_TABS.map(t => {
               const active = tab === t.key;
               return (
                 <button key={t.key} onClick={() => setTab(t.key)} title={t.label} style={{
@@ -642,6 +654,29 @@ export default function Home() {
                   transition:"background 0.12s, color 0.12s",
                 }}>
                   <t.Icon size={sidebarOpen ? 15 : 16} strokeWidth={active ? 2.5 : 1.8} style={{ flexShrink:0 }} />
+                  {sidebarOpen && t.label}
+                </button>
+              );
+            })}
+            <div style={{ height:1, background:"var(--border2)", margin: sidebarOpen ? "10px 6px 8px" : "10px 6px" }} />
+            {sidebarOpen && <div style={{ fontSize:10, color:"var(--t4)", textTransform:"uppercase", letterSpacing:"0.06em", fontWeight:700, padding:"0 10px 6px" }}>Planning</div>}
+            {SECONDARY_TABS.map(t => {
+              const active = tab === t.key;
+              return (
+                <button key={t.key} onClick={() => setTab(t.key)} title={`${t.label} (legacy planning)`} style={{
+                  width:"100%", display:"flex", alignItems:"center",
+                  justifyContent: sidebarOpen ? "flex-start" : "center",
+                  gap: sidebarOpen ? 10 : 0,
+                  padding: sidebarOpen ? "7px 10px" : "8px 0",
+                  borderRadius:8, border:"none", cursor:"pointer",
+                  background: active ? "var(--fill2)" : "transparent",
+                  color: active ? "var(--t1)" : "var(--t4)",
+                  fontSize:12, fontWeight: active ? 600 : 400,
+                  marginBottom:2,
+                  boxShadow: sidebarOpen ? (active ? "inset 2px 0 0 var(--accent)" : "inset 2px 0 0 transparent") : "none",
+                  transition:"background 0.12s, color 0.12s",
+                }}>
+                  <t.Icon size={sidebarOpen ? 14 : 16} strokeWidth={active ? 2.4 : 1.7} style={{ flexShrink:0 }} />
                   {sidebarOpen && t.label}
                 </button>
               );
@@ -801,6 +836,12 @@ export default function Home() {
               )}
 
               {/* All views mounted always — CSS visibility preserves state */}
+              <div style={{ display: tab==="home" ? "block" : "none" }}>
+                <HomeView stories={stories} settings={appSettings} tenant={activeTenant} onNavigate={setTab} onOpenSettings={() => setShowSettings(true)} onRunOnboarding={runOnboarding} />
+              </div>
+              <div style={{ display: tab==="strategy" ? "block" : "none" }}>
+                <StrategyView settings={appSettings} tenant={activeTenant} onOpenSettings={() => setShowSettings(true)} onRunOnboarding={runOnboarding} onOpenAssistant={openAssistant} />
+              </div>
               <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
                 <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} campaigns={campaigns} />
               </div>
@@ -808,7 +849,7 @@ export default function Home() {
                 <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} tenant={activeTenant} />
               </div>
               <div style={{ display: tab==="create" || tab==="script" || tab==="production" ? "block" : "none" }}>
-                <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={activeTenant} settings={appSettings} campaigns={campaigns} />
+                <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={activeTenant} settings={appSettings} campaigns={campaigns} onNavigate={setTab} />
               </div>
               <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} campaigns={campaigns} /></div>
               <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} tenant={activeTenant} /></div>
@@ -838,7 +879,7 @@ export default function Home() {
 
       {showUserMenu && <div onClick={() => setShowUserMenu(null)} style={{ position:"fixed", inset:0, zIndex:30 }} />}
       {selected && <DetailModal story={selected} stories={stories.filter(s=>!["rejected","archived"].includes(s.status))} onClose={() => setSelected(null)} onUpdate={updateStory} onDelete={handleDelete} onStageChange={stageChange} settings={appSettings} tenant={activeTenant} onOpenAssistant={openAssistant} />}
-      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} onRunPredictions={runPredictions} runningPredictions={runningPredictions} onRunOnboarding={(refresh=false) => { window.location.href = `/onboarding?workspace_id=${encodeURIComponent(activeTenant.workspace_id || "")}&brand_profile_id=${encodeURIComponent(activeTenant.brand_profile_id || "")}&mode=${refresh ? "strategy_refresh" : "brand_setup"}`; }} />
+      <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} stories={stories} onSettingsChange={(s) => { setAppSettings(s); setBrandProfiles(prev => prev.map(p => p.id === activeTenant.brand_profile_id ? { ...p, name: s?.brand?.name || p.name, settings: s } : p)); applyTheme(s?.appearance?.theme || "system"); if (s?.appearance?.default_tab) setTab(s.appearance.default_tab); try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(s)); } catch {} }} initialSettings={appSettings} version={VERSION} tenant={activeTenant} onRunPredictions={runPredictions} runningPredictions={runningPredictions} onRunOnboarding={runOnboarding} />
       <ShortcutsCheatSheet isOpen={showShortcuts} onClose={()=>setShowShortcuts(false)} />
 
       {newBrand.show && (

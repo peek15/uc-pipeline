@@ -7,7 +7,7 @@ import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { DEFAULT_BRAND_PROFILE_ID } from "@/lib/brand";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { SHORTCUTS, matches, shouldIgnoreFromInput, renderCombo } from "@/lib/shortcuts";
-import { PageHeader, Panel, Pill, buttonStyle } from "@/components/OperationalUI";
+import { PageHeader, Panel, Pill, EmptyState, buttonStyle } from "@/components/OperationalUI";
 import AssetLibraryModal from "@/components/AssetLibraryModal";
 import { brandConfigForPrompt, getBrandLanguages, getBrandProgrammeMap, getContentTemplate, getContentTypeLabel, getStoryScript, hasAllConfiguredScripts, storyScriptPatch } from "@/lib/brandConfig";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
@@ -22,7 +22,7 @@ import {
 } from "@/components/ProductionView";
 
 const STEP_DEFS = {
-  script: { key: "script", label: "Script", icon: FileText, mode: "write" },
+  script: { key: "script", label: "Draft", icon: FileText, mode: "write" },
   translations: { key: "translations", label: "Translations", icon: Wand2, mode: "write" },
   brief: { key: "brief", label: "Brief", icon: Search, mode: "produce" },
   assets: { key: "assets", label: "Assets", icon: Library, mode: "produce" },
@@ -413,11 +413,11 @@ function ScriptWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, 
     <Panel>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>Script workspace</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--t1)", marginBottom: 4 }}>Draft workspace</div>
           <div style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5 }}>Generate the primary {stepLabel.toLowerCase()} first, then keep translations attached to the same content record.</div>
         </div>
         <Pill active={!!savedEnScript}>
-          {savedEnScript ? `v${story.script_version || 1} · ${displayWc}w${isDirty ? " · edited" : ""}` : "no script"}
+          {savedEnScript ? `v${story.script_version || 1} · ${displayWc}w${isDirty ? " · edited" : ""}` : "no draft"}
         </Pill>
       </div>
 
@@ -631,7 +631,7 @@ function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLa
 
       {!enScript ? (
         <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--fill2)", border: "0.5px solid var(--border)", color: "var(--t3)", fontSize: 12 }}>
-          Generate the primary script first, then come back to translate.
+          Generate the primary draft first, then come back to translate.
         </div>
       ) : (
         <>
@@ -739,7 +739,7 @@ function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLa
   );
 }
 
-export default function CreateView({ stories, onUpdate, mode, onModeChange, tenant, settings, campaigns = [] }) {
+export default function CreateView({ stories, onUpdate, mode, onModeChange, tenant, settings, campaigns = [], onNavigate }) {
   const brandProfileId = tenant?.brand_profile_id || DEFAULT_BRAND_PROFILE_ID;
   const workspaceId = tenant?.workspace_id;
   const [selectedId, setSelectedId] = usePersistentState("create_selected_story", null);
@@ -813,12 +813,12 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
 
   const filterOptions = [
     { key: "all", label: "All", count: queue.length },
-    { key: "needs_script", label: "Needs script", count: queue.filter(story => queueFilterMatch(story, "needs_script", settings)).length },
+    { key: "needs_script", label: "Needs draft", count: queue.filter(story => queueFilterMatch(story, "needs_script", settings)).length },
     { key: "needs_translation", label: "Needs translation", count: queue.filter(story => queueFilterMatch(story, "needs_translation", settings)).length },
     { key: "needs_brief", label: "Needs brief", count: queue.filter(story => queueFilterMatch(story, "needs_brief", settings)).length },
     { key: "needs_visuals", label: "Needs visuals", count: queue.filter(story => queueFilterMatch(story, "needs_visuals", settings)).length },
     { key: "needs_voice", label: "Needs voice", count: queue.filter(story => queueFilterMatch(story, "needs_voice", settings)).length },
-    { key: "ready_review", label: "Ready review", count: queue.filter(story => queueFilterMatch(story, "ready_review", settings)).length },
+    { key: "ready_review", label: "Ready for review", count: queue.filter(story => queueFilterMatch(story, "ready_review", settings)).length },
   ];
 
   const saveProductionUpdate = (updates) => selected && onUpdate?.(selected.id, updates || {});
@@ -844,7 +844,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
       <AssetLibraryModal isOpen={showLibrary} onClose={() => setShowLibrary(false)} brandProfileId={brandProfileId} workspaceId={workspaceId} />
       <PageHeader
         title="Create"
-        description="One selected content item moves through the workflow defined by its template."
+        description="Draft, edit, check, approve, and prepare content from one production surface."
         meta={selected ? `${selectedProgress.done}/${selectedProgress.total} complete` : `${queue.length} items`}
         action={
           <button onClick={() => setShowLibrary(true)} style={buttonStyle("secondary", { padding: "5px 12px" })}>
@@ -854,10 +854,12 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
       />
 
       {queue.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "80px 0", color: "var(--t4)" }}>
-          <FileText size={32} style={{ margin: "0 auto 12px", display: "block", opacity: 0.25 }} />
-          <div style={{ fontSize: 13 }}>Approve content to start creating.</div>
-        </div>
+        <EmptyState
+          title="No content ready to create"
+          description="Approve content from Pipeline or generate ideas to start drafting usable output."
+          action={onNavigate ? () => onNavigate("pipeline") : undefined}
+          actionLabel="Open Pipeline"
+        />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
           <Panel style={{ padding: 8, position: "sticky", top: 16 }}>
@@ -955,7 +957,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                 </div>
 
                 {["brief", "assets", "voice", "visuals", "assembly"].includes(activeStep) && <ReadinessStrip story={selected} />}
-                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} stepLabel={steps.find(step => step.key === "script")?.label || "Script"} />}
+                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} stepLabel={steps.find(step => step.key === "script")?.label || "Draft"} />}
                 {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} settings={settings} />}
                 {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} onApproved={handleBriefApproved} />}
                 {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}

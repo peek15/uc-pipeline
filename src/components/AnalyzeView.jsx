@@ -9,9 +9,9 @@ import { PageHeader, Panel, StatCard, buttonStyle } from "@/components/Operation
 function IntelligenceStage({ count }) {
   const stages = [
     { stage: 1, label: "Data Capture",       threshold: 0,   desc: "Capturing training data from every publish" },
-    { stage: 2, label: "Pattern Recognition", threshold: 50,  desc: "Analyze tab patterns + score correlations" },
-    { stage: 3, label: "Predictive Scoring",  threshold: 100, desc: "Predicted performance scores activate" },
-    { stage: 4, label: "Voice Intelligence",  threshold: 200, desc: "Script consistency scoring + voice patterns" },
+    { stage: 2, label: "Pattern Signals", threshold: 50,  desc: "Early patterns and score correlations become visible" },
+    { stage: 3, label: "Readiness Signals",  threshold: 100, desc: "Predicted scores stay clearly labeled as directional" },
+    { stage: 4, label: "Voice Signals",  threshold: 200, desc: "Script consistency and voice patterns become easier to review" },
   ];
   const active = stages.filter(s => count >= s.threshold).length;
   const next   = stages.find(s => count < s.threshold);
@@ -19,7 +19,7 @@ function IntelligenceStage({ count }) {
   return (
     <Panel style={{ marginBottom:20 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-        <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Intelligence Layer</span>
+        <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Workspace signals</span>
         <span style={{ fontSize:11, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t2)" }}>Stage {active} active</span>
       </div>
       <div style={{ display:"flex", gap:4, marginBottom:10 }}>
@@ -84,7 +84,7 @@ function ScoreCorrelation({ stories }) {
   const withBoth = stories.filter(s => s.score_total!=null && s.metrics_completion);
   if (withBoth.length < 3) return (
     <div style={{ textAlign:"center", padding:"32px 0", color:"var(--t4)", fontSize:12 }}>
-      Need 3+ published stories with both AI score and completion rate data.
+      Need 3+ published content items with both score and completion rate data.
       <br/>Log metrics below to start building this chart.
     </div>
   );
@@ -109,9 +109,9 @@ function ScoreCorrelation({ stories }) {
           <div style={{ fontSize:20, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color: corr>0.5?"#4A9B7F":corr>0?"#C49A3C":"#C0666A" }}>{(corr*100).toFixed(0)}%</div>
         </div>
         <div style={{ fontSize:12, color:"var(--t3)", flex:1 }}>
-          {corr > 0.5 ? "Strong — AI score is a reliable predictor of completion rate." :
+          {corr > 0.5 ? "Strong directional signal — score and completion rate are aligned in current data." :
            corr > 0.2 ? "Moderate — some correlation, more data will sharpen it." :
-           corr > 0   ? "Weak — AI score and completion not yet aligned. Normal at low volume." :
+           corr > 0   ? "Weak — score and completion not yet aligned. Normal at low volume." :
            "Negative — completion rate not following score. Check scoring calibration."}
         </div>
       </div>
@@ -274,12 +274,21 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
   const byFormat    = analyzeBy("format");
   const byArchetype = analyzeBy("archetype");
   const byEra       = analyzeBy("era");
+  const activePipelineCount = stories.filter(s => !["rejected","archived","published"].includes(s.status)).length;
+  const approvedOrReadyCount = stories.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
+  const topFormat = byFormat[0]?.label || null;
+  const learningSignals = [
+    topFormat ? `Most logged performance currently belongs to ${topFormat}.` : "No format pattern is available until more content has logged metrics.",
+    activePipelineCount > publishedCt ? "Your pipeline currently has more in-progress content than published outputs." : "Published outputs are keeping pace with the active pipeline.",
+    approvedOrReadyCount ? `${approvedOrReadyCount} content item${approvedOrReadyCount===1?"":"s"} appear ready for creation, scheduling, or export steps.` : "No approved or ready content is available for downstream workflow steps yet.",
+    published.length ? "These signals are directional and based only on content and metrics already entered in this workspace." : "No performance data has been imported yet.",
+  ];
 
   const TABS = [
     { key:"overview",     label:"Overview" },
-    { key:"score",        label:"Score vs Performance" },
-    { key:"breakdowns",   label:"Breakdowns" },
-    { key:"log",          label:"Log Metrics" },
+    { key:"score",        label:"Score signals" },
+    { key:"breakdowns",   label:"Coverage" },
+    { key:"log",          label:"Log signals" },
   ];
 
   const tabStyle = (k) => ({
@@ -293,8 +302,8 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
   return (
     <div className="animate-fade-in">
       <PageHeader
-        title="Insights"
-        description="Track published performance, import Metricool data, and watch the intelligence layer mature as volume grows."
+        title="Workspace signals"
+        description="Operational transparency from content, approvals, exports, compliance, and imported metrics. Directional only."
         meta={`${publishedCt} published`}
         action={
           <button onClick={importCSV} disabled={importing} style={buttonStyle("secondary", { padding:"6px 14px" })}>
@@ -328,10 +337,21 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
             ))}
           </div>
 
+          <Panel style={{ marginBottom: 20 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>What Creative Engine is learning</div>
+            <div style={{ display:"grid", gap:7 }}>
+              {learningSignals.map(signal => (
+                <div key={signal} style={{ fontSize:12, color:"var(--t2)", lineHeight:1.55, padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+                  {signal}
+                </div>
+              ))}
+            </div>
+          </Panel>
+
           {published.length < 3 ? (
             <div style={{ textAlign:"center", padding:"48px 0", color:"var(--t4)" }}>
               <BarChart3 size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }}/>
-              <div style={{ fontSize:13 }}>Publish 3+ episodes and log metrics to see patterns</div>
+              <div style={{ fontSize:13 }}>Log 3+ published content items to see workspace patterns</div>
               <div style={{ fontSize:11, marginTop:6 }}>Import from Metricool or log manually in the Log Metrics tab</div>
             </div>
           ) : (
@@ -356,7 +376,7 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
       {activeTab==="breakdowns" && (
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
           {[
-            { label:"Archetype", data:byArchetype },
+            { label:"Angle", data:byArchetype },
             { label:"Format",    data:byFormat    },
             { label:"Era",       data:byEra       },
           ].map(({ label, data }) => (
@@ -372,10 +392,10 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
       {activeTab==="log" && (
         <div>
           <div style={{ marginBottom:12 }}>
-            <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Select episode</div>
+            <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Select content item</div>
             <select value={selId||""} onChange={e=>handleSelect(e.target.value||null)}
               style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border-in)", color:"var(--t1)", fontSize:13, outline:"none" }}>
-              <option value="">Select episode...</option>
+              <option value="">Select content item...</option>
               {stories.filter(s=>!["rejected","archived"].includes(s.status)).map(s=>(
                 <option key={s.id} value={s.id}>{s.title} ({STAGES[s.status]?.label})</option>
               ))}
@@ -418,7 +438,7 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
           )}
 
           <div style={{ marginTop:20, padding:"12px 14px", borderRadius:8, background:"var(--fill2)", border:"1px solid var(--border)", fontSize:12, color:"var(--t3)" }}>
-            <strong style={{color:"var(--t2)"}}>Tip:</strong> Import your Metricool CSV export using the button above to bulk-import metrics for all published episodes at once. The system matches by title automatically.
+            <strong style={{color:"var(--t2)"}}>Tip:</strong> Import your Metricool CSV export using the button above to bulk-import metrics for published content at once. The system matches by title automatically.
           </div>
         </div>
       )}

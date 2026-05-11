@@ -35,7 +35,6 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
   ).sort((a, b) => contentScore(b) - contentScore(a));
 
   const covered   = scheduled.length + ready.length;
-  const pct       = Math.min(100, Math.round((covered/totalSlots)*100));
   const color     = covered >= totalSlots ? "var(--success)" : covered >= totalSlots*0.6 ? "var(--warning)" : "var(--error)";
 
   // Format balance in next 3 weeks
@@ -51,8 +50,8 @@ function CoverageSummary({ stories, weekOffset, cadence=DEFAULT_CADENCE }) {
         <span style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>3-week coverage</span>
         <span style={{ fontSize:12, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color }}>{covered}/{totalSlots} slots</span>
       </div>
-      <div style={{ height:4, borderRadius:2, background:"var(--bg3)", overflow:"hidden", marginBottom:10 }}>
-        <div style={{ height:"100%", width:`${pct}%`, background:color, borderRadius:2, transition:"width 0.4s" }}/>
+      <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10, lineHeight:1.5 }}>
+        {covered >= totalSlots ? "Coverage is ready against current cadence." : "More approved content is needed to cover the next three weeks."}
       </div>
       <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
         <span style={{ fontSize:11, color:"var(--t3)" }}>{scheduled.length} scheduled</span>
@@ -81,7 +80,7 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
   const issueRows = [
     { key:"missing", label:"Open slots", value:audit.missingSlots, tone:audit.missingSlots ? "var(--warning)" : "var(--success)" },
     { key:"quality", label:"Quality flags", value:audit.qualityFlags.length, tone:audit.qualityFlags.length ? "var(--error)" : "var(--success)" },
-    { key:"script", label:"Need scripts", value:audit.needsScript.length, tone:audit.needsScript.length ? "var(--warning)" : "var(--success)" },
+    { key:"script", label:"Need drafts", value:audit.needsScript.length, tone:audit.needsScript.length ? "var(--warning)" : "var(--success)" },
     { key:"sequence", label:"Sequence issues", value:audit.sequenceIssues.length, tone:audit.sequenceIssues.length ? "var(--warning)" : "var(--success)" },
   ];
 
@@ -94,7 +93,7 @@ function CalendarAuditPanel({ audit, onAutoFill, onSafeFill }) {
           </div>
           <div>
             <div style={{ fontSize:12, fontWeight:700, color:"var(--t1)" }}>Weekly planner audit</div>
-            <div style={{ fontSize:11, color:"var(--t3)" }}>{audit.scheduledCount}/{audit.cadence} target slots · {audit.safeReadyCount} safe ready stories</div>
+            <div style={{ fontSize:11, color:"var(--t3)" }}>{audit.scheduledCount}/{audit.cadence} target slots · {audit.safeReadyCount} safe ready items</div>
           </div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
@@ -378,7 +377,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
     return () => window.removeEventListener("keydown", handler);
   }, [days, ready, stories]);
 
-  // Auto-produce: trigger script generation for all scheduled-but-unscripted stories
+  // Prepare drafts for scheduled content that does not have primary copy yet.
   const [producing,    setProducing]    = useState(false);
   const [produceStatus,setProduceStatus]= useState(null);
 
@@ -392,17 +391,17 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
     }).sort((a,b) => new Date(a.scheduled_date) - new Date(b.scheduled_date));
 
     if (!toProcess.length) {
-      setProduceStatus("All scheduled stories in the next 2 weeks already have scripts.");
+      setProduceStatus("All scheduled content items in the next 2 weeks already have drafts.");
       setTimeout(()=>setProduceStatus(null), 3000);
       return;
     }
 
     setProducing(true);
-    setProduceStatus(`Producing ${toProcess.length} stories...`);
+    setProduceStatus(`Preparing ${toProcess.length} content items...`);
 
     for (let i=0; i<toProcess.length; i++) {
       const s = toProcess[i];
-      setProduceStatus(`Scripting ${i+1}/${toProcess.length} — ${s.title.slice(0,40)}...`);
+      setProduceStatus(`Drafting ${i+1}/${toProcess.length} — ${s.title.slice(0,40)}...`);
       try {
         // Trigger script generation via parent
         if (onProduce) await onProduce(s.id);
@@ -414,7 +413,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
     }
 
     setProducing(false);
-    setProduceStatus(`✓ Done — ${toProcess.length} stories scripted.`);
+    setProduceStatus(`Done — ${toProcess.length} content items drafted.`);
     setTimeout(()=>setProduceStatus(null), 4000);
   };
 
@@ -433,8 +432,8 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
     <div className="animate-fade-in">
 
       <PageHeader
-        title="Schedule"
-        description="Plan the visible week, check cadence and quality pressure, then move scheduled stories into scripting and production."
+        title="Calendar"
+        description="Plan approved content against readiness, programme coverage, and weekly cadence. No publishing automation."
         meta={`${scheduledNext14.length} scheduled · ${ready.length} ready`}
       />
 
@@ -455,7 +454,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
                 {planPreview.safeOnly ? "Safe auto-fill preview" : "Auto-fill preview"}
               </div>
               <div style={{ fontSize:11, color:"var(--t3)" }}>
-                Review the proposed schedule before committing dates to stories.
+                Review the proposed schedule before committing dates to content items.
               </div>
             </div>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -493,7 +492,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
                       )}
                       {gate !== "missing" && (
                         <span style={{ fontSize:9, fontWeight:700, padding:"1px 5px", borderRadius:3, border:`0.5px solid ${gateColor}40`, color:gateColor, background:`${gateColor}12` }}>
-                          {gate === "passed" ? "gate ✓" : gate === "blocked" ? "blocked" : "warnings"}
+                          {gate === "passed" ? "gate clear" : gate === "blocked" ? "blocked" : "warnings"}
                         </span>
                       )}
                     </div>
@@ -507,7 +506,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
                         }}
                         style={{ marginTop:2, width:"100%", fontSize:10, borderRadius:5, border:"0.5px solid var(--border)", background:"var(--bg2)", color:"var(--t3)", padding:"3px 5px", outline:"none", cursor:"pointer", fontFamily:"inherit" }}
                       >
-                        <option value="">Swap story…</option>
+	                        <option value="">Swap content item…</option>
                         {swapOptions.slice(0, 8).map(s => (
                           <option key={s.id} value={s.id}>{s.title.slice(0,36)}{s.score_total ? ` · ${s.score_total}` : ""}</option>
                         ))}
@@ -518,16 +517,16 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
               })}
             </div>
           ) : (
-            <div style={{ fontSize:12, color:"var(--t4)" }}>No eligible empty future slots or ready stories for this week.</div>
+	            <div style={{ fontSize:12, color:"var(--t4)" }}>No eligible empty future slots or approved content for this week.</div>
           )}
         </Panel>
       )}
 
-      {/* Auto-produce banner */}
+      {/* Draft preparation banner */}
       {needsScript > 0 && (
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderRadius:9, background:"var(--fill2)", border:"0.5px solid var(--border)", marginBottom:14 }}>
           <div>
-            <span style={{ fontSize:13, fontWeight:500, color:"var(--t1)" }}>{needsScript} scheduled {needsScript===1?"story":"stories"} need{needsScript===1?"s":""} scripting</span>
+	            <span style={{ fontSize:13, fontWeight:500, color:"var(--t1)" }}>{needsScript} scheduled content item{needsScript===1?"":"s"} need{needsScript===1?"s":""} drafting</span>
             <span style={{ fontSize:12, color:"var(--t3)", marginLeft:8 }}>in the next 14 days</span>
           </div>
           <button onClick={autoProduce} disabled={producing} style={{
@@ -537,7 +536,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
             border:"none", cursor: producing?"not-allowed":"pointer",
             display:"flex", alignItems:"center", gap:6,
           }}>
-            {producing ? <><RefreshCw size={12} className="spin" /> Producing...</> : `⚡ Auto-produce ${needsScript}`}
+	            {producing ? <><RefreshCw size={12} className="spin" /> Drafting...</> : `Prepare drafts ${needsScript}`}
           </button>
         </div>
       )}
@@ -739,7 +738,7 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
                   </div>
 
                   {!ready.length ? (
-                    <div style={{ fontSize:12, color:"var(--t4)" }}>No unscheduled stories ready</div>
+                    <div style={{ fontSize:12, color:"var(--t4)" }}>No approved content ready to schedule</div>
                   ) : (
                     <div style={{ display:"flex", flexDirection:"column", gap:3, maxHeight:200, overflowY:"auto" }}>
                       {suggested.map((s,i) => {
@@ -782,10 +781,10 @@ export default function CalendarView({ stories, onUpdate, onProduce, settings, c
       {/* Ready bank */}
       <div style={{ marginTop:20, padding:"12px 14px", borderRadius:9, background:"var(--bg2)", border:"0.5px solid var(--border)" }}>
         <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>
-          Ready to schedule — {ready.length} stories
+          Ready to schedule — {ready.length} content item{ready.length===1 ? "" : "s"}
         </div>
         {!ready.length ? (
-          <div style={{ fontSize:12, color:"var(--t4)" }}>No stories ready. Approve or script stories in the Pipeline.</div>
+          <div style={{ fontSize:12, color:"var(--t4)" }}>No approved content is ready. Approve content in Pipeline or finish a draft in Create.</div>
         ) : (
           <>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:6, marginBottom:12 }}>

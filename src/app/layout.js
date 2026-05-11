@@ -1,11 +1,18 @@
 import "./globals.css";
-import { DM_Sans, Instrument_Serif } from "next/font/google";
+import { IBM_Plex_Mono, Instrument_Sans, Instrument_Serif } from "next/font/google";
 
-const dmSans = DM_Sans({
+const instrumentSans = Instrument_Sans({
   subsets:  ["latin"],
-  variable: "--font-dm-sans",
+  variable: "--font-instrument-sans",
   display:  "swap",
-  weight:   ["300", "400", "500", "600", "700"],
+  weight:   ["400", "500", "600", "700"],
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets:  ["latin"],
+  variable: "--font-ibm-plex-mono",
+  display:  "swap",
+  weight:   ["400", "500", "600"],
 });
 
 const instrumentSerif = Instrument_Serif({
@@ -32,7 +39,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${instrumentSerif.variable}`}>
+    <html lang="en" className={`${instrumentSans.variable} ${ibmPlexMono.variable} ${instrumentSerif.variable}`}>
       <body>{children}</body>
     </html>
   );

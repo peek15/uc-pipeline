@@ -28,6 +28,19 @@ module.exports = {
 
         // ── Accent ──
         gold: 'var(--gold)',
+        accent: 'var(--accent)',
+        'accent-bg': 'var(--accent-bg)',
+        'accent-border': 'var(--accent-border)',
+        ce: {
+          bg: 'var(--ce-bg)',
+          surface: 'var(--ce-surface)',
+          raised: 'var(--ce-surface-raised)',
+          elevated: 'var(--ce-surface-elevated)',
+          border: 'var(--ce-border)',
+          text: 'var(--ce-text)',
+          muted: 'var(--ce-text-muted)',
+          accent: 'var(--ce-accent)',
+        },
 
         // ── Stage colors ──
         stage: {
@@ -52,6 +65,13 @@ module.exports = {
         sm: 'var(--shadow-sm)',
         DEFAULT: 'var(--shadow)',
         lg: 'var(--shadow-lg)',
+        ce: 'var(--ce-shadow)',
+      },
+
+      borderRadius: {
+        ce: 'var(--ce-radius)',
+        'ce-sm': 'var(--ce-radius-sm)',
+        'ce-lg': 'var(--ce-radius-lg)',
       },
     },
   },

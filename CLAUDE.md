@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.29.0
+- App badge/package target: v3.32.0
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -10,6 +10,44 @@
 Next.js 14 SaaS-ready content pipeline web app. The default seeded workspace
 is Uncle Carter, but active product work should be brand-agnostic. The app manages content research, approvals, scripts, production assets,
 scheduling, provider operations, quality gates, and analytics.
+
+## Creative Engine UI Direction (v3.30.0+)
+- Creative Engine is not Uncle Carter. Do not use Uncle Carter, NBA, sports, clock, pocket-watch, or storytelling-specific metaphors as generic product identity.
+- UI should feel calm, premium, source-aware, and operational: agentic without gimmicks, B2B-trustworthy, and low-noise.
+- Reference principles: Claude/Codex for agentic workflows and review, Linear for operational clarity, Stripe for trust/compliance copy, VS Code for workspace control, ChatGPT/Codex for on-demand source review.
+- Typography direction: Instrument Sans for main UI; IBM Plex Mono or a sober mono fallback for metadata/numbers.
+- Visual system should be 90-95% neutral with minimal accent. Use color only for state, focus, selection, warning, approval, or rare highlights.
+- Avoid AI gradients, rainbow effects, colorful clutter, decorative animation, and prototype-style oversized UI.
+- Use skeletons/shimmer for loading structure, WorkTrace/steppers for high-level agentic work, generating cards for pending structured outputs, and streaming only where genuinely supported.
+- Avoid progress bars except for real file upload progress with a true percentage.
+- Sources/work review should be on demand via small affordances like "View sources", "Review work", or "Used sources"; never fake sources. Mark inferred and uncertain items clearly.
+- Home should feel already operational: controlled reveal is acceptable, but no system boot copy, no WorkTrace by default, and no progress bar.
+- Target navigation direction: Home, Strategy, Ideas, Pipeline, Create, Calendar, Analyze. Settings stays separate in the avatar/lower sidebar.
+- Analyze V1 is transparency and workspace learning signals, not overpromised predictive intelligence.
+- Keep one assistant system. Do not create a second assistant panel or scattered AI buttons.
+
+## App Shell / Navigation Direction (v3.31.0+)
+- Target primary navigation is Home, Strategy, Ideas, Pipeline, Create, Calendar, Analyze. Avoid route-key rewrites unless a migration is explicitly planned.
+- Home is a cockpit for readiness, next action, work in progress, approvals, export readiness, and workspace signals. It is not an analytics dashboard.
+- Home should use controlled reveal/skeletons where useful, not WorkTrace by default, boot copy, progress bars, or engine metaphors.
+- Strategy is the product surface for Brand Profile, Content Strategy, Programmes, and risk/claims guidance.
+- Settings remains admin/technical configuration: workspace, members, billing, privacy/data, providers, rules, account, appearance, and advanced edits.
+- Ideas is the client-facing direction for the old Research surface; keep internal `research` keys stable until a deliberate migration.
+- Create is the current production/script surface; do not split it into new agents or panels.
+- Analyze V1 is transparency and workspace learning signals, not overpromised ML or predictive intelligence.
+- Campaigns is legacy planning/to reposition unless explicitly developed; do not make it the center of the product promise.
+- Do not use UC visual metaphors for Creative Engine.
+
+## Conversational Onboarding Direction (v3.32.0+)
+- Onboarding is full-screen and conversation-first. It should feel closer to Claude/Codex than a SaaS form.
+- Source-first intake happens inside the conversation: website URLs, files, pasted notes, and manual answers.
+- Use WorkTrace/generating cards for high-level task progress. Do not expose chain-of-thought.
+- Sources/work review are on demand, not automatically displayed everywhere.
+- Never fake source analysis. PDF/images must be marked pending if they are not actually parsed.
+- User approval is required before saving final Brand Profile, Content Strategy, Programmes, risks, or first ideas.
+- After approval, guide users to Strategy/Home/Ideas/Create; do not strand them on onboarding.
+- Do not show the right-side AgentPanel during onboarding.
+- Do not use UC visual metaphors in onboarding.
 
 ## Stack
 - Next.js 14 App Router
@@ -173,10 +211,22 @@ scheduling, provider operations, quality gates, and analytics.
 ## Create
 - Component: `src/components/CreateView.jsx`
 - Create V2 uses one shared left queue and one selected-story workspace.
-- Steps: Script, Translations, Brief, Assets, Voice, Visuals, Assembly, Review.
+- Steps: Draft, Translations, Brief, Assets, Voice, Visuals, Assembly, Review.
 - Shift+Option/Alt+Left/Right moves across Create steps.
 - Option/Alt+Up/Down moves between queued stories.
 - `[[nav:script]]` opens Create near writing; `[[nav:production]]` opens Create near production for backward compatibility.
+
+## Operational Surface Direction
+- Pipeline should be a calm operational list of content items, stages, blockers, and next actions.
+- Pipeline should hide excessive metadata by default; long tags, scores, raw fields, source/audit detail, and UC-specific metadata belong in expanded rows or detail views.
+- Create is the current production surface: draft, edit, check, approve, and export. Do not turn it into Studio unless explicitly requested.
+- Calendar is a planning and readiness surface, not publishing automation or platform API scheduling.
+- Analyze is workspace signals and operational transparency, not predictive ML, market intelligence, or guaranteed optimization.
+- Generic Creative Engine UI should avoid Uncle Carter, NBA, sports, clock, pocket-watch, and storytelling-specific metaphors unless scoped to the UC profile/data.
+- Use skeletons/shimmer for structural loading, WorkTrace for AI task progress, generating cards for drafts/insights/compliance/export, and loading buttons for actions.
+- Avoid progress bars except true file upload progress with a real percentage.
+- Source/work review should stay on demand through review/source affordances; never fake sources or work traces.
+- AI help must route through the existing assistant panel and structured context. Do not create new visible agents or scattered AI buttons.
 
 ## Agent Panel
 - Component: `src/components/AgentPanel.jsx`
@@ -213,10 +263,10 @@ scheduling, provider operations, quality gates, and analytics.
 - Audit checks:
   - missing cadence slots
   - quality gate warnings/blockers/missing audits
-  - scheduled stories missing scripts
+  - scheduled content items missing drafts
   - format mix gaps
   - sequence-rule issues
-- `Auto-fill safe` avoids Quality Gate blocked stories.
+- `Auto-fill safe` avoids Quality Gate blocked content.
 
 ## Production
 - Component: `src/components/ProductionView.jsx`

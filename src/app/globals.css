@@ -4,11 +4,30 @@
 
 :root {
   /* ── Typography — next/font vars injected by layout.js ── */
-  --font-body:      var(--font-dm-sans), -apple-system, system-ui, sans-serif;
-  --font-display:   var(--font-dm-sans), -apple-system, system-ui, sans-serif;
-  --font-mono:      ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
+  --font-body:      var(--font-instrument-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display:   var(--font-instrument-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono:      var(--font-ibm-plex-mono), ui-monospace, "SF Mono", Menlo, Monaco, monospace;
   --font-editorial: var(--font-instrument-serif), Georgia, serif;
   --font-script:    Georgia, 'Times New Roman', serif;
+
+  /* ── Creative Engine UI foundation ── */
+  --ce-bg:             #F7F6F3;
+  --ce-surface:        #EDECE9;
+  --ce-surface-raised: #F2F0ED;
+  --ce-surface-elevated:#F7F6F3;
+  --ce-border:         rgba(0,0,0,0.07);
+  --ce-border-strong:  rgba(0,0,0,0.10);
+  --ce-text:           #111110;
+  --ce-text-muted:     #888884;
+  --ce-accent:         #8A7A5A; /* Sober placeholder; not final brand color. */
+  --ce-focus-ring:     rgba(138,122,90,0.28);
+  --ce-radius-sm:      6px;
+  --ce-radius:         8px;
+  --ce-radius-lg:      12px;
+  --ce-page-padding:   24px;
+  --ce-card-padding:   14px 16px;
+  --ce-section-gap:    20px;
+  --ce-shadow:         0 2px 8px rgba(0,0,0,0.07), 0 0 0 0.5px rgba(0,0,0,0.05);
 
   /* ── Backgrounds ── */
   --bg:    #F7F6F3;  /* warm off-white page */
@@ -48,6 +67,11 @@
 
   /* ── Gold accent ── */
   --gold: #C49A3C;
+  --gold-subtle: rgba(196,154,60,0.10);
+  --gold-border: rgba(196,154,60,0.24);
+  --accent: var(--ce-accent);
+  --accent-bg: rgba(138,122,90,0.10);
+  --accent-border: rgba(138,122,90,0.24);
 
   /* ── Semantic status colors ── */
   --error:      #C0666A;
@@ -105,6 +129,19 @@
     --success-bg:  rgba(90,184,154,0.10);
     --warning:     #D4AA55;
     --warning-bg:  rgba(212,170,85,0.10);
+    --ce-bg:             #1A1917;
+    --ce-surface:        #272523;
+    --ce-surface-raised: #252321;
+    --ce-surface-elevated:#201E1C;
+    --ce-border:         rgba(255,255,255,0.10);
+    --ce-border-strong:  rgba(255,255,255,0.13);
+    --ce-text:           #F5F2EF;
+    --ce-text-muted:     #ADA7A0;
+    --ce-accent:         #B6A77F;
+    --ce-focus-ring:     rgba(182,167,127,0.32);
+    --ce-shadow:         0 2px 10px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.05);
+    --accent-bg: rgba(182,167,127,0.11);
+    --accent-border: rgba(182,167,127,0.26);
   }
 }
 
@@ -140,12 +177,18 @@ body {
 @keyframes fadeIn  { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+@keyframes ceShimmer { 0% { background-position: 180% 0; } 100% { background-position: -180% 0; } }
 
 .anim-fade       { animation: fadeIn 0.18s ease forwards; }
 .anim-slide      { animation: slideUp 0.22s cubic-bezier(0.32,0.72,0,1) forwards; }
 .anim-spin, .spin { animation: spin 0.8s linear infinite; }
 .animate-fade-in { animation: fadeIn 0.18s ease forwards; }
 .anim-pulse      { animation: pulse 1.4s ease infinite; }
+.ce-skeleton {
+  background: linear-gradient(90deg, var(--fill) 0%, var(--fill2) 45%, var(--fill) 90%);
+  background-size: 220% 100%;
+  animation: ceShimmer 1.6s ease-in-out infinite;
+}
 
 /* ── Disabled buttons ── */
 button:disabled { opacity: 0.42; cursor: not-allowed; }
@@ -200,6 +243,7 @@ select:focus-visible,
 textarea:focus-visible {
   outline: 1.5px solid var(--t2);
   outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--ce-focus-ring);
 }
 
 /* ── Theme overrides (from Settings > Appearance) ── */
@@ -219,6 +263,19 @@ textarea:focus-visible {
   --border-in: rgba(255,255,255,0.13);
   --fill:  rgba(255,255,255,0.04);
   --fill2: rgba(255,255,255,0.09);
+  --ce-bg:             #1A1917;
+  --ce-surface:        #272523;
+  --ce-surface-raised: #252321;
+  --ce-surface-elevated:#201E1C;
+  --ce-border:         rgba(255,255,255,0.10);
+  --ce-border-strong:  rgba(255,255,255,0.13);
+  --ce-text:           #F5F2EF;
+  --ce-text-muted:     #ADA7A0;
+  --ce-accent:         #B6A77F;
+  --ce-focus-ring:     rgba(182,167,127,0.32);
+  --ce-shadow:         0 2px 10px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.05);
+  --accent-bg: rgba(182,167,127,0.11);
+  --accent-border: rgba(182,167,127,0.26);
 }
 
 [data-theme="light"] {
@@ -237,6 +294,19 @@ textarea:focus-visible {
   --border-in: rgba(0,0,0,0.10);
   --fill:  rgba(0,0,0,0.03);
   --fill2: rgba(0,0,0,0.05);
+  --ce-bg:             #F7F6F3;
+  --ce-surface:        #EDECE9;
+  --ce-surface-raised: #F2F0ED;
+  --ce-surface-elevated:#F7F6F3;
+  --ce-border:         rgba(0,0,0,0.07);
+  --ce-border-strong:  rgba(0,0,0,0.10);
+  --ce-text:           #111110;
+  --ce-text-muted:     #888884;
+  --ce-accent:         #8A7A5A;
+  --ce-focus-ring:     rgba(138,122,90,0.28);
+  --ce-shadow:         0 2px 8px rgba(0,0,0,0.07), 0 0 0 0.5px rgba(0,0,0,0.05);
+  --accent-bg: rgba(138,122,90,0.10);
+  --accent-border: rgba(138,122,90,0.24);
 }
 
 /* ── Density modes ── */

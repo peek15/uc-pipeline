@@ -678,7 +678,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
 
         {/* Keyboard hint */}
         <div style={{padding:"8px 20px",borderTop:"1px solid var(--border2)",display:"flex",gap:12,fontSize:10,color:"var(--t4)"}}>
-          {[["←→","Previous/next story"],["Esc","Close"]].map(([k,v])=>(
+          {[["←→","Previous/next content item"],["Esc","Close"]].map(([k,v])=>(
             <span key={k}><kbd style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",fontSize:9,padding:"1px 5px",borderRadius:3,background:"var(--bg3)",border:"1px solid var(--border)"}}>{k}</kbd> {v}</span>
           ))}
         </div>

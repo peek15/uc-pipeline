@@ -4,7 +4,7 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import { Search, ArrowRight, FileText, Eye, ChevronRight, ChevronDown, SlidersHorizontal, X, Check, Trash2, RefreshCw } from "lucide-react";
 import { STAGES, ERAS, ARCHETYPES, ACCENT, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES, CONTENT_TYPES, CHANNELS } from "@/lib/constants";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
-import { PageHeader, Pill, buttonStyle, InlineTextInput } from "@/components/OperationalUI";
+import { PageHeader, Pill, Panel, EmptyState, buttonStyle, InlineTextInput } from "@/components/OperationalUI";
 import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
 
 
@@ -62,6 +62,25 @@ function getGateStatus(s) {
   if (Number(s.quality_gate_warnings) > 0) return "warnings";
   if (s.quality_gate) return "passed";
   return "missing";
+}
+
+function nextActionForContent(s) {
+  const gateStatus = getGateStatus(s);
+  if (gateStatus === "blocked") return "Review blocker";
+  if (Number(s.quality_gate_warnings) > 0) return "Review warnings";
+  if (s.status === "accepted") return "Review idea";
+  if (s.status === "approved") return "Draft content";
+  if (s.status === "scripted") return "Run compliance check";
+  if (s.status === "produced") return "Approve/export";
+  if (s.status === "published") return "Review signals";
+  return "Review item";
+}
+
+function advanceLabel(nextStage) {
+  if (nextStage === "scripted") return "Send to Create";
+  if (nextStage === "produced") return "Mark ready";
+  if (nextStage === "published") return "Mark published";
+  return STAGES[nextStage]?.label || "Move";
 }
 
 export default function PipelineView({ stories, onSelect, onStageChange, onBulkAction, onBulkReject, onBulkDelete, onUpdate, setActiveTab, settings = null, campaigns = [] }) {
@@ -150,6 +169,11 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   for (const s of filtered) { bySt[s.status] = bySt[s.status]||[]; bySt[s.status].push(s); }
   const stageOrder = ["accepted","approved","scripted","produced","published"];
   const visibleIds = (stageFilter==="all" ? stageOrder : [stageFilter]).flatMap(k=>(bySt[k]||[]).map(s=>s.id));
+  const activeItems = stories.filter(s => !["rejected","archived"].includes(s.status));
+  const readyToCreateCount = stories.filter(s => ["approved","scripted"].includes(s.status)).length;
+  const needsReviewCount = stories.filter(s => getGateStatus(s) === "blocked" || Number(s.quality_gate_warnings) > 0).length;
+  const readyToExportCount = stories.filter(s => s.status === "produced").length;
+  const scheduledCount = stories.filter(s => !!s.scheduled_date).length;
 
   // ── Keyboard navigation ──
   useEffect(() => {
@@ -229,10 +253,27 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   return (
     <div ref={containerRef} className="animate-fade-in" tabIndex={-1} style={{outline:"none"}}>
       <PageHeader
-        title="Content"
-        description="Review, filter, audit, and move content through the production pipeline."
+        title="Pipeline"
+        description="Track content items in progress, their next action, readiness, and review state."
         meta={`${filtered.length} visible · ${stories.length} total`}
       />
+
+      <Panel style={{ marginBottom: 12, padding: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8 }}>
+          {[
+            { label: "In progress", value: activeItems.length },
+            { label: "Ready to create", value: readyToCreateCount },
+            { label: "Needs review", value: needsReviewCount },
+            { label: "Ready to export", value: readyToExportCount },
+            { label: "Scheduled", value: scheduledCount },
+          ].map(item => (
+            <div key={item.label} style={{ padding: "9px 10px", borderRadius: 8, background: "var(--fill2)", border: "0.5px solid var(--border)" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{item.label}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)", fontFamily: "var(--font-mono)" }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
 
       {/* Controls */}
       <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:8,marginBottom:12,alignItems:"center"}}>
@@ -266,7 +307,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
             {label:"Content type", val:contentType, set:setContentType, opts:CONTENT_TYPES.map(t=>({key:t.key,label:t.label}))},
             {label:"Channel",    val:channel,    set:setChannel,    opts:CHANNELS.map(c=>({key:c,label:c}))},
             {label:"Era",       val:era,       set:setEra,       opts:ERAS.map(e=>({key:e,label:e}))},
-            {label:"Archetype", val:archetype, set:setArchetype, opts:ARCHETYPES.map(a=>({key:a,label:a}))},
+            {label:"Angle",     val:archetype, set:setArchetype, opts:ARCHETYPES.map(a=>({key:a,label:a}))},
             {label:"Format",    val:format,    set:setFormat,    opts:programmes.map(f=>({key:f.key,label:f.label}))},
             {label:"Hook type", val:hookType,  set:setHookType,  opts:HOOK_TYPES.map(h=>({key:h.key,label:h.label}))},
             {label:"Angle",     val:emotAngle, set:setEmotAngle, opts:EMOTIONAL_ANGLES.map(a=>({key:a,label:a.charAt(0).toUpperCase()+a.slice(1)}))},
@@ -418,7 +459,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
               )}
             </div>
 
-            {!items.length&&<div style={{padding:"24px 0",textAlign:"center",color:"var(--t4)",fontSize:12}}>No content</div>}
+            {!items.length&&filtered.length>0&&<div style={{padding:"24px 0",textAlign:"center",color:"var(--t4)",fontSize:12}}>No content items in this stage.</div>}
 
             <div style={{display:"flex",flexDirection:"column",gap:"var(--card-gap, 2px)"}}>
               {items.map(s=>{
@@ -468,11 +509,12 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                         <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--t3)",flexWrap:"wrap"}}>
                           <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
                             <span style={{width:6,height:6,borderRadius:"50%",background:ac,display:"inline-block",flexShrink:0}}/>
-                            <span style={{color:ac,fontWeight:500}}>{s.archetype}</span>
-                          </span>
-                          <span style={{color:"var(--t4)"}}>·</span><span>{getContentTypeLabel(s, settings)}</span>
-                          {displayChannel&&<><span style={{color:"var(--t4)"}}>·</span><span>{displayChannel}</span></>}
-                          {s.era&&<><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
+	                            <span style={{color:ac,fontWeight:500}}>{s.archetype || "No angle"}</span>
+	                          </span>
+	                          <span style={{color:"var(--t4)"}}>·</span><span>{getContentTypeLabel(s, settings)}</span>
+	                          {displayChannel&&<><span style={{color:"var(--t4)"}}>·</span><span>{displayChannel}</span></>}
+	                          {s.era&&<><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
+	                          <span style={{color:"var(--t4)"}}>·</span><span>Next: {nextActionForContent(s)}</span>
                           {subjects&&<><span style={{color:"var(--t4)"}}>·</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{subjects}</span></>}
                           {getStoryScript(s, "en")&&<><span style={{color:"var(--t4)"}}>·</span><FileText size={11} color="var(--t3)"/></>}
                           {s.metrics_views&&<><span style={{color:"var(--t4)"}}>·</span><Eye size={11}/><span>{parseInt(s.metrics_views)>1000?`${(parseInt(s.metrics_views)/1000).toFixed(1)}k`:s.metrics_views}</span></>}
@@ -508,7 +550,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                         }}
                         onMouseEnter={e=>{e.currentTarget.style.background="var(--t1)";e.currentTarget.style.color="var(--bg)";e.currentTarget.style.borderColor="var(--t1)";}}
                         onMouseLeave={e=>{e.currentTarget.style.background="var(--fill2)";e.currentTarget.style.color="var(--t2)";e.currentTarget.style.borderColor="var(--border)";}}>
-                          {STAGES[st.next].label} <ArrowRight size={11}/>
+	                          {advanceLabel(st.next)} <ArrowRight size={11}/>
                         </button>
                       )}
                     </div>
@@ -573,7 +615,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                               <span style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>AI Score</span>
                               <div style={{display:"flex",gap:12,alignItems:"center"}}>
                                 {s.reach_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}}>↗ reach <span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t2)",fontWeight:600}}>{s.reach_score}</span></span>}
-                                {s.predicted_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}} title={`Predicted score (gate risk + peer history). Confidence: ${Math.round(((s.metadata?.prediction?.confidence)||0)*100)}%`}>⚡ pred <span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:s.predicted_score>=s.score_total?"var(--success)":s.predicted_score<s.score_total-10?"var(--error)":"var(--t2)",fontWeight:600}}>{s.predicted_score}</span></span>}
+                                {s.predicted_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}} title={`Directional readiness signal from gate risk and workspace history. Confidence: ${Math.round(((s.metadata?.prediction?.confidence)||0)*100)}%`}>signal <span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:s.predicted_score>=s.score_total?"var(--success)":s.predicted_score<s.score_total-10?"var(--error)":"var(--t2)",fontWeight:600}}>{s.predicted_score}</span></span>}
                                 <span style={{fontSize:13,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)"}}>{s.score_total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span></span>
                               </div>
                             </div>
@@ -615,11 +657,12 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       })}
 
       {filtered.length===0&&(
-        <div style={{textAlign:"center",padding:"80px 0",color:"var(--t4)"}}>
-          <Search size={32} style={{margin:"0 auto 12px",display:"block",opacity:0.25}}/>
-          <div style={{fontSize:13}}>No content matches your filters</div>
-          {activeFilterCount>0&&<button onClick={clearFilters} style={{marginTop:10,fontSize:12,color:"var(--t2)",background:"transparent",border:"none",cursor:"pointer",textDecoration:"underline"}}>Clear filters</button>}
-        </div>
+        <EmptyState
+          title={stories.length ? "No content matches this view" : "Generate ideas or add your first content item."}
+          description={stories.length ? "Adjust filters to return to the full operational list." : "Start from Ideas or onboarding, then move approved items into Pipeline."}
+          action={stories.length ? clearFilters : () => setActiveTab?.("research")}
+          actionLabel={stories.length ? "Clear filters" : "Open Ideas"}
+        />
       )}
 
       {/* Shortcut hint */}

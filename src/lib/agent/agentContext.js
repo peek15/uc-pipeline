@@ -74,7 +74,7 @@ export function buildAgentContext({
 
 const VIEW_LABELS = {
   dashboard:        "Dashboard",
-  research:         "Research",
+  research:         "Ideas",
   pipeline:         "Pipeline",
   script:           "Script",
   production:       "Production",

@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, TrendingUp, Calendar, FileText, X, ArrowRight, RefreshCw } from "lucide-react";
-import { FORMAT_MAP, FORMATS, ARCHETYPES, ACCENT } from "@/lib/constants";
+import { AlertTriangle, Calendar, FileText, X } from "lucide-react";
 import { getBrandLanguages, getStoryScript, hasAllConfiguredScripts } from "@/lib/brandConfig";
 
 // ── Fallback defaults (match DEFAULT_SETTINGS in SettingsModal) ──
@@ -42,40 +41,6 @@ function getDaysUntilGap(stories, ready, HORIZON_DAYS, CADENCE) {
   return Math.max(0, daysOfBuffer);
 }
 
-function getFormatBalance(stories, ready) {
-  const scheduled = stories.filter(s => s.scheduled_date && ["produced","scripted","approved"].includes(s.status));
-  const alerts = [];
-
-  for (const fmt of FORMATS) {
-    if (fmt.key === "special_edition") continue;
-    const readyCount     = ready.filter(s => s.format === fmt.key).length;
-    const scheduledCount = scheduled.filter(s => s.format === fmt.key).length;
-    const total = readyCount + scheduledCount;
-    if (total < 2) {
-      alerts.push({ format: fmt, readyCount, scheduledCount, total });
-    }
-  }
-  return alerts;
-}
-
-function getBestPerformers(stories) {
-  const published = stories.filter(s => s.status === "published" && s.metrics_completion);
-  if (published.length < 5) return null;
-
-  const combos = {};
-  for (const s of published) {
-    const key = `${s.archetype}|${s.era}`;
-    if (!combos[key]) combos[key] = { archetype: s.archetype, era: s.era, completions: [], count: 0 };
-    combos[key].completions.push(parseFloat(s.metrics_completion) || 0);
-    combos[key].count++;
-  }
-  const sorted = Object.values(combos)
-    .filter(c => c.count >= 2)
-    .map(c => ({ ...c, avg: c.completions.reduce((a, b) => a + b, 0) / c.completions.length }))
-    .sort((a, b) => b.avg - a.avg);
-  return sorted[0] || null;
-}
-
 function getMissingTranslations(stories, settings) {
   const scripted = stories.filter(s => getStoryScript(s, "en") && ["scripted","produced"].includes(s.status));
   return scripted.filter(s => !hasAllConfiguredScripts(s, settings)).length;
@@ -106,13 +71,11 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
   const ready        = getReadyStories(stories);
   const stockLevel   = ready.length;
   const daysUntilGap = getDaysUntilGap(stories, ready, HORIZON_DAYS, CADENCE);
-  const formatAlerts = getFormatBalance(stories, ready);
-  const bestPerformer= getBestPerformers(stories);
   const missingTrans = getMissingTranslations(stories, settings);
   const languageLabel = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join("/");
   const calGaps      = getCalendarGaps(stories, HORIZON_DAYS, CADENCE);
 
-  const stockColor  = stockLevel >= HEALTHY_STOCK ? "#4A9B7F" : stockLevel >= LOW_STOCK ? "#C49A3C" : "#C0666A";
+  const stockColor  = stockLevel >= LOW_STOCK ? "#C49A3C" : "#C0666A";
   const stockLabel  = stockLevel >= HEALTHY_STOCK ? "Healthy" : stockLevel >= LOW_STOCK ? "Low" : "Critical";
 
   // Build alert bullets
@@ -137,31 +100,6 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
       color: "#C0666A",
       text: `Coverage gap in ~${daysUntilGap} days based on current stock + calendar (${calGaps.scheduled}/${calGaps.totalSlots} slots filled in next ${Math.round(HORIZON_DAYS / 7)} weeks).`,
       action: { label: "Fill calendar", fn: () => onNavigate("calendar") },
-    });
-  }
-
-  // Format balance
-  formatAlerts.forEach(({ format, total }) => {
-    if (dismissed.has(`fmt-${format.key}`)) return;
-    bullets.push({
-      id: `fmt-${format.key}`,
-      icon: ArrowRight,
-      color: format.color,
-      text: `Low on ${format.label} stories — only ${total} ready or scheduled in next ${Math.round(HORIZON_DAYS / 7)} weeks.`,
-      action: { label: `Research ${format.label}`, fn: () => { onPrefillResearch({ format: format.key }); onNavigate("research"); } },
-      dismissible: true,
-    });
-  });
-
-  // Best performer recommendation
-  if (bestPerformer && !dismissed.has("best")) {
-    bullets.push({
-      id: "best",
-      icon: TrendingUp,
-      color: "#4A9B7F",
-      text: `${bestPerformer.archetype} + ${bestPerformer.era} averaging ${Math.round(bestPerformer.avg)}% completion — your best performing combo. Find more.`,
-      action: { label: "Research this", fn: () => { onPrefillResearch({ archetype: bestPerformer.archetype, era: bestPerformer.era }); onNavigate("research"); } },
-      dismissible: true,
     });
   }
 
@@ -193,7 +131,7 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <span style={{ width:8, height:8, borderRadius:"50%", background:stockColor, display:"inline-block" }} />
           <span style={{ fontSize:12, fontWeight:600, color:"var(--t1)" }}>
-            Production · {stockLabel} · {stockLevel} ready
+            Production needs attention
           </span>
           {!expanded && <span style={{ fontSize:11, color:"var(--t3)" }}>· {visibleBullets.length} alert{visibleBullets.length !== 1 ? "s" : ""}</span>}
         </div>

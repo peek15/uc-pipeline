@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, FileText, Globe2, HelpCircle, Paperclip, Pencil, RefreshCw, Send, ShieldAlert } from "lucide-react";
 import { supabase, getBrandProfiles, getWorkspaces, createBrandProfile } from "@/lib/db";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
@@ -37,6 +37,10 @@ export default function OnboardingPage() {
   const [composerMode, setComposerMode] = useState("message");
   const [composerText, setComposerText] = useState("");
   const [chatEvents, setChatEvents] = useState([]);
+  const [assistantTyping, setAssistantTyping] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+  const transcriptEndRef = useRef(null);
+  const replyTimerRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: authSession } }) => {
@@ -82,6 +86,14 @@ export default function OnboardingPage() {
   const sourceTrace = useMemo(() => buildSourceTrace(intake, sources), [intake, sources]);
   const currentWork = loadingTask ? WORK_STEPS[loadingTask] || [] : [];
 
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior:"smooth", block:"end" });
+  }, [chatEvents, assistantTyping, loadingTask, phase, facts, draft, error]);
+
+  useEffect(() => () => {
+    if (replyTimerRef.current) clearTimeout(replyTimerRef.current);
+  }, []);
+
   const getToken = async () => {
     const { data: { session: authSession } } = await supabase.auth.getSession();
     return authSession?.access_token;
@@ -101,6 +113,11 @@ export default function OnboardingPage() {
 
   const runAnalysis = useCallback(async () => {
     if (!tenant) return;
+    setPendingAction(null);
+    setChatEvents(prev => [
+      ...prev,
+      { role:"assistant", kind:"reply", text:"I’m going to read what you gave me now. I’ll keep this to a first pass and mark anything that needs confirmation." },
+    ]);
     setLoadingTask("analyze");
     setError(null);
     try {
@@ -134,6 +151,10 @@ export default function OnboardingPage() {
       setDraft(analyzed.draft);
       setLimitations(analyzed.limitations || []);
       setPhase("understood");
+      setChatEvents(prev => [
+        ...prev,
+        { role:"assistant", kind:"reply", text:"I found a first picture of the brand. Review this with me before I draft the strategy." },
+      ]);
     } catch (e) {
       setError(friendlyOnboardingError(e.message));
     } finally {
@@ -143,6 +164,10 @@ export default function OnboardingPage() {
 
   const generateDraftWithAnswers = useCallback(async () => {
     if (!tenant || !session) return;
+    setChatEvents(prev => [
+      ...prev,
+      { role:"assistant", kind:"reply", text:"Thanks. I’ll fold those answers into a draft strategy and use conservative defaults where anything is still uncertain." },
+    ]);
     setLoadingTask("draft");
     setError(null);
     try {
@@ -168,6 +193,10 @@ export default function OnboardingPage() {
       setClarifications(analyzed.clarifications || []);
       setDraft(analyzed.draft);
       setPhase("draft");
+      setChatEvents(prev => [
+        ...prev,
+        { role:"assistant", kind:"reply", text:"Here’s the draft. Nothing is saved yet; review it first, then approve when it feels right." },
+      ]);
     } catch (e) {
       setError(friendlyOnboardingError(e.message));
     } finally {
@@ -177,6 +206,10 @@ export default function OnboardingPage() {
 
   const approve = useCallback(async () => {
     if (!tenant || !session || !draft) return;
+    setChatEvents(prev => [
+      ...prev,
+      { role:"assistant", kind:"reply", text:"I’ll save the approved strategy now and prepare the handoff into the workspace." },
+    ]);
     setLoadingTask("approve");
     setError(null);
     try {
@@ -191,12 +224,27 @@ export default function OnboardingPage() {
         localStorage.setItem("active_tenant", JSON.stringify(tenant));
       } catch {}
       setPhase("approved");
+      setChatEvents(prev => [
+        ...prev,
+        { role:"assistant", kind:"reply", text:"Done. Strategy, programmes, and first ideas are ready to use." },
+      ]);
     } catch (e) {
       setError(friendlyOnboardingError(e.message));
     } finally {
       setLoadingTask(null);
     }
   }, [tenant, session, draft]);
+
+  const queueAssistantReply = useCallback((text, options = {}) => {
+    if (replyTimerRef.current) clearTimeout(replyTimerRef.current);
+    setAssistantTyping(true);
+    setPendingAction(null);
+    replyTimerRef.current = setTimeout(() => {
+      setChatEvents(prev => [...prev, { role:"assistant", kind:"reply", text }]);
+      setAssistantTyping(false);
+      setPendingAction(options.pendingAction || null);
+    }, options.delay ?? 620);
+  }, []);
 
   const onFiles = async (files) => {
     const rows = [];
@@ -218,10 +266,10 @@ export default function OnboardingPage() {
       setChatEvents(prev => [
         ...prev,
         ...rows.map(file => ({ role:"user", kind:"file", title:file.name, text:file.note, status:file.status })),
-        { role:"assistant", kind:"reply", text: rows.some(file => file.status === "parsed")
-          ? "I added the file. Text files can help the first pass immediately; files marked pending will stay as source records until deeper parsing exists."
-          : "I added the file as a source record. If it is a PDF or image, I will not pretend I analyzed it yet." },
       ]);
+      queueAssistantReply(rows.some(file => file.status === "parsed")
+        ? "I added the file. Text files can help the first pass immediately; files marked pending will stay as source records until deeper parsing exists."
+        : "I added the file as a source record. If it is a PDF or image, I won’t pretend I analyzed it yet.", { pendingAction:"analyze" });
     }
   };
 
@@ -235,8 +283,8 @@ export default function OnboardingPage() {
       setChatEvents(prev => [
         ...prev,
         { role:"user", kind:"website", title:"Website", text:url },
-        { role:"assistant", kind:"reply", text:"Got it. I’ll use this as the source URL for the first strategy pass. If the page cannot be read safely, I’ll ask you to paste the important text." },
       ]);
+      queueAssistantReply("Got it. I’ll use this as the source URL for the first strategy pass. If the page cannot be read safely, I’ll ask you to paste the important text.", { pendingAction:"analyze" });
     } else {
       setIntake(prev => ({
         ...prev,
@@ -245,8 +293,8 @@ export default function OnboardingPage() {
       setChatEvents(prev => [
         ...prev,
         { role:"user", kind:"notes", title: composerMode === "notes" ? "Notes" : "Description", text },
-        { role:"assistant", kind:"reply", text:"Thanks. I’ll treat that as source context and look for the offer, audience, tone, risks, and missing pieces." },
       ]);
+      queueAssistantReply("Thanks. I’ll treat that as source context and look for the offer, audience, tone, risks, and missing pieces.", { pendingAction:"analyze" });
     }
     setComposerText("");
     setComposerMode("message");
@@ -260,8 +308,8 @@ export default function OnboardingPage() {
     setChatEvents(prev => [
       ...prev,
       { role:"user", kind:"guide", title:"Guide me", text:"I’m not sure — guide me." },
-      { role:"assistant", kind:"reply", text:"No problem. Send anything you know in plain language. I’ll suggest conservative defaults where the evidence is thin and mark uncertain areas before anything is saved." },
     ]);
+    queueAssistantReply("No problem. Send anything you know in plain language. I’ll suggest conservative defaults where the evidence is thin and mark uncertain areas before anything is saved.");
   };
 
   if (authLoading) return <OnboardingShell><SkeletonCard lines={4} style={{ maxWidth:720, margin:"18vh auto" }} /></OnboardingShell>;
@@ -292,20 +340,14 @@ export default function OnboardingPage() {
 
         <PrivacyNotice />
 
+        {phase === "intake" && !chatEvents.length && <StarterPrompts setValue={setComposerText} setMode={setComposerMode} onGuide={addGuideRequest} />}
+        <SourceConversationMessages intake={intake} sourceTrace={sourceTrace} events={chatEvents} />
+        {assistantTyping && <TypingIndicator />}
+
         {phase === "intake" && (
           <>
-            {!chatEvents.length && <StarterPrompts setValue={setComposerText} setMode={setComposerMode} onGuide={addGuideRequest} />}
-            <SourceConversationMessages intake={intake} sourceTrace={sourceTrace} events={chatEvents} />
-            {hasUserProvidedSource(intake) && (
-              <AssistantMessage>
-                I have enough to start a first pass. If a source cannot be read, I’ll say so and offer a manual path instead of pretending it was analyzed.
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
-                  <button onClick={runAnalysis} disabled={Boolean(loadingTask)} style={buttonStyle("primary")}>
-                    <ArrowRight size={14}/>Understand this business
-                  </button>
-                  <SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />
-                </div>
-              </AssistantMessage>
+            {hasUserProvidedSource(intake) && pendingAction === "analyze" && !assistantTyping && !loadingTask && (
+              <NextActionPrompt onAnalyze={runAnalysis} sourceTrace={sourceTrace} />
             )}
             <OnboardingComposer
               mode={composerMode}
@@ -346,6 +388,7 @@ export default function OnboardingPage() {
         )}
 
         {phase === "approved" && <ApprovedState />}
+        <div ref={transcriptEndRef} />
       </ConversationFrame>
     </OnboardingShell>
   );
@@ -410,6 +453,35 @@ function SourceConversationMessages({ intake, sourceTrace, events }) {
       </div>
       )}
     </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"32px minmax(0,1fr)", gap:12, alignItems:"start" }} className="anim-fade">
+      <div style={{ width:32, height:32, borderRadius:9, background:"var(--t1)", color:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, boxShadow:"var(--shadow-sm)" }}>CE</div>
+      <Panel className="ce-chat-bubble ce-chat-bubble-assistant" style={{ background:"var(--sheet)", padding:"10px 12px", width:"fit-content" }} aria-label="Creative Engine is responding">
+        <div className="ce-typing-indicator">
+          <span />
+          <span />
+          <span />
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function NextActionPrompt({ onAnalyze, sourceTrace }) {
+  return (
+    <AssistantMessage>
+      I have enough to start a first pass. If a source cannot be read, I’ll say so and offer a manual path instead of pretending it was analyzed.
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
+        <button onClick={onAnalyze} style={buttonStyle("primary")}>
+          <ArrowRight size={14}/>Understand this business
+        </button>
+        <SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />
+      </div>
+    </AssistantMessage>
   );
 }
 
@@ -499,8 +571,9 @@ function UnderstandingCard({ facts, setFacts, confidence, limitations, sourceTra
     ["Risks/claims", "sensitive_claims", "Claims and sensitive topics need confirmation before publishing."],
   ];
   return (
-    <Panel style={{ marginLeft:46 }} className="anim-fade">
-      <SectionHeader title="What Creative Engine understood" description="Confirm or correct the inferred facts before drafting the strategy." action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Extracted brand facts", "Scored setup completeness"]} confidence={confidence?.score != null ? `Brand understanding ${confidence.score}%` : null} />} />
+    <Panel style={{ marginLeft:46 }} className="anim-fade ce-generated-card">
+      <SectionHeader title="What Creative Engine understood" action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Extracted brand facts", "Scored setup completeness"]} confidence={confidence?.score != null ? `Brand understanding ${confidence.score}%` : null} />} />
+      <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>Confirm or correct the important pieces before I draft the strategy.</div>
       <BrandUnderstanding score={confidence?.score || 0} signals={confidence?.signals || []} />
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginTop:14 }}>
         {sections.map(([title, key, fallback]) => (
@@ -537,11 +610,16 @@ function ClarificationCards({ clarifications, answers, setAnswers, onBack, onSub
       </Panel>
     );
   }
+  const visibleQuestions = clarifications.slice(0, 2);
+  const hiddenCount = Math.max(0, clarifications.length - visibleQuestions.length);
   return (
-    <Panel style={{ marginLeft:46 }}>
-      <SectionHeader title="A few focused clarifications" description="Only answer what is missing or uncertain. You can let Creative Engine suggest a conservative default." />
+    <Panel style={{ marginLeft:46 }} className="ce-generated-card">
+      <SectionHeader title={visibleQuestions.length === 1 ? "I’m missing one thing before I draft this" : "I’m missing two things before I draft this"} />
+      <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>
+        Answer these now, or let Creative Engine suggest conservative defaults. {hiddenCount ? `${hiddenCount} lower-priority question${hiddenCount === 1 ? "" : "s"} will be handled as uncertain in the draft.` : ""}
+      </div>
       <div style={{ display:"grid", gap:10 }}>
-        {clarifications.map((q, index) => <QuestionCard key={q.id || q.key || index} question={q} value={answers[q.id || q.key]} onChange={value => setAnswers(prev => ({ ...prev, [q.id || q.key]: value }))} />)}
+        {visibleQuestions.map((q, index) => <QuestionCard key={q.id || q.key || index} question={q} value={answers[q.id || q.key]} onChange={value => setAnswers(prev => ({ ...prev, [q.id || q.key]: value }))} />)}
       </div>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:14 }}>
         <button onClick={onBack} style={buttonStyle("ghost")}>Back</button>
@@ -553,8 +631,9 @@ function ClarificationCards({ clarifications, answers, setAnswers, onBack, onSub
 
 function DraftCards({ draft, sourceTrace, onBack, onApprove, loading }) {
   return (
-    <Panel style={{ marginLeft:46 }}>
-      <SectionHeader title="Draft strategy" description="Review before saving. Nothing is written to final settings until approval." action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Drafted Brand Profile", "Drafted Content Strategy", "Drafted Programmes", "Prepared first content ideas"]} />} />
+    <Panel style={{ marginLeft:46 }} className="ce-generated-card">
+      <SectionHeader title="Draft strategy" action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Drafted Brand Profile", "Drafted Content Strategy", "Drafted Programmes", "Prepared first content ideas"]} />} />
+      <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>Review before saving. Nothing is written to final settings until approval.</div>
       <div style={{ display:"grid", gap:12 }}>
         <JsonCard title="Brand Profile draft" data={draft.brand_profile} />
         <JsonCard title="Content Strategy draft" data={draft.content_strategy} />
@@ -645,7 +724,24 @@ function QuestionTitle({ question }) {
 }
 
 function JsonCard({ title, data }) {
-  return <div style={factStyle}><div style={{ fontSize:14, fontWeight:750, marginBottom:8 }}>{title}</div><pre style={preStyle}>{JSON.stringify(data, null, 2)}</pre></div>;
+  const entries = Object.entries(data || {}).filter(([, value]) => value !== undefined && value !== null && value !== "" && (!Array.isArray(value) || value.length));
+  return (
+    <div style={factStyle} className="ce-generated-card">
+      <div style={{ fontSize:14, fontWeight:750, marginBottom:8 }}>{title}</div>
+      {entries.length ? (
+        <div style={{ display:"grid", gap:8 }}>
+          {entries.slice(0, 8).map(([key, value]) => (
+            <div key={key} style={{ display:"grid", gridTemplateColumns:"minmax(110px, 0.36fr) minmax(0, 1fr)", gap:10, alignItems:"start" }}>
+              <div style={{ fontSize:11, color:"var(--t3)", textTransform:"capitalize" }}>{key.replace(/_/g, " ")}</div>
+              <div style={{ fontSize:12, color:"var(--t2)", lineHeight:1.5 }}>{formatDraftValue(value)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize:12, color:"var(--t3)" }}>No draft details were returned for this section.</div>
+      )}
+    </div>
+  );
 }
 
 function ProgrammeDraftCard({ programmes }) {
@@ -679,6 +775,12 @@ function IdeasCard({ ideas }) {
       </div>
     </div>
   );
+}
+
+function formatDraftValue(value) {
+  if (Array.isArray(value)) return value.map(item => typeof item === "object" ? item.title || item.name || JSON.stringify(item) : item).join(", ");
+  if (typeof value === "object") return Object.entries(value).map(([key, item]) => `${key.replace(/_/g, " ")}: ${Array.isArray(item) ? item.join(", ") : item}`).join(" · ");
+  return String(value);
 }
 
 function ErrorCard({ message, onRetry }) {
@@ -771,7 +873,6 @@ const inputStyle = { width:"100%", minHeight:34, borderRadius:"var(--ce-radius-s
 const factStyle = { padding:14, borderRadius:"var(--ce-radius)", border:"1px solid var(--border)", background:"var(--fill2)", minWidth:0 };
 const smallIconButton = { width:26, height:26, borderRadius:"var(--ce-radius-sm)", border:"1px solid var(--border)", background:"transparent", color:"var(--t3)", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" };
 const smallText = { fontSize:12, color:"var(--t3)", lineHeight:1.45, margin:"6px 0 0" };
-const preStyle = { margin:0, whiteSpace:"pre-wrap", wordBreak:"break-word", fontSize:12, lineHeight:1.5, color:"var(--t2)", fontFamily:"var(--font-mono)" };
 function chipStyle(active) {
   return { padding:"6px 10px", borderRadius:99, border:"1px solid var(--border)", background:active ? "var(--t1)" : "var(--fill2)", color:active ? "var(--bg)" : "var(--t2)", fontSize:12, cursor:"pointer", fontFamily:"inherit" };
 }

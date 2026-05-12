@@ -1157,6 +1157,8 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const [settings, setSettings] = useState(mergeSettings(initialSettings));
   const [saved,    setSaved]    = useState(false);
   const [saving,   setSaving]   = useState(false);
+  const autoSaveReadyRef = useRef(false);
+  const autoSaveTimerRef = useRef(null);
 
   // Rules state
   const rules    = settings.strategy?.rules || [];
@@ -1188,7 +1190,12 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const appName = getAppName(settings);
   const languageSummary = getBrandLanguages(settings).map(l => l.key.toUpperCase()).join(" → ");
 
-  useEffect(() => { if (initialSettings) setSettings(mergeSettings(initialSettings)); }, [initialSettings]);
+  useEffect(() => {
+    if (initialSettings) {
+      autoSaveReadyRef.current = false;
+      setSettings(mergeSettings(initialSettings));
+    }
+  }, [initialSettings]);
 
   // Keyboard close
   useEffect(() => {
@@ -1605,32 +1612,48 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     upd("strategy.content_templates", contentTemplates.filter((_, idx) => idx !== i));
   };
 
-  const save = async () => {
+  const persistSettings = async (nextSettings) => {
     setSaving(true);
     try {
       await supabase.from("brand_profiles").upsert({
         id: BRAND_PROFILE_ID,
         workspace_id: WORKSPACE_ID,
-        name: settings.brand.name,
-        identity_voice: settings.brand.voice,
-        identity_avoid: settings.brand.avoid,
-        goal_primary: settings.brand.goal_primary,
-        goal_secondary: settings.brand.goal_secondary,
-        language_primary: settings.brand.language_primary,
-        languages_secondary: settings.brand.languages_secondary,
-        settings,
-        brief_doc: JSON.stringify(settings),
+        name: nextSettings.brand.name,
+        identity_voice: nextSettings.brand.voice,
+        identity_avoid: nextSettings.brand.avoid,
+        goal_primary: nextSettings.brand.goal_primary,
+        goal_secondary: nextSettings.brand.goal_secondary,
+        language_primary: nextSettings.brand.language_primary,
+        languages_secondary: nextSettings.brand.languages_secondary,
+        settings: nextSettings,
+        brief_doc: JSON.stringify(nextSettings),
         // provider_config removed in v3.10.1 — provider credentials now
         // saved via /api/provider-config to the secure provider_secrets
         // table, not exposed in brand_profiles JSON.
       });
-      if (onSettingsChange) onSettingsChange(settings);
-      try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(settings)); } catch {}
+      if (onSettingsChange) onSettingsChange(nextSettings);
+      try { localStorage.setItem(tenantStorageKey("settings", activeTenant), JSON.stringify(nextSettings)); } catch {}
       setSaved(true);
       setTimeout(()=>setSaved(false), 2000);
     } catch(e) { setSaved(false); }
     setSaving(false);
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!autoSaveReadyRef.current) {
+      autoSaveReadyRef.current = true;
+      return;
+    }
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    const snapshot = settings;
+    autoSaveTimerRef.current = setTimeout(() => {
+      persistSettings(snapshot);
+    }, 650);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [settings, isOpen]);
 
   // AI rule suggestions
   const suggestRules = async () => {
@@ -1931,15 +1954,15 @@ ${fileText.slice(0,3000)}` : text };
             </button>
           ))}
           <div style={{ marginTop:"auto", padding:"16px" }}>
-            <button onClick={save} disabled={saving} style={{
+            <div style={{
               width:"100%", padding:"8px", borderRadius:8, fontSize:12, fontWeight:600,
-              background:saved?"#4A9B7F":saving?"var(--fill2)":"var(--t1)",
-              color:saved||(!saving)?"var(--bg)":"var(--t3)",
-              border:"none", cursor:saving?"not-allowed":"pointer",
+              background:saved?"rgba(74,155,127,0.10)":"var(--fill2)",
+              color:saved?"#4A9B7F":"var(--t3)",
+              border:"0.5px solid var(--border)",
               display:"flex", alignItems:"center", justifyContent:"center", gap:5,
             }}>
-              {saved?<><Check size={12}/>Saved</>:saving?"Saving...":"Save"}
-            </button>
+              {saved ? <><Check size={12}/>Saved</> : saving ? "Saving..." : "Auto-save on"}
+            </div>
           </div>
         </div>
 

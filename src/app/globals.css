@@ -178,6 +178,8 @@ body {
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
 @keyframes ceShimmer { 0% { background-position: 180% 0; } 100% { background-position: -180% 0; } }
+@keyframes ceTypingDot { 0%, 70%, 100% { opacity: 0.34; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-2px); } }
+@keyframes ceCardArrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 .anim-fade       { animation: fadeIn 0.18s ease forwards; }
 .anim-slide      { animation: slideUp 0.22s cubic-bezier(0.32,0.72,0,1) forwards; }
@@ -255,48 +257,6 @@ button:active:not(:disabled) {
   position: relative;
 }
 
-.ce-sidebar-item::after {
-  content: "";
-  position: absolute;
-  inset: 5px auto 5px 5px;
-  width: 2px;
-  border-radius: 99px;
-  background: transparent;
-  transition: background 140ms ease, opacity 140ms ease;
-  opacity: 0;
-}
-
-.ce-settings-nav-item::after {
-  content: "";
-  position: absolute;
-  inset: 7px auto 7px 6px;
-  width: 2px;
-  border-radius: 99px;
-  background: transparent;
-  opacity: 0;
-  transition: background 140ms ease, opacity 140ms ease;
-}
-
-.ce-sidebar-item:hover::after {
-  background: var(--t4);
-  opacity: 0.45;
-}
-
-.ce-settings-nav-item:hover::after {
-  background: var(--t4);
-  opacity: 0.45;
-}
-
-.ce-sidebar-item.is-active::after {
-  background: var(--t1);
-  opacity: 0.9;
-}
-
-.ce-settings-nav-item.is-active::after {
-  background: var(--t1);
-  opacity: 0.9;
-}
-
 .ce-sidebar-item svg,
 .ce-icon-button svg,
 .ce-action-chip svg {
@@ -328,6 +288,43 @@ button:active:not(:disabled) {
 
 .ce-send-button:hover:not(:disabled) svg {
   transform: translateX(1px);
+}
+
+.ce-typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 38px;
+  height: 18px;
+}
+
+.ce-typing-indicator span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--t3);
+  animation: ceTypingDot 1.05s ease-in-out infinite;
+}
+
+.ce-typing-indicator span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.ce-typing-indicator span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.ce-generated-card {
+  animation: ceCardArrive 180ms ease forwards;
+}
+
+.ce-chat-composer textarea {
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.ce-chat-composer textarea:focus {
+  background: var(--fill) !important;
+  border-color: var(--border-in) !important;
 }
 
 .ce-secondary-action {

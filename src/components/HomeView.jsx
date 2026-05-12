@@ -1,7 +1,7 @@
 "use client";
-import { ArrowRight, CheckCircle, Circle, FileText, Layers, Search, ShieldAlert, Target } from "lucide-react";
+import { ArrowRight, CheckCircle, Circle, FileText } from "lucide-react";
 import { EmptyState, PageHeader, Panel, SectionHeader, SourceReviewButton, StatCard, buttonStyle } from "@/components/OperationalUI";
-import { getActiveProgrammes, getBrandName, getBrandProgrammes, getBrandTargetPlatforms } from "@/lib/brandConfig";
+import { getActiveProgrammes, getBrandProgrammes, getBrandTargetPlatforms } from "@/lib/brandConfig";
 
 function countWhere(stories, statuses) {
   const set = new Set(statuses);
@@ -38,7 +38,6 @@ export default function HomeView({ stories = [], settings = null, onNavigate, on
   const readyToExport = countWhere(stories, ["produced"]);
   const published = countWhere(stories, ["published"]);
   const recent = latestItems(stories);
-  const brandName = getBrandName(settings) || "Workspace";
   const targetPlatforms = getBrandTargetPlatforms(settings);
 
   const nextAction = !r.checks[0].done
@@ -56,7 +55,6 @@ export default function HomeView({ stories = [], settings = null, onNavigate, on
       <PageHeader
         title="Workspace overview"
         description="A calm cockpit for readiness, next actions, and operational signals."
-        meta={brandName}
       />
 
       <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1.45fr) minmax(260px,0.75fr)", gap:18, alignItems:"start" }}>
@@ -161,15 +159,6 @@ export default function HomeView({ stories = [], settings = null, onNavigate, on
           <EmptyState title="Generate or add first ideas" description="Once ideas move into Pipeline, recent work will appear here." action={() => onNavigate?.("research")} actionLabel="Open Ideas" />
         )}
       </Panel>
-
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:16 }}>
-        <button onClick={() => onNavigate?.("strategy")} style={buttonStyle("secondary")}><Target size={13}/>Strategy</button>
-        <button onClick={() => onNavigate?.("research")} style={buttonStyle("secondary")}><Search size={13}/>Ideas</button>
-        <button onClick={() => onNavigate?.("pipeline")} style={buttonStyle("secondary")}><Layers size={13}/>Pipeline</button>
-        <button onClick={() => onNavigate?.("create")} style={buttonStyle("secondary")}><FileText size={13}/>Create</button>
-        <button onClick={() => onRunOnboarding?.(true)} style={buttonStyle("ghost")}><ShieldAlert size={13}/>Refresh strategy</button>
-        <button onClick={onOpenSettings} style={buttonStyle("ghost")}>Settings</button>
-      </div>
     </div>
   );
 }

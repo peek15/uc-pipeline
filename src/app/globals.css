@@ -270,11 +270,7 @@ button:active:not(:disabled) {
 }
 
 .ce-chat-bubble {
-  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
-}
-
-.ce-chat-bubble:hover {
-  border-color: var(--border-in) !important;
+  transition: opacity 140ms ease;
 }
 
 .ce-chat-composer {
@@ -283,7 +279,11 @@ button:active:not(:disabled) {
 
 .ce-chat-composer:focus-within {
   border-color: var(--border-in) !important;
-  box-shadow: var(--shadow-lg), 0 0 0 3px var(--ce-focus-ring) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+.ce-send-button:hover:not(:disabled) {
+  filter: brightness(0.82);
 }
 
 .ce-send-button:hover:not(:disabled) svg {
@@ -323,8 +323,8 @@ button:active:not(:disabled) {
 }
 
 .ce-chat-composer textarea:focus {
-  background: var(--fill) !important;
-  border-color: var(--border-in) !important;
+  background: transparent !important;
+  border-color: transparent !important;
 }
 
 .ce-secondary-action {

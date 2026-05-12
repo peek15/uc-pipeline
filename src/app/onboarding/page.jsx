@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, FileText, Globe2, HelpCircle, Paperclip, Pencil, RefreshCw, Send, ShieldAlert } from "lucide-react";
 import { supabase, getBrandProfiles, getWorkspaces, createBrandProfile } from "@/lib/db";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
@@ -16,12 +16,47 @@ const WORK_STEPS = {
   approve: ["Saving approved strategy", "Activating programmes", "Preparing next actions"],
 };
 
+const INITIAL_MESSAGES = [
+  {
+    id: "welcome",
+    role: "assistant",
+    type: "text",
+    text: "Tell me what business or brand we are setting up. You can paste a website, upload a file, or describe it in your own words.",
+  },
+  {
+    id: "privacy",
+    role: "system",
+    type: "privacy",
+    text: "Only upload materials you are allowed to use. Privacy and data controls are available in Settings.",
+  },
+];
+
+function transcriptReducer(messages, action) {
+  if (action.type === "append") return [...messages, action.message];
+  if (action.type === "append_many") return [...messages, ...action.messages];
+  if (action.type === "update") {
+    return messages.map(message => message.id === action.id ? { ...message, ...action.patch } : message);
+  }
+  if (action.type === "update_artifact") {
+    return messages.map(message => message.id === action.id ? { ...message, artifact: { ...(message.artifact || {}), ...(action.patch || {}) } } : message);
+  }
+  return messages;
+}
+
+function makeMessage(fields) {
+  return {
+    id: fields.id || `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+    ...fields,
+  };
+}
+
 export default function OnboardingPage() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [tenant, setTenant] = useState(null);
-  const [brandProfile, setBrandProfile] = useState(null);
   const [phase, setPhase] = useState("intake");
+  const [messages, dispatchMessages] = useReducer(transcriptReducer, INITIAL_MESSAGES);
   const [intake, setIntake] = useState(blankOnboardingIntake());
   const [session, setSession] = useState(null);
   const [sources, setSources] = useState([]);
@@ -36,9 +71,7 @@ export default function OnboardingPage() {
   const [mode, setMode] = useState("workspace_setup");
   const [composerMode, setComposerMode] = useState("message");
   const [composerText, setComposerText] = useState("");
-  const [chatEvents, setChatEvents] = useState([]);
   const [assistantTyping, setAssistantTyping] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null);
   const transcriptEndRef = useRef(null);
   const replyTimerRef = useRef(null);
 
@@ -72,7 +105,6 @@ export default function OnboardingPage() {
           profiles = [profile];
         }
         setTenant({ workspace_id: workspace.id, brand_profile_id: profile.id });
-        setBrandProfile(profile);
         setIntake(prev => ({
           ...prev,
           manual: { ...prev.manual, brandName: profile.settings?.brand?.name || profile.name || "" },
@@ -84,11 +116,9 @@ export default function OnboardingPage() {
   }, [user]);
 
   const sourceTrace = useMemo(() => buildSourceTrace(intake, sources), [intake, sources]);
-  const currentWork = loadingTask ? WORK_STEPS[loadingTask] || [] : [];
-
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior:"smooth", block:"end" });
-  }, [chatEvents, assistantTyping, loadingTask, phase, facts, draft, error]);
+  }, [messages, assistantTyping, loadingTask, phase, error]);
 
   useEffect(() => () => {
     if (replyTimerRef.current) clearTimeout(replyTimerRef.current);
@@ -113,11 +143,10 @@ export default function OnboardingPage() {
 
   const runAnalysis = useCallback(async () => {
     if (!tenant) return;
-    setPendingAction(null);
-    setChatEvents(prev => [
-      ...prev,
-      { role:"assistant", kind:"reply", text:"I’m going to read what you gave me now. I’ll keep this to a first pass and mark anything that needs confirmation." },
-    ]);
+    dispatchMessages({ type:"append_many", messages:[
+      makeMessage({ role:"assistant", type:"text", text:"I’m going to read what you gave me now. I’ll keep this to a first pass and mark anything that needs confirmation." }),
+      makeMessage({ role:"assistant", type:"work_trace", artifact:{ task:"analyze", steps:WORK_STEPS.analyze } }),
+    ]});
     setLoadingTask("analyze");
     setError(null);
     try {
@@ -151,12 +180,19 @@ export default function OnboardingPage() {
       setDraft(analyzed.draft);
       setLimitations(analyzed.limitations || []);
       setPhase("understood");
-      setChatEvents(prev => [
-        ...prev,
-        { role:"assistant", kind:"reply", text:"I found a first picture of the brand. Review this with me before I draft the strategy." },
-      ]);
+      dispatchMessages({ type:"append_many", messages:[
+        makeMessage({ role:"assistant", type:"text", text:"I found a first picture of the brand. Review this with me before I draft the strategy." }),
+        makeMessage({ role:"assistant", type:"understanding_card", artifact:{
+          facts:analyzed.facts,
+          confidence:analyzed.confidence,
+          limitations:analyzed.limitations || [],
+          sourceTrace:buildSourceTrace(intake, sourcePayload),
+        }}),
+      ]});
     } catch (e) {
-      setError(friendlyOnboardingError(e.message));
+      const message = friendlyOnboardingError(e.message);
+      setError(message);
+      dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"error", text:message }) });
     } finally {
       setLoadingTask(null);
     }
@@ -164,10 +200,11 @@ export default function OnboardingPage() {
 
   const generateDraftWithAnswers = useCallback(async () => {
     if (!tenant || !session) return;
-    setChatEvents(prev => [
-      ...prev,
-      { role:"assistant", kind:"reply", text:"Thanks. I’ll fold those answers into a draft strategy and use conservative defaults where anything is still uncertain." },
-    ]);
+    dispatchMessages({ type:"append_many", messages:[
+      makeMessage({ role:"user", type:"text", title:"Clarifications", text:summarizeAnswers(answers, clarifications) || "Use conservative defaults where unsure." }),
+      makeMessage({ role:"assistant", type:"text", text:"Thanks. I’ll fold those answers into a draft strategy and use conservative defaults where anything is still uncertain." }),
+      makeMessage({ role:"assistant", type:"work_trace", artifact:{ task:"draft", steps:WORK_STEPS.draft } }),
+    ]});
     setLoadingTask("draft");
     setError(null);
     try {
@@ -193,12 +230,14 @@ export default function OnboardingPage() {
       setClarifications(analyzed.clarifications || []);
       setDraft(analyzed.draft);
       setPhase("draft");
-      setChatEvents(prev => [
-        ...prev,
-        { role:"assistant", kind:"reply", text:"Here’s the draft. Nothing is saved yet; review it first, then approve when it feels right." },
-      ]);
+      dispatchMessages({ type:"append_many", messages:[
+        makeMessage({ role:"assistant", type:"text", text:"Here’s the draft. Nothing is saved yet; review it first, then approve when it feels right." }),
+        makeMessage({ role:"assistant", type:"draft_card", artifact:{ draft:analyzed.draft, sourceTrace } }),
+      ]});
     } catch (e) {
-      setError(friendlyOnboardingError(e.message));
+      const message = friendlyOnboardingError(e.message);
+      setError(message);
+      dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"error", text:message }) });
     } finally {
       setLoadingTask(null);
     }
@@ -206,10 +245,10 @@ export default function OnboardingPage() {
 
   const approve = useCallback(async () => {
     if (!tenant || !session || !draft) return;
-    setChatEvents(prev => [
-      ...prev,
-      { role:"assistant", kind:"reply", text:"I’ll save the approved strategy now and prepare the handoff into the workspace." },
-    ]);
+    dispatchMessages({ type:"append_many", messages:[
+      makeMessage({ role:"assistant", type:"text", text:"I’ll save the approved strategy now and prepare the handoff into the workspace." }),
+      makeMessage({ role:"assistant", type:"work_trace", artifact:{ task:"approve", steps:WORK_STEPS.approve } }),
+    ]});
     setLoadingTask("approve");
     setError(null);
     try {
@@ -224,12 +263,14 @@ export default function OnboardingPage() {
         localStorage.setItem("active_tenant", JSON.stringify(tenant));
       } catch {}
       setPhase("approved");
-      setChatEvents(prev => [
-        ...prev,
-        { role:"assistant", kind:"reply", text:"Done. Strategy, programmes, and first ideas are ready to use." },
-      ]);
+      dispatchMessages({ type:"append_many", messages:[
+        makeMessage({ role:"assistant", type:"text", text:"Done. Strategy, programmes, and first ideas are ready to use." }),
+        makeMessage({ role:"assistant", type:"completion_card" }),
+      ]});
     } catch (e) {
-      setError(friendlyOnboardingError(e.message));
+      const message = friendlyOnboardingError(e.message);
+      setError(message);
+      dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"error", text:message }) });
     } finally {
       setLoadingTask(null);
     }
@@ -238,11 +279,13 @@ export default function OnboardingPage() {
   const queueAssistantReply = useCallback((text, options = {}) => {
     if (replyTimerRef.current) clearTimeout(replyTimerRef.current);
     setAssistantTyping(true);
-    setPendingAction(null);
     replyTimerRef.current = setTimeout(() => {
-      setChatEvents(prev => [...prev, { role:"assistant", kind:"reply", text }]);
+      const next = [makeMessage({ role:"assistant", type:"text", text })];
+      if (options.nextAction === "analyze") {
+        next.push(makeMessage({ role:"assistant", type:"action", text:"I have enough to start a first pass. If a source cannot be read, I’ll say so and offer a manual path instead of pretending it was analyzed.", artifact:{ action:"analyze" } }));
+      }
+      dispatchMessages({ type:"append_many", messages:next });
       setAssistantTyping(false);
-      setPendingAction(options.pendingAction || null);
     }, options.delay ?? 620);
   }, []);
 
@@ -263,13 +306,10 @@ export default function OnboardingPage() {
     }
     setIntake(prev => ({ ...prev, files: [...prev.files, ...rows] }));
     if (rows.length) {
-      setChatEvents(prev => [
-        ...prev,
-        ...rows.map(file => ({ role:"user", kind:"file", title:file.name, text:file.note, status:file.status })),
-      ]);
+      dispatchMessages({ type:"append_many", messages:rows.map(file => makeMessage({ role:"user", type:"source", sourceKind:"file", title:file.name, text:file.note, status:file.status })) });
       queueAssistantReply(rows.some(file => file.status === "parsed")
         ? "I added the file. Text files can help the first pass immediately; files marked pending will stay as source records until deeper parsing exists."
-        : "I added the file as a source record. If it is a PDF or image, I won’t pretend I analyzed it yet.", { pendingAction:"analyze" });
+        : "I added the file as a source record. If it is a PDF or image, I won’t pretend I analyzed it yet.", { nextAction:"analyze" });
     }
   };
 
@@ -280,21 +320,15 @@ export default function OnboardingPage() {
     if (composerMode === "website" || looksLikeUrl) {
       const url = /^https?:\/\//i.test(text) ? text : `https://${text}`;
       setIntake(prev => ({ ...prev, websiteUrl: url }));
-      setChatEvents(prev => [
-        ...prev,
-        { role:"user", kind:"website", title:"Website", text:url },
-      ]);
-      queueAssistantReply("Got it. I’ll use this as the source URL for the first strategy pass. If the page cannot be read safely, I’ll ask you to paste the important text.", { pendingAction:"analyze" });
+      dispatchMessages({ type:"append", message:makeMessage({ role:"user", type:"source", sourceKind:"website", title:"Website", text:url }) });
+      queueAssistantReply("Got it. I’ll use this as the source URL for the first strategy pass. If the page cannot be read safely, I’ll ask you to paste the important text.", { nextAction:"analyze" });
     } else {
       setIntake(prev => ({
         ...prev,
         notes: [prev.notes, text].filter(Boolean).join("\n\n"),
       }));
-      setChatEvents(prev => [
-        ...prev,
-        { role:"user", kind:"notes", title: composerMode === "notes" ? "Notes" : "Description", text },
-      ]);
-      queueAssistantReply("Thanks. I’ll treat that as source context and look for the offer, audience, tone, risks, and missing pieces.", { pendingAction:"analyze" });
+      dispatchMessages({ type:"append", message:makeMessage({ role:"user", type:"text", sourceKind:"notes", title: composerMode === "notes" ? "Notes" : "Description", text }) });
+      queueAssistantReply("Thanks. I’ll treat that as source context and look for the offer, audience, tone, risks, and missing pieces.", { nextAction:"analyze" });
     }
     setComposerText("");
     setComposerMode("message");
@@ -305,12 +339,25 @@ export default function OnboardingPage() {
       ...prev,
       notes: [prev.notes, "User asked Creative Engine to guide setup and suggest conservative defaults where the sources are incomplete."].filter(Boolean).join("\n\n"),
     }));
-    setChatEvents(prev => [
-      ...prev,
-      { role:"user", kind:"guide", title:"Guide me", text:"I’m not sure — guide me." },
-    ]);
+    dispatchMessages({ type:"append", message:makeMessage({ role:"user", type:"text", sourceKind:"guide", title:"Guide me", text:"I’m not sure — guide me." }) });
     queueAssistantReply("No problem. Send anything you know in plain language. I’ll suggest conservative defaults where the evidence is thin and mark uncertain areas before anything is saved.");
   };
+
+  const continueFromUnderstanding = useCallback(() => {
+    const qs = buildClarifications(facts || {});
+    setClarifications(qs);
+    if (qs.length) {
+      setPhase("clarify");
+      dispatchMessages({ type:"append_many", messages:[
+        makeMessage({ role:"assistant", type:"text", text:qs.length === 1 ? "I’m missing one thing before I draft this." : "I’m missing one or two things before I draft this." }),
+        makeMessage({ role:"assistant", type:"clarification_card", artifact:{ clarifications:qs, answers:{}, hiddenCount:Math.max(0, qs.length - 2) } }),
+      ]});
+      return;
+    }
+    setPhase("draft");
+    dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"text", text:"I have enough to draft a first strategy." }) });
+    generateDraftWithAnswers();
+  }, [facts, generateDraftWithAnswers]);
 
   if (authLoading) return <OnboardingShell><SkeletonCard lines={4} style={{ maxWidth:720, margin:"18vh auto" }} /></OnboardingShell>;
   if (!user) return (
@@ -323,71 +370,41 @@ export default function OnboardingPage() {
 
   return (
     <OnboardingShell>
-      <header style={{ height:58, display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, padding:"0 24px", borderBottom:"1px solid var(--border)", background:"var(--nav)", backdropFilter:"blur(18px)" }}>
+      <header style={{ height:58, display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, padding:"0 28px", borderBottom:"1px solid var(--border)", background:"var(--nav)", backdropFilter:"blur(18px)" }}>
         <div>
           <div style={{ fontSize:12, color:"var(--t3)", fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase" }}>Creative Engine onboarding</div>
-          <div style={{ fontSize:13, color:"var(--t2)", marginTop:2 }}>{brandProfile?.name || "New workspace"} · {mode.replace(/_/g, " ")}</div>
         </div>
         <button onClick={() => window.location.href = "/?tab=home"} style={buttonStyle("ghost")}><ArrowLeft size={14}/>Back to app</button>
       </header>
 
       <ConversationFrame>
-        {error && <ErrorCard message={error} onRetry={phase === "intake" ? runAnalysis : generateDraftWithAnswers} />}
-
-        <AssistantMessage>
-          Tell me what business or brand we are setting up. You can paste a website, upload a file, or describe it in your own words.
-        </AssistantMessage>
-
-        <PrivacyNotice />
-
-        {phase === "intake" && !chatEvents.length && <StarterPrompts setValue={setComposerText} setMode={setComposerMode} onGuide={addGuideRequest} />}
-        <SourceConversationMessages intake={intake} sourceTrace={sourceTrace} events={chatEvents} />
+        <OnboardingTranscript
+          messages={messages}
+          runtime={{ facts, confidence, limitations, sourceTrace, clarifications, answers, draft }}
+          actions={{
+            runAnalysis,
+            continueFromUnderstanding,
+            generateDraftWithAnswers,
+            approve,
+            setFacts,
+            setAnswers,
+            updateMessageArtifact:(id, patch) => dispatchMessages({ type:"update_artifact", id, patch }),
+          }}
+        />
         {assistantTyping && <TypingIndicator />}
 
-        {phase === "intake" && (
-          <>
-            {hasUserProvidedSource(intake) && pendingAction === "analyze" && !assistantTyping && !loadingTask && (
-              <NextActionPrompt onAnalyze={runAnalysis} sourceTrace={sourceTrace} />
-            )}
-            <OnboardingComposer
-              mode={composerMode}
-              value={composerText}
-              setMode={setComposerMode}
-              setValue={setComposerText}
-              onSubmit={submitComposer}
-              onFiles={onFiles}
-              onGuide={addGuideRequest}
-              disabled={Boolean(loadingTask)}
-            />
-          </>
-        )}
-
-        {loadingTask && <WorkTraceMessage task={loadingTask} steps={currentWork} />}
-
-        {facts && phase !== "intake" && (
-          <UnderstandingCard
-            facts={facts}
-            setFacts={setFacts}
-            confidence={confidence}
-            limitations={limitations}
-            sourceTrace={sourceTrace}
-            onContinue={() => {
-              const qs = buildClarifications(facts);
-              setClarifications(qs);
-              setPhase(qs.length ? "clarify" : "draft");
-            }}
+        {phase !== "approved" && (
+          <OnboardingComposer
+            mode={composerMode}
+            value={composerText}
+            setMode={setComposerMode}
+            setValue={setComposerText}
+            onSubmit={submitComposer}
+            onFiles={onFiles}
+            onGuide={addGuideRequest}
+            disabled={Boolean(loadingTask)}
           />
         )}
-
-        {phase === "clarify" && (
-          <ClarificationCards clarifications={clarifications} answers={answers} setAnswers={setAnswers} onBack={() => setPhase("understood")} onSubmit={generateDraftWithAnswers} loading={Boolean(loadingTask)} />
-        )}
-
-        {draft && phase === "draft" && (
-          <DraftCards draft={draft} sourceTrace={sourceTrace} onBack={() => setPhase("understood")} onApprove={approve} loading={Boolean(loadingTask)} />
-        )}
-
-        {phase === "approved" && <ApprovedState />}
         <div ref={transcriptEndRef} />
       </ConversationFrame>
     </OnboardingShell>
@@ -399,14 +416,14 @@ function OnboardingShell({ children }) {
 }
 
 function ConversationFrame({ children }) {
-  return <main style={{ maxWidth:820, margin:"0 auto", padding:"34px 20px 210px", display:"flex", flexDirection:"column", gap:14 }}>{children}</main>;
+  return <main style={{ width:"100%", margin:"0 auto", padding:"34px 40px 210px", display:"flex", flexDirection:"column", gap:14 }}>{children}</main>;
 }
 
 function AssistantMessage({ title, children }) {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"32px minmax(0,1fr)", gap:12, alignItems:"start" }} className="anim-fade">
       <div style={{ width:32, height:32, borderRadius:9, background:"var(--t1)", color:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, boxShadow:"var(--shadow-sm)" }}>CE</div>
-      <Panel className="ce-chat-bubble ce-chat-bubble-assistant" style={{ background:"var(--sheet)", padding:"12px 14px", maxWidth:680 }}>
+      <Panel className="ce-chat-bubble ce-chat-bubble-assistant" style={{ background:"var(--sheet)", padding:"12px 14px", width:"100%" }}>
         {title && <div style={{ fontSize:15, fontWeight:700, color:"var(--t1)", marginBottom:5 }}>{title}</div>}
         <div style={{ fontSize:13, color:"var(--t2)", lineHeight:1.6 }}>{children}</div>
       </Panel>
@@ -415,7 +432,16 @@ function AssistantMessage({ title, children }) {
 }
 
 function AssistantActionRow({ children }) {
-  return <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", paddingLeft:46 }}>{children}</div>;
+  return <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap", marginTop:14 }}>{children}</div>;
+}
+
+function AssistantCardMessage({ children }) {
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"32px minmax(0,1fr)", gap:12, alignItems:"start" }} className="anim-fade">
+      <div style={{ width:32, height:32, borderRadius:9, background:"var(--t1)", color:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, boxShadow:"var(--shadow-sm)" }}>CE</div>
+      {children}
+    </div>
+  );
 }
 
 function PrivacyNotice() {
@@ -426,34 +452,55 @@ function PrivacyNotice() {
   );
 }
 
-function StarterPrompts({ setValue, setMode, onGuide }) {
+function OnboardingTranscript({ messages, runtime, actions }) {
   return (
-    <div style={{ paddingLeft:44, display:"flex", gap:8, flexWrap:"wrap" }} className="anim-fade">
-      <button className="ce-action-chip" onClick={() => { setMode("message"); setValue("We help "); }} style={buttonStyle("ghost")}>Describe the business</button>
-      <button className="ce-action-chip" onClick={() => { setMode("website"); setValue("https://"); }} style={buttonStyle("ghost")}><Globe2 size={13}/>Add website</button>
-      <button className="ce-action-chip" onClick={() => { setMode("notes"); setValue("Notes:\n"); }} style={buttonStyle("ghost")}><Pencil size={13}/>Paste notes</button>
-      <button className="ce-action-chip" onClick={onGuide} style={buttonStyle("ghost")}><HelpCircle size={13}/>Guide me</button>
+    <div style={{ display:"grid", gap:10 }}>
+      {messages.map(message => (
+        <TranscriptMessage key={message.id} message={message} runtime={runtime} actions={actions} />
+      ))}
     </div>
   );
 }
 
-function SourceConversationMessages({ intake, sourceTrace, events }) {
-  const hasSources = hasUserProvidedSource(intake);
-  if (!hasSources && !events.length) return null;
-  return (
-    <div style={{ display:"grid", gap:10 }}>
-      {events.map((event, index) => event.role === "assistant" ? (
-        <AssistantMessage key={`${event.role}-${index}`}>{event.text}</AssistantMessage>
-      ) : (
-        <UserMessage key={`${event.role}-${index}`} title={event.title} icon={iconForEvent(event.kind)} status={event.status}>{event.text}</UserMessage>
-      ))}
-      {hasSources && (
-      <div style={{ paddingLeft:44 }}>
-        <SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />
-      </div>
-      )}
-    </div>
-  );
+function TranscriptMessage({ message, runtime, actions }) {
+  if (message.type === "privacy") return <PrivacyNotice />;
+  if (message.role === "user") {
+    return <UserMessage title={message.title || "You"} icon={iconForEvent(message.sourceKind || message.type)} status={message.status}>{message.text}</UserMessage>;
+  }
+  if (message.type === "text") return <AssistantMessage>{message.text}</AssistantMessage>;
+  if (message.type === "action" && message.artifact?.action === "analyze") {
+    return <NextActionPrompt onAnalyze={actions.runAnalysis} sourceTrace={runtime.sourceTrace} text={message.text} />;
+  }
+  if (message.type === "work_trace") return <WorkTraceMessage task={message.artifact?.task} steps={message.artifact?.steps || []} />;
+  if (message.type === "understanding_card") {
+    return (
+      <UnderstandingCard
+        facts={runtime.facts || message.artifact?.facts || {}}
+        setFacts={actions.setFacts}
+        confidence={runtime.confidence || message.artifact?.confidence}
+        limitations={runtime.limitations || message.artifact?.limitations || []}
+        sourceTrace={runtime.sourceTrace || message.artifact?.sourceTrace}
+        onContinue={actions.continueFromUnderstanding}
+      />
+    );
+  }
+  if (message.type === "clarification_card") {
+    return (
+      <ClarificationCards
+        clarifications={message.artifact?.clarifications || runtime.clarifications || []}
+        answers={runtime.answers || {}}
+        setAnswers={actions.setAnswers}
+        onSubmit={actions.generateDraftWithAnswers}
+        loading={false}
+      />
+    );
+  }
+  if (message.type === "draft_card") {
+    return <DraftCards draft={message.artifact?.draft || runtime.draft} sourceTrace={message.artifact?.sourceTrace || runtime.sourceTrace} onApprove={actions.approve} loading={false} />;
+  }
+  if (message.type === "completion_card") return <ApprovedState />;
+  if (message.type === "error") return <ErrorCard message={message.text} onRetry={actions.runAnalysis} />;
+  return null;
 }
 
 function TypingIndicator() {
@@ -471,10 +518,10 @@ function TypingIndicator() {
   );
 }
 
-function NextActionPrompt({ onAnalyze, sourceTrace }) {
+function NextActionPrompt({ onAnalyze, sourceTrace, text }) {
   return (
     <AssistantMessage>
-      I have enough to start a first pass. If a source cannot be read, I’ll say so and offer a manual path instead of pretending it was analyzed.
+      {text || "I have enough to start a first pass. If a source cannot be read, I’ll say so and offer a manual path instead of pretending it was analyzed."}
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
         <button onClick={onAnalyze} style={buttonStyle("primary")}>
           <ArrowRight size={14}/>Understand this business
@@ -488,7 +535,7 @@ function NextActionPrompt({ onAnalyze, sourceTrace }) {
 function UserMessage({ title, icon, status, children }) {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 32px", gap:12, alignItems:"start" }} className="anim-fade">
-      <Panel className="ce-chat-bubble ce-chat-bubble-user ce-interactive-card" style={{ justifySelf:"end", width:"min(100%, 620px)", background:"var(--fill)", borderColor:"var(--border)", padding:"11px 13px" }}>
+      <Panel className="ce-chat-bubble ce-chat-bubble-user" style={{ justifySelf:"end", width:"100%", background:"var(--fill)", borderColor:"var(--border)", padding:"11px 13px" }}>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, fontSize:12, fontWeight:700, color:"var(--t1)", marginBottom:5 }}>
           <span style={{ display:"inline-flex", alignItems:"center", gap:7 }}>
           {icon}
@@ -517,7 +564,7 @@ function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles,
       ? "Paste notes, FAQs, positioning, or claims to handle carefully..."
       : "Describe the business, paste a website, or add notes...";
   return (
-    <Panel className="ce-chat-composer" style={{ position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)", width:"min(780px, calc(100vw - 32px))", zIndex:50, background:"var(--sheet)", boxShadow:"var(--shadow-lg)", padding:10 }}>
+    <Panel className="ce-chat-composer" style={{ position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)", width:"calc(100vw - 80px)", zIndex:50, background:"var(--sheet)", boxShadow:"var(--shadow-lg)", padding:10 }}>
       <textarea
         value={value}
         onChange={e => setValue(e.target.value)}
@@ -571,20 +618,22 @@ function UnderstandingCard({ facts, setFacts, confidence, limitations, sourceTra
     ["Risks/claims", "sensitive_claims", "Claims and sensitive topics need confirmation before publishing."],
   ];
   return (
-    <Panel style={{ marginLeft:46 }} className="anim-fade ce-generated-card">
-      <SectionHeader title="What Creative Engine understood" action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Extracted brand facts", "Scored setup completeness"]} confidence={confidence?.score != null ? `Brand understanding ${confidence.score}%` : null} />} />
-      <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>Confirm or correct the important pieces before I draft the strategy.</div>
-      <BrandUnderstanding score={confidence?.score || 0} signals={confidence?.signals || []} />
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginTop:14 }}>
-        {sections.map(([title, key, fallback]) => (
-          <EditableFact key={key} title={title} value={Array.isArray(facts[key]) ? facts[key].join(", ") : facts[key]} fallback={fallback} onSave={value => setFacts(prev => ({ ...prev, [key]: key === "platforms" ? value.split(",").map(s => s.trim()).filter(Boolean) : value }))} />
-        ))}
-        <FactBlock title="Unclear / needs confirmation" value={limitations.length ? limitations.join(" ") : "No detailed limitation trace was recorded."} muted />
-      </div>
-      <AssistantActionRow>
-        <button onClick={onContinue} style={buttonStyle("primary")}><ArrowRight size={14}/>Continue to clarifications</button>
-      </AssistantActionRow>
-    </Panel>
+    <AssistantCardMessage>
+      <Panel className="ce-generated-card" style={{ width:"100%" }}>
+        <SectionHeader title="What Creative Engine understood" action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Extracted brand facts", "Scored setup completeness"]} confidence={confidence?.score != null ? `Brand understanding ${confidence.score}%` : null} />} />
+        <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>Confirm or correct the important pieces before I draft the strategy.</div>
+        <BrandUnderstanding score={confidence?.score || 0} signals={confidence?.signals || []} />
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginTop:14 }}>
+          {sections.map(([title, key, fallback]) => (
+            <EditableFact key={key} title={title} value={Array.isArray(facts[key]) ? facts[key].join(", ") : facts[key]} fallback={fallback} onSave={value => setFacts(prev => ({ ...prev, [key]: key === "platforms" ? value.split(",").map(s => s.trim()).filter(Boolean) : value }))} />
+          ))}
+          <FactBlock title="Unclear / needs confirmation" value={limitations.length ? limitations.join(" ") : "No detailed limitation trace was recorded."} muted />
+        </div>
+        <AssistantActionRow>
+          <button onClick={onContinue} style={buttonStyle("primary")}><ArrowRight size={14}/>Continue to clarifications</button>
+        </AssistantActionRow>
+      </Panel>
+    </AssistantCardMessage>
   );
 }
 
@@ -605,63 +654,71 @@ function BrandUnderstanding({ score, signals }) {
 function ClarificationCards({ clarifications, answers, setAnswers, onBack, onSubmit, loading }) {
   if (!clarifications.length) {
     return (
-      <Panel style={{ marginLeft:46 }}>
-        <EmptyState title="No clarifications needed" description="The available sources gave enough structure for a first draft." action={onSubmit} actionLabel="Generate draft strategy" />
-      </Panel>
+      <AssistantCardMessage>
+        <Panel style={{ width:"100%" }}>
+          <EmptyState title="No clarifications needed" description="The available sources gave enough structure for a first draft." action={onSubmit} actionLabel="Generate draft strategy" />
+        </Panel>
+      </AssistantCardMessage>
     );
   }
   const visibleQuestions = clarifications.slice(0, 2);
   const hiddenCount = Math.max(0, clarifications.length - visibleQuestions.length);
   return (
-    <Panel style={{ marginLeft:46 }} className="ce-generated-card">
-      <SectionHeader title={visibleQuestions.length === 1 ? "I’m missing one thing before I draft this" : "I’m missing two things before I draft this"} />
-      <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>
-        Answer these now, or let Creative Engine suggest conservative defaults. {hiddenCount ? `${hiddenCount} lower-priority question${hiddenCount === 1 ? "" : "s"} will be handled as uncertain in the draft.` : ""}
-      </div>
+    <AssistantCardMessage>
+      <Panel className="ce-generated-card" style={{ width:"100%" }}>
+        <SectionHeader title={visibleQuestions.length === 1 ? "I’m missing one thing before I draft this" : "I’m missing two things before I draft this"} />
+        <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>
+          Answer these now, or let Creative Engine suggest conservative defaults. {hiddenCount ? `${hiddenCount} lower-priority question${hiddenCount === 1 ? "" : "s"} will be handled as uncertain in the draft.` : ""}
+        </div>
       <div style={{ display:"grid", gap:10 }}>
         {visibleQuestions.map((q, index) => <QuestionCard key={q.id || q.key || index} question={q} value={answers[q.id || q.key]} onChange={value => setAnswers(prev => ({ ...prev, [q.id || q.key]: value }))} />)}
       </div>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:14 }}>
-        <button onClick={onBack} style={buttonStyle("ghost")}>Back</button>
+        {onBack && <button onClick={onBack} style={buttonStyle("ghost")}>Back</button>}
         <button onClick={onSubmit} disabled={loading} style={buttonStyle("primary")}><ArrowRight size={14}/>Generate draft strategy</button>
       </div>
-    </Panel>
+      </Panel>
+    </AssistantCardMessage>
   );
 }
 
 function DraftCards({ draft, sourceTrace, onBack, onApprove, loading }) {
   return (
-    <Panel style={{ marginLeft:46 }} className="ce-generated-card">
-      <SectionHeader title="Draft strategy" action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Drafted Brand Profile", "Drafted Content Strategy", "Drafted Programmes", "Prepared first content ideas"]} />} />
-      <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>Review before saving. Nothing is written to final settings until approval.</div>
-      <div style={{ display:"grid", gap:12 }}>
-        <JsonCard title="Brand Profile draft" data={draft.brand_profile} />
-        <JsonCard title="Content Strategy draft" data={draft.content_strategy} />
-        <ProgrammeDraftCard programmes={draft.programmes || []} />
-        <ListCard title="Risk / claims checklist" items={draft.risk_checklist || []} />
-        <IdeasCard ideas={draft.first_content_ideas || []} />
+    <AssistantCardMessage>
+      <Panel className="ce-generated-card" style={{ width:"100%" }}>
+        <SectionHeader title="Draft strategy" action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Drafted Brand Profile", "Drafted Content Strategy", "Drafted Programmes", "Prepared first content ideas"]} />} />
+        <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>Review before saving. Nothing is written to final settings until approval.</div>
+        <div style={{ display:"grid", gap:12 }}>
+          <JsonCard title="Brand Profile draft" data={draft.brand_profile} />
+          <JsonCard title="Content Strategy draft" data={draft.content_strategy} />
+          <ProgrammeDraftCard programmes={draft.programmes || []} />
+          <ListCard title="Risk / claims checklist" items={draft.risk_checklist || []} />
+          <IdeasCard ideas={draft.first_content_ideas || []} />
       </div>
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:14 }}>
-        <button onClick={onBack} style={buttonStyle("ghost")}>Review understanding</button>
+        {onBack && <button onClick={onBack} style={buttonStyle("ghost")}>Review understanding</button>}
         <button onClick={onApprove} disabled={loading} style={buttonStyle("primary")}><Check size={14}/>Approve and save strategy</button>
       </div>
-    </Panel>
+      </Panel>
+    </AssistantCardMessage>
   );
 }
 
 function ApprovedState() {
   return (
-    <Panel style={{ marginLeft:46, textAlign:"center", padding:"28px" }}>
-      <div style={{ width:44, height:44, borderRadius:99, background:"var(--success-bg)", color:"var(--success)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px" }}><Check size={22}/></div>
-      <div style={{ fontSize:22, fontWeight:800, color:"var(--t1)", marginBottom:6 }}>Your content engine is ready.</div>
-      <div style={{ fontSize:13, color:"var(--t3)", lineHeight:1.55, maxWidth:560, margin:"0 auto" }}>Strategy saved, programmes active, first ideas prepared, and risk guidance captured for future compliance checks.</div>
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center", marginTop:18 }}>
-        <button onClick={() => window.location.href = "/?tab=strategy"} style={buttonStyle("primary")}>Review in Strategy</button>
-        <button onClick={() => window.location.href = "/?tab=research"} style={buttonStyle("secondary")}>Open Ideas</button>
-        <button onClick={() => window.location.href = "/?tab=create"} style={buttonStyle("secondary")}>Create first content</button>
-        <button onClick={() => window.location.href = "/?tab=home"} style={buttonStyle("ghost")}>Go to Home</button>
-      </div>
-    </Panel>
+    <AssistantCardMessage>
+      <Panel style={{ textAlign:"center", padding:"28px", width:"100%" }}>
+        <div style={{ width:44, height:44, borderRadius:99, background:"var(--success-bg)", color:"var(--success)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px" }}><Check size={22}/></div>
+        <div style={{ fontSize:22, fontWeight:800, color:"var(--t1)", marginBottom:6 }}>Your content engine is ready.</div>
+        <div style={{ fontSize:13, color:"var(--t3)", lineHeight:1.55, maxWidth:560, margin:"0 auto" }}>Strategy saved, programmes active, first ideas prepared, and risk guidance captured for future compliance checks.</div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center", marginTop:18 }}>
+          <button onClick={() => window.location.href = "/?tab=strategy"} style={buttonStyle("primary")}>Review in Strategy</button>
+          <button onClick={() => window.location.href = "/?tab=research"} style={buttonStyle("secondary")}>Open Ideas</button>
+          <button onClick={() => window.location.href = "/?tab=create"} style={buttonStyle("secondary")}>Create first content</button>
+          <button onClick={() => window.location.href = "/?tab=home"} style={buttonStyle("ghost")}>Go to Home</button>
+        </div>
+      </Panel>
+    </AssistantCardMessage>
   );
 }
 
@@ -785,13 +842,15 @@ function formatDraftValue(value) {
 
 function ErrorCard({ message, onRetry }) {
   return (
-    <Panel style={{ marginLeft:46, borderColor:"var(--error-border)", background:"var(--error-bg)" }}>
-      <SectionHeader title="I couldn't complete that step" description={message} />
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        {onRetry && <button onClick={onRetry} style={buttonStyle("secondary")}><RefreshCw size={13}/>Retry</button>}
-        <button onClick={() => window.location.href = "/?tab=strategy"} style={buttonStyle("ghost")}>Continue manually</button>
-      </div>
-    </Panel>
+    <AssistantCardMessage>
+      <Panel style={{ borderColor:"var(--error-border)", background:"var(--error-bg)", width:"100%" }}>
+        <SectionHeader title="I couldn't complete that step" description={message} />
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {onRetry && <button onClick={onRetry} style={buttonStyle("secondary")}><RefreshCw size={13}/>Retry</button>}
+          <button onClick={() => window.location.href = "/?tab=strategy"} style={buttonStyle("ghost")}>Continue manually</button>
+        </div>
+      </Panel>
+    </AssistantCardMessage>
   );
 }
 

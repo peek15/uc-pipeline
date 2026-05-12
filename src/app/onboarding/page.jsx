@@ -5,10 +5,8 @@ import { ArrowLeft, ArrowRight, Check, FileText, Globe2, HelpCircle, Pencil, Ref
 import { supabase, getBrandProfiles, getWorkspaces, createBrandProfile } from "@/lib/db";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { applyClarificationAnswers, blankOnboardingIntake, buildClarifications } from "@/lib/onboarding";
-import { EmptyState, GeneratingCard, Panel, Pill, SectionHeader, SkeletonCard, SourceReviewButton, WorkTrace, buttonStyle, labelStyle } from "@/components/OperationalUI";
+import { EmptyState, Panel, Pill, SectionHeader, SkeletonCard, SourceReviewButton, WorkTrace, buttonStyle } from "@/components/OperationalUI";
 
-const PLATFORM_OPTIONS = ["Instagram", "LinkedIn", "YouTube", "TikTok", "Newsletter"];
-const FORMAT_OPTIONS = ["Short video", "Carousel", "Text post", "Newsletter", "Case study"];
 const UNSURE = "I'm not sure — suggest for me";
 
 const WORK_STEPS = {
@@ -36,6 +34,8 @@ export default function OnboardingPage() {
   const [loadingTask, setLoadingTask] = useState(null);
   const [error, setError] = useState(null);
   const [mode, setMode] = useState("workspace_setup");
+  const [composerMode, setComposerMode] = useState("message");
+  const [composerText, setComposerText] = useState("");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: authSession } }) => {
@@ -197,18 +197,6 @@ export default function OnboardingPage() {
     }
   }, [tenant, session, draft]);
 
-  const updateManual = (key, value) => {
-    setIntake(prev => ({ ...prev, manual: { ...prev.manual, [key]: value } }));
-  };
-
-  const toggleManualArray = (key, value) => {
-    setIntake(prev => {
-      const current = prev.manual[key] || [];
-      const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
-      return { ...prev, manual: { ...prev.manual, [key]: next } };
-    });
-  };
-
   const onFiles = async (files) => {
     const rows = [];
     for (const file of Array.from(files || [])) {
@@ -225,6 +213,30 @@ export default function OnboardingPage() {
       });
     }
     setIntake(prev => ({ ...prev, files: [...prev.files, ...rows] }));
+  };
+
+  const submitComposer = () => {
+    const text = composerText.trim();
+    if (!text) return;
+    const looksLikeUrl = /^https?:\/\/\S+$/i.test(text) || /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(text);
+    if (composerMode === "website" || looksLikeUrl) {
+      const url = /^https?:\/\//i.test(text) ? text : `https://${text}`;
+      setIntake(prev => ({ ...prev, websiteUrl: url }));
+    } else {
+      setIntake(prev => ({
+        ...prev,
+        notes: [prev.notes, text].filter(Boolean).join("\n\n"),
+      }));
+    }
+    setComposerText("");
+    setComposerMode("message");
+  };
+
+  const addGuideRequest = () => {
+    setIntake(prev => ({
+      ...prev,
+      notes: [prev.notes, "User asked Creative Engine to guide setup and suggest conservative defaults where the sources are incomplete."].filter(Boolean).join("\n\n"),
+    }));
   };
 
   if (authLoading) return <OnboardingShell><SkeletonCard lines={4} style={{ maxWidth:720, margin:"18vh auto" }} /></OnboardingShell>;
@@ -249,31 +261,39 @@ export default function OnboardingPage() {
       <ConversationFrame>
         {error && <ErrorCard message={error} onRetry={phase === "intake" ? runAnalysis : generateDraftWithAnswers} />}
 
-        <AssistantMessage title="Give Creative Engine something to understand your business.">
-          Start with sources instead of a long questionnaire. I can use website URLs, pasted notes, manual answers, and text files. PDF and image files can be stored now, but deep analysis is not available yet.
+        <AssistantMessage title="Tell me what business or brand we are setting up.">
+          You can paste a website, upload a file, or describe it in your own words. I’ll collect the useful sources in the conversation, then ask only for what is missing.
         </AssistantMessage>
 
         <PrivacyNotice />
 
         {phase === "intake" && (
           <>
-            <UserSourceCard intake={intake} setIntake={setIntake} updateManual={updateManual} toggleManualArray={toggleManualArray} onFiles={onFiles} sourceTrace={sourceTrace} />
-            <AssistantActionRow>
-              <button onClick={runAnalysis} disabled={Boolean(loadingTask) || !hasAnySource(intake)} style={buttonStyle("primary")}>
-                <ArrowRight size={14}/>Understand this business
-              </button>
-              <span style={{ fontSize:12, color:"var(--t3)" }}>You can continue manually if sources are limited.</span>
-            </AssistantActionRow>
+            <SourceConversationMessages intake={intake} sourceTrace={sourceTrace} onFiles={onFiles} />
+            {hasAnySource(intake) && (
+              <AssistantMessage title="Ready when you are.">
+                I have enough to start a first pass. If a source cannot be read, I’ll say so and offer a manual path instead of pretending it was analyzed.
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
+                  <button onClick={runAnalysis} disabled={Boolean(loadingTask)} style={buttonStyle("primary")}>
+                    <ArrowRight size={14}/>Understand this business
+                  </button>
+                  <SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />
+                </div>
+              </AssistantMessage>
+            )}
+            <OnboardingComposer
+              mode={composerMode}
+              value={composerText}
+              setMode={setComposerMode}
+              setValue={setComposerText}
+              onSubmit={submitComposer}
+              onFiles={onFiles}
+              onGuide={addGuideRequest}
+            />
           </>
         )}
 
-        {loadingTask && (
-          <GeneratingCard
-            title={loadingTask === "approve" ? "Saving approved strategy" : loadingTask === "draft" ? "Preparing strategy draft" : "Understanding your business"}
-            description="High-level work only. No hidden reasoning is displayed."
-            steps={currentWork}
-          />
-        )}
+        {loadingTask && <WorkTraceMessage task={loadingTask} steps={currentWork} />}
 
         {facts && phase !== "intake" && (
           <UnderstandingCard
@@ -330,42 +350,105 @@ function AssistantActionRow({ children }) {
 
 function PrivacyNotice() {
   return (
-    <div style={{ marginLeft:46, padding:"10px 12px", borderRadius:"var(--ce-radius)", background:"var(--accent-bg)", border:"1px solid var(--accent-border)", fontSize:12, color:"var(--t2)", lineHeight:1.5 }}>
-      Creative Engine may process the sources you provide to draft your strategy. Only upload materials you are allowed to use. Privacy and data controls can be reviewed in Settings.
+    <div style={{ marginLeft:46, padding:"8px 10px", fontSize:11, color:"var(--t3)", lineHeight:1.45 }}>
+      Only upload materials you are allowed to use. Privacy and data controls are available in Settings.
     </div>
   );
 }
 
-function UserSourceCard({ intake, setIntake, updateManual, toggleManualArray, onFiles, sourceTrace }) {
+function SourceConversationMessages({ intake, sourceTrace }) {
+  const hasSources = hasAnySource(intake);
+  if (!hasSources) {
+    return (
+      <AssistantMessage title="Start with whatever is easiest.">
+        A short description is enough to begin. A website or text notes will make the first strategy draft more specific.
+      </AssistantMessage>
+    );
+  }
   return (
-    <Panel style={{ marginLeft:46 }}>
-      <SectionHeader title="Source intake" description="Add what you have. The flow adapts to the useful signals available." action={<SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />} />
-      <div style={{ display:"grid", gap:14 }}>
-        <Field label="Website URL" icon={<Globe2 size={14}/>}>
-          <input value={intake.websiteUrl} onChange={e => setIntake(prev => ({ ...prev, websiteUrl:e.target.value }))} placeholder="https://example.com" style={inputStyle} />
-          <Hint>V1 stores this URL. It does not run advanced open-web research; paste key text if the page cannot be read.</Hint>
-        </Field>
-        <Field label="Upload files" icon={<Upload size={14}/>}>
-          <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.md,.txt,text/plain,text/markdown,application/pdf,image/png,image/jpeg" onChange={e => onFiles(e.target.files)} style={inputStyle} />
-          <div style={{ display:"grid", gap:7 }}>
-            {intake.files.map((file, index) => <SourceStatus key={`${file.name}-${index}`} file={file} />)}
+    <div style={{ display:"grid", gap:10 }}>
+      {intake.websiteUrl && <UserMessage title="Website added" icon={<Globe2 size={14}/>}>{intake.websiteUrl}</UserMessage>}
+      {intake.notes && <UserMessage title="Notes added" icon={<Pencil size={14}/>}>{summarizeInline(intake.notes)}</UserMessage>}
+      {(intake.files || []).map((file, index) => (
+        <UserMessage key={`${file.name}-${index}`} title={file.name} icon={<FileText size={14}/>}>
+          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+            <span>{file.note}</span>
+            <Pill tone={file.status === "parsed" ? "success" : file.status === "pending analysis" ? "warning" : "neutral"}>{file.status}</Pill>
           </div>
-        </Field>
-        <Field label="Paste notes" icon={<Pencil size={14}/>}>
-          <textarea value={intake.notes} onChange={e => setIntake(prev => ({ ...prev, notes:e.target.value }))} rows={5} placeholder="Paste positioning, sales notes, FAQs, product descriptions, claims to avoid..." style={{ ...inputStyle, minHeight:110, paddingTop:10, resize:"vertical" }} />
-        </Field>
-        <Field label="Manual signals" icon={<HelpCircle size={14}/>}>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:8 }}>
-            <input value={intake.manual.brandName} onChange={e => updateManual("brandName", e.target.value)} placeholder="Brand name" style={inputStyle} />
-            <input value={intake.manual.priorityOffer} onChange={e => updateManual("priorityOffer", e.target.value)} placeholder="Priority product/service" style={inputStyle} />
-            <input value={intake.manual.audience} onChange={e => updateManual("audience", e.target.value)} placeholder="Priority audience" style={inputStyle} />
-            <input value={intake.manual.goal} onChange={e => updateManual("goal", e.target.value)} placeholder="Main content goal" style={inputStyle} />
-          </div>
-          <ChipGroup values={PLATFORM_OPTIONS} selected={intake.manual.platforms} onToggle={value => toggleManualArray("platforms", value)} />
-          <ChipGroup values={FORMAT_OPTIONS} selected={intake.manual.formats} onToggle={value => toggleManualArray("formats", value)} />
-        </Field>
+        </UserMessage>
+      ))}
+      {Object.values(intake.manual || {}).some(v => Array.isArray(v) ? v.length : v) && (
+        <UserMessage title="Workspace context" icon={<HelpCircle size={14}/>}>
+          {intake.manual.brandName ? `${intake.manual.brandName} is the starting brand context.` : "Manual guidance is available for this setup."}
+        </UserMessage>
+      )}
+      <div style={{ paddingLeft:46 }}>
+        <SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />
+      </div>
+    </div>
+  );
+}
+
+function UserMessage({ title, icon, children }) {
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 34px", gap:12, alignItems:"start" }} className="anim-fade">
+      <Panel className="ce-interactive-card" style={{ justifySelf:"end", width:"min(100%, 680px)", background:"var(--fill)", borderColor:"var(--border)" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, fontWeight:700, color:"var(--t1)", marginBottom:5 }}>
+          {icon}
+          <span>{title}</span>
+        </div>
+        <div style={{ fontSize:12, color:"var(--t2)", lineHeight:1.55, wordBreak:"break-word" }}>{children}</div>
+      </Panel>
+      <div style={{ width:34, height:34, borderRadius:10, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800 }}>You</div>
+    </div>
+  );
+}
+
+function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles, onGuide }) {
+  const placeholder = mode === "website"
+    ? "Paste the website URL..."
+    : mode === "notes"
+      ? "Paste notes, FAQs, positioning, or claims to handle carefully..."
+      : "Describe the business, paste a website, or add notes...";
+  return (
+    <Panel style={{ marginLeft:46, position:"sticky", bottom:18, zIndex:5, background:"var(--sheet)", boxShadow:"var(--shadow)" }}>
+      <textarea
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
+        rows={3}
+        placeholder={placeholder}
+        style={{ ...inputStyle, minHeight:74, padding:"11px 12px", resize:"vertical", background:"transparent" }}
+      />
+      <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", marginTop:10, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
+          <button type="button" className="ce-action-chip" onClick={() => setMode("website")} style={buttonStyle(mode === "website" ? "secondary" : "ghost")}><Globe2 size={13}/>Add website</button>
+          <label className="ce-action-chip" style={buttonStyle("ghost")}>
+            <Upload size={13}/>Upload file
+            <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.md,.txt,text/plain,text/markdown,application/pdf,image/png,image/jpeg" onChange={e => onFiles(e.target.files)} style={{ display:"none" }} />
+          </label>
+          <button type="button" className="ce-action-chip" onClick={() => setMode("notes")} style={buttonStyle(mode === "notes" ? "secondary" : "ghost")}><Pencil size={13}/>Paste notes</button>
+          <button type="button" className="ce-action-chip" onClick={onGuide} style={buttonStyle("ghost")}><HelpCircle size={13}/>I'm not sure — guide me</button>
+        </div>
+        <button type="button" onClick={onSubmit} disabled={!value.trim()} style={buttonStyle("primary")}><ArrowRight size={13}/>Send</button>
       </div>
     </Panel>
+  );
+}
+
+function WorkTraceMessage({ task, steps }) {
+  const title = task === "approve" ? "Saving the approved strategy." : task === "draft" ? "Preparing the strategy draft." : "Understanding the business.";
+  return (
+    <AssistantMessage title={title}>
+      <div style={{ marginTop:4 }}>
+        <WorkTrace steps={steps} compact />
+      </div>
+    </AssistantMessage>
   );
 }
 
@@ -463,28 +546,6 @@ function ApprovedState() {
         <button onClick={() => window.location.href = "/?tab=home"} style={buttonStyle("ghost")}>Go to Home</button>
       </div>
     </Panel>
-  );
-}
-
-function Field({ label, icon, children }) {
-  return <div style={{ display:"grid", gap:7 }}><label style={{ ...labelStyle, display:"flex", alignItems:"center", gap:7 }}>{icon}{label}</label>{children}</div>;
-}
-
-function Hint({ children }) {
-  return <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.45 }}>{children}</div>;
-}
-
-function SourceStatus({ file }) {
-  const tone = file.status === "parsed" ? "success" : file.status === "pending analysis" ? "warning" : "neutral";
-  return (
-    <div style={{ display:"grid", gridTemplateColumns:"18px minmax(0,1fr) auto", gap:8, alignItems:"center", padding:"8px 10px", borderRadius:"var(--ce-radius-sm)", background:"var(--fill2)", border:"1px solid var(--border)" }}>
-      <FileText size={14} color="var(--t3)" />
-      <div style={{ minWidth:0 }}>
-        <div style={{ fontSize:12, color:"var(--t1)", fontWeight:650, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{file.name}</div>
-        <div style={{ fontSize:11, color:"var(--t3)" }}>{file.note}</div>
-      </div>
-      <Pill tone={tone}>{file.status}</Pill>
-    </div>
   );
 }
 
@@ -635,6 +696,12 @@ function hasAnySource(intake) {
   return Boolean(intake.websiteUrl || intake.notes || intake.files.length || Object.values(intake.manual || {}).some(v => Array.isArray(v) ? v.length : v));
 }
 
+function summarizeInline(text, limit = 220) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (clean.length <= limit) return clean;
+  return `${clean.slice(0, limit - 1).trim()}...`;
+}
+
 function questionKey(question) {
   const q = String(question || "").toLowerCase();
   if (q.includes("product") || q.includes("service")) return "priority_offer";
@@ -660,4 +727,3 @@ const preStyle = { margin:0, whiteSpace:"pre-wrap", wordBreak:"break-word", font
 function chipStyle(active) {
   return { padding:"6px 10px", borderRadius:99, border:"1px solid var(--border)", background:active ? "var(--t1)" : "var(--fill2)", color:active ? "var(--bg)" : "var(--t2)", fontSize:12, cursor:"pointer", fontFamily:"inherit" };
 }
-

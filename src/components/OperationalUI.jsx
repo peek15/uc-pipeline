@@ -19,6 +19,7 @@ export const btnBase = {
   justifyContent: "center",
   gap: 6,
   fontFamily: "inherit",
+  transition: "background 140ms ease, border-color 140ms ease, color 140ms ease, opacity 140ms ease, transform 140ms ease",
 };
 
 export function buttonStyle(variant = "secondary", extra = {}) {
@@ -64,9 +65,9 @@ export function SectionHeader({ title, description, meta, action }) {
   );
 }
 
-export function Panel({ children, style }) {
+export function Panel({ children, style, className = "" }) {
   return (
-    <div style={{ padding: "var(--ce-card-padding)", borderRadius: "var(--ce-radius)", background: "var(--bg2)", border: "0.5px solid var(--border2)", ...style }}>
+    <div className={className} style={{ padding: "var(--ce-card-padding)", borderRadius: "var(--ce-radius)", background: "var(--bg2)", border: "0.5px solid var(--border2)", ...style }}>
       {children}
     </div>
   );

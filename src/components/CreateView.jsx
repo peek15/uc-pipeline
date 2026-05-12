@@ -135,6 +135,18 @@ function nextAction(story, settings) {
   return "Review";
 }
 
+function programmeContext(story, settings, campaigns = []) {
+  const campaign = campaigns?.find(c => c.id === story?.campaign_id);
+  if (campaign?.name) return campaign.name;
+  const template = getContentTemplate(settings, story?.content_template_id);
+  return story?.programme || story?.program || story?.campaign || template?.name || getContentTypeLabel(story, settings) || "Programme";
+}
+
+function currentStageLabel(story, settings) {
+  const next = stepsForStory(story, settings).find(step => step.key !== "review" && !stepDone(story, step, settings));
+  return next?.label || "Review";
+}
+
 function queueFilterMatch(story, filter, settings) {
   if (filter === "all") return true;
   const hasScript = !!getStoryScript(story, "en");
@@ -171,13 +183,11 @@ function CampaignStrip({ story, campaigns, stories }) {
   ) || campaign.deliverables?.find(d => d.content_type === story.content_type)
     || campaign.deliverables?.[0];
 
-  const color = campaign.color || "#4A9B7F";
-
   return (
-    <div style={{ padding: "10px 14px", borderRadius: 8, background: `${color}10`, border: `0.5px solid ${color}35`, marginBottom: 12 }}>
+    <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--fill)", border: "0.5px solid var(--border)", marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color, marginBottom: 3 }}>Campaign</div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--t3)", marginBottom: 3 }}>Campaign</div>
           <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.name}</div>
           {campaign.objective && <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{campaign.objective}</div>}
         </div>
@@ -208,7 +218,8 @@ function TemplateStrip({ story, settings }) {
     story?.channel || story?.platform_target || template.channels?.[0],
   ].filter(Boolean);
   return (
-    <div style={{ padding: "10px 12px", borderRadius: 8, background: "var(--fill2)", border: "0.5px solid var(--border)", marginBottom: 12 }}>
+    <details style={{ padding: "10px 12px", borderRadius: 8, background: "var(--fill)", border: "0.5px solid var(--border)", marginBottom: 12 }}>
+      <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 650, color: "var(--t2)" }}>Details / metadata</summary>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 7 }}>
         <div>
           <div style={{ fontSize: 11, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Template</div>
@@ -226,7 +237,7 @@ function TemplateStrip({ story, settings }) {
           <span style={{ color: "var(--t2)", fontWeight: 600 }}>Workflow:</span> {(template.workflow_steps || []).join(" > ") || "default"}
         </div>
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -860,7 +871,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
           <Panel style={{ padding: 8, position: "sticky", top: 16 }}>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
               {filterOptions.map(option => (
-                <button key={option.key} onClick={() => setQueueFilter(option.key)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>
+                <button key={option.key} className="ce-action-chip" onClick={() => setQueueFilter(option.key)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer" }}>
                   <Pill active={queueFilter === option.key}>{option.label} · {option.count}</Pill>
                 </button>
               ))}
@@ -871,7 +882,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                 const isSelected = selected?.id === story.id;
                 const progress = createProgress(story, settings);
                 return (
-                  <button key={story.id} onClick={() => setSelectedId(story.id)}
+                  <button key={story.id} className="ce-interactive-row" onClick={() => setSelectedId(story.id)}
                     style={{
                       display: "block",
                       width: "100%",
@@ -886,9 +897,9 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     }}>
                     <div style={{ fontSize: 13, fontWeight: isSelected ? 700 : 600, color: "var(--t1)", lineHeight: 1.3, marginBottom: 5 }}>{story.title || "(untitled)"}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--t3)", fontSize: 11, marginBottom: 8, flexWrap: "wrap" }}>
-                      <span>{getContentTypeLabel(story, settings)}</span>
-                      {story.archetype && <><span style={{ color: "var(--t4)" }}>·</span><span>Angle: {story.archetype}</span></>}
-                      {story.era && <><span style={{ color: "var(--t4)" }}>·</span><span>{story.era}</span></>}
+                      <span>{programmeContext(story, settings, campaigns)}</span>
+                      <span style={{ color: "var(--t4)" }}>·</span>
+                      <span>{currentStageLabel(story, settings)}</span>
                       <span style={{ color: "var(--t4)" }}>·</span>
                       <span>{nextAction(story, settings)}</span>
                     </div>
@@ -896,7 +907,7 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                       <div style={{ flex: 1, height: 3, borderRadius: 999, overflow: "hidden", background: "var(--bg3)" }}>
                         <div style={{ width: `${progress.percent}%`, height: "100%", background: "var(--t2)" }} />
                       </div>
-                      <span style={{ fontSize: 10, color: progress.done >= 5 ? "var(--success)" : "var(--t3)", fontFamily: "var(--font-mono)" }}>{progress.done}/{progress.total}</span>
+                      <span style={{ fontSize: 10, color: "var(--t3)", fontFamily: "var(--font-mono)" }}>{progress.done}/{progress.total}</span>
                     </div>
                   </button>
                 );
@@ -913,13 +924,18 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14 }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 17, fontWeight: 700, color: "var(--t1)", lineHeight: 1.25 }}>{selected.title}</div>
-                      <div style={{ display: "flex", gap: 9, marginTop: 6, fontSize: 11, color: "var(--t3)", fontFamily: "var(--font-mono)", flexWrap: "wrap" }}>
-                        <span>{getContentTypeLabel(selected, settings)}</span><span>·</span><span>{selected.format || "standard"}</span><span>·</span><span>{selected.archetype || "—"}</span>
-                        {selected.reach_score != null && <><span>·</span><span>reach {selected.reach_score}</span></>}
-                        {selected.status && <><span>·</span><span>{selected.status}</span></>}
+                      <div style={{ display: "flex", gap: 9, marginTop: 6, fontSize: 11, color: "var(--t3)", flexWrap: "wrap" }}>
+                        <span>{programmeContext(selected, settings, campaigns)}</span>
+                        <span>·</span>
+                        <span>{currentStageLabel(selected, settings)}</span>
+                        <span>·</span>
+                        <span>{selectedProgress.done}/{selectedProgress.total} ready</span>
                       </div>
                     </div>
-                    <Pill active>{nextAction(selected, settings)}</Pill>
+                    <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
+                      <div style={{ fontSize: 10, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>Next action</div>
+                      <Pill active>{nextAction(selected, settings)}</Pill>
+                    </div>
                   </div>
 	                  <div style={{ height: 3, borderRadius: 999, background: "var(--bg3)", overflow: "hidden", margin: "12px 0" }}>
 	                    <div style={{ width: `${selectedProgress.percent}%`, height: "100%", background: "var(--t2)" }} />

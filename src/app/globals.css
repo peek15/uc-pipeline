@@ -202,6 +202,46 @@ button:disabled { opacity: 0.42; cursor: not-allowed; }
 select option { background: var(--bg2); color: var(--t1); }
 input, textarea, select { font-family: inherit; }
 
+/* ── Productive micro-interactions ── */
+.ce-interactive,
+.ce-interactive-row,
+.ce-interactive-card,
+.ce-action-chip {
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.ce-interactive-row:hover,
+.ce-interactive-card:hover,
+.ce-action-chip:hover {
+  border-color: var(--border-in) !important;
+  background: var(--fill2) !important;
+}
+
+.ce-interactive-row:active,
+.ce-interactive-card:active,
+.ce-action-chip:active,
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.ce-secondary-action {
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.ce-interactive-row:hover .ce-secondary-action,
+.ce-interactive-card:hover .ce-secondary-action,
+.ce-interactive-row:focus-within .ce-secondary-action,
+.ce-interactive-card:focus-within .ce-secondary-action {
+  opacity: 1;
+}
+
 /* ── Custom slider ── */
 input[type="range"] {
   -webkit-appearance: none;

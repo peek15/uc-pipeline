@@ -250,6 +250,17 @@ scheduling, provider operations, quality gates, and analytics.
 - This setting must never change scoring, ranking, generation, API calls, database fields, or saved content data.
 - Keep progress/readiness bars only where they represent real readiness, especially in Create.
 
+## Sprint 10C Agentic Onboarding and Create Simplification
+- Onboarding must feel like an agent conversation, not a form, HR intake, or job application flow.
+- Gather onboarding inputs through chat-like turns, source chips, attachment actions, and dynamic cards; avoid showing all website/manual/platform inputs at once.
+- Use WorkTrace only for high-level task progress while the system is actually working. Do not expose chain-of-thought, fake source analysis, or timestamp-heavy logs.
+- PDF and image uploads may be stored, but must be marked pending if they are not actually parsed.
+- Approval is still required before saving final Brand Profile, Content Strategy, Programmes, or Risk/Claims Guidance.
+- Create should foreground campaign/programme context, content item title, current stage, next action, and real readiness first.
+- UC/emotional archetype metadata must not dominate generic Creative Engine UI; move internal metadata to Details, Advanced metadata, Review work, Detailed display mode, or profile-specific UI.
+- Use Claude/VS Code-like micro-interactions: subtle hover, active, focus-visible, row/card highlighting, and secondary action reveal.
+- Do not add decorative motion, glow, bounce, gradients, large lift, animated AI effects, a second assistant panel, or scattered AI buttons.
+
 ## Agent Panel
 - Component: `src/components/AgentPanel.jsx`
 - API route: `src/app/api/agent/route.js`

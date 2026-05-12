@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.32.0
+- App badge/package target: v3.37.3
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -48,6 +48,18 @@ scheduling, provider operations, quality gates, and analytics.
 - After approval, guide users to Strategy/Home/Ideas/Create; do not strand them on onboarding.
 - Do not show the right-side AgentPanel during onboarding.
 - Do not use UC visual metaphors in onboarding.
+
+## Streaming Smart Onboarding (v3.37.3+)
+- Onboarding is now an agentic conversation surface, not a questionnaire. Preserve the Claude/ChatGPT-like message stream and bottom composer.
+- Shared onboarding orchestration lives in `src/lib/onboardingAgentStep.js`; keep streaming and non-streaming onboarding routes using this shared module so behavior does not drift.
+- Streaming route: `/api/onboarding/agent-stream`. Non-streaming compatibility route: `/api/onboarding/chat`. Agent-step alias: `/api/onboarding/agent-step`.
+- Session memory route: `/api/onboarding/memory`. Persisted memory requires `supabase-sprint10-onboarding-agent-memory.sql`.
+- New table: `onboarding_agent_memory` stores user turns, assistant turns, tool calls, sources, and agent-state snapshots. Do not store raw provider secrets, base64 media, or unnecessary full raw documents there.
+- Tool cards should show high-level work artifacts: source URL, extracted fields, confidence, missing fields, limitations. They must not expose chain-of-thought.
+- The agent should dynamically choose the next action: ask for source, ask clarification, review understanding, or draft setup pass. Avoid hardcoded form gates.
+- Web lookup is limited official-source assistance only. Do not describe it as competitor research, market intelligence, social scanning, or exhaustive crawling.
+- PDF/images remain stored/pending unless real parsing is implemented. Never claim they were analyzed when they were not.
+- User approval remains mandatory before saving Brand Profile, Content Strategy, Programmes, Risk/Claims Guidance, or first ideas.
 
 ## Stack
 - Next.js 14 App Router

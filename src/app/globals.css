@@ -179,7 +179,10 @@ body {
 @keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
 @keyframes ceShimmer { 0% { background-position: 180% 0; } 100% { background-position: -180% 0; } }
 @keyframes ceTypingDot { 0%, 70%, 100% { opacity: 0.34; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-2px); } }
-@keyframes ceCardArrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ceCardArrive { from { opacity: 0; transform: translateY(8px); filter: blur(2px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+@keyframes ceAvatarPulse { 0%, 100% { opacity: 1; box-shadow: var(--shadow-sm); } 50% { opacity: 0.72; box-shadow: 0 0 0 3px var(--fill2); } }
+@keyframes ceThinkingSweep { 0% { transform: translateX(-45%); opacity: 0; } 20% { opacity: 0.8; } 80% { opacity: 0.8; } 100% { transform: translateX(145%); opacity: 0; } }
+@keyframes ceWorkRow { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 .anim-fade       { animation: fadeIn 0.18s ease forwards; }
 .anim-slide      { animation: slideUp 0.22s cubic-bezier(0.32,0.72,0,1) forwards; }
@@ -273,6 +276,24 @@ button:active:not(:disabled) {
   transition: opacity 140ms ease;
 }
 
+.ce-agent-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--t1);
+  color: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+}
+
+.ce-agent-avatar.is-thinking {
+  animation: ceAvatarPulse 1.55s ease-in-out infinite;
+}
+
 .ce-chat-composer {
   transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
 }
@@ -294,7 +315,6 @@ button:active:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-width: 38px;
   height: 18px;
 }
 
@@ -315,7 +335,37 @@ button:active:not(:disabled) {
 }
 
 .ce-generated-card {
-  animation: ceCardArrive 180ms ease forwards;
+  animation: ceCardArrive 240ms cubic-bezier(0.2, 0.72, 0.18, 1) forwards;
+}
+
+.ce-thinking-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.ce-thinking-panel::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--t3), transparent);
+  transform: translateX(-45%);
+  animation: ceThinkingSweep 1.8s ease-in-out infinite;
+  opacity: 0.6;
+}
+
+.ce-work-step-row {
+  animation: ceWorkRow 180ms ease both;
+}
+
+.ce-work-step-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--t3);
+  animation: ceTypingDot 1.2s ease-in-out infinite;
 }
 
 .ce-chat-composer textarea {
@@ -337,6 +387,201 @@ button:active:not(:disabled) {
 .ce-interactive-row:focus-within .ce-secondary-action,
 .ce-interactive-card:focus-within .ce-secondary-action {
   opacity: 1;
+}
+
+.ce-onboarding-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 760px) 310px;
+  gap: 22px;
+  align-items: start;
+  justify-content: center;
+}
+
+.ce-onboarding-rail {
+  position: sticky;
+  top: 76px;
+}
+
+.ce-setup-brief-card {
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.ce-setup-brief-card:hover {
+  border-color: var(--border-in);
+  background: var(--surface);
+}
+
+.ce-rail-row,
+.ce-source-mini {
+  display: grid;
+  gap: 3px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--ce-radius-sm);
+  background: var(--fill);
+}
+
+.ce-rail-row span,
+.ce-source-mini span {
+  font-size: 10px;
+  color: var(--t3);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ce-rail-row strong,
+.ce-source-mini strong {
+  font-size: 12px;
+  color: var(--t1);
+  line-height: 1.35;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.ce-source-mini em {
+  font-size: 11px;
+  color: var(--t3);
+  font-style: normal;
+}
+
+.ce-agent-tool-card {
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.ce-tool-call-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 9px 0;
+  border-top: 1px solid var(--border2);
+  animation: ceWorkRow 180ms ease both;
+}
+
+.ce-tool-call-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.ce-tool-call-row strong {
+  font-size: 12px;
+  color: var(--t1);
+}
+
+.ce-tool-call-row p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--t2);
+}
+
+.ce-tool-call-row a {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--t3);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.ce-tool-call-row a:hover {
+  color: var(--t1);
+}
+
+.ce-tool-artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.ce-tool-artifacts span {
+  border: 1px solid var(--border2);
+  background: var(--fill);
+  color: var(--t3);
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.ce-tool-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-top: 4px;
+  background: var(--t3);
+}
+
+.ce-tool-status-success {
+  background: var(--success);
+}
+
+.ce-tool-status-partial,
+.ce-tool-status-needs_input {
+  background: var(--warning);
+}
+
+.ce-tool-status-failed {
+  background: var(--danger);
+}
+
+.ce-suggested-replies {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 0 0 9px;
+}
+
+.ce-suggested-replies button {
+  border: 1px solid var(--border);
+  background: var(--fill);
+  color: var(--t2);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 120ms ease;
+}
+
+.ce-suggested-replies button:hover {
+  background: var(--fill2);
+  color: var(--t1);
+  border-color: var(--border-in);
+}
+
+.ce-suggested-replies button:active {
+  transform: translateY(1px);
+}
+
+.ce-work-mini,
+.ce-missing-mini {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border2);
+  font-size: 12px;
+  color: var(--t2);
+  line-height: 1.35;
+}
+
+.ce-missing-mini {
+  display: block;
+  color: var(--t3);
+}
+
+@media (max-width: 960px) {
+  .ce-onboarding-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ce-onboarding-rail {
+    position: static;
+    order: -1;
+  }
 }
 
 /* ── Custom slider ── */

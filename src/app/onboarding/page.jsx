@@ -5,15 +5,25 @@ import { ArrowLeft, ArrowRight, Check, FileText, Globe2, HelpCircle, Paperclip, 
 import { supabase, getBrandProfiles, getWorkspaces, createBrandProfile } from "@/lib/db";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { applyClarificationAnswers, blankOnboardingIntake, buildClarifications } from "@/lib/onboarding";
-import { EmptyState, Panel, Pill, SectionHeader, SkeletonCard, SourceReviewButton, WorkTrace, buttonStyle } from "@/components/OperationalUI";
+import { EmptyState, Panel, Pill, SectionHeader, SkeletonCard, SourceReviewButton, buttonStyle } from "@/components/OperationalUI";
 
 const UNSURE = "I'm not sure — suggest for me";
 
 const WORK_STEPS = {
   intake: ["Saving sources", "Reading text notes", "Preparing source records"],
+  agent: ["Reading your message", "Checking available sources", "Updating setup brief", "Choosing the next move"],
   analyze: ["Extracting business facts", "Identifying products/services", "Identifying likely audiences", "Checking unclear claims", "Preparing clarification questions"],
   draft: ["Drafting Brand Profile", "Drafting Content Strategy", "Drafting Programmes", "Preparing first content ideas"],
   approve: ["Saving approved strategy", "Activating programmes", "Preparing next actions"],
+};
+
+const EMPTY_SETUP_BRIEF = {
+  facts: {},
+  confidence: null,
+  missing: [],
+  sources: [],
+  next: "",
+  toolSteps: [],
 };
 
 const INITIAL_MESSAGES = [
@@ -34,6 +44,7 @@ const INITIAL_MESSAGES = [
 function transcriptReducer(messages, action) {
   if (action.type === "append") return [...messages, action.message];
   if (action.type === "append_many") return [...messages, ...action.messages];
+  if (action.type === "replace") return action.messages || messages;
   if (action.type === "update") {
     return messages.map(message => message.id === action.id ? { ...message, ...action.patch } : message);
   }
@@ -72,8 +83,11 @@ export default function OnboardingPage() {
   const [composerMode, setComposerMode] = useState("message");
   const [composerText, setComposerText] = useState("");
   const [assistantTyping, setAssistantTyping] = useState(false);
+  const [setupBrief, setSetupBrief] = useState(EMPTY_SETUP_BRIEF);
+  const [suggestedReplies, setSuggestedReplies] = useState([]);
   const transcriptEndRef = useRef(null);
   const replyTimerRef = useRef(null);
+  const restoredMemoryRef = useRef(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: authSession } }) => {
@@ -141,6 +155,63 @@ export default function OnboardingPage() {
     return json;
   };
 
+  const apiGet = async (path) => {
+    const token = await getToken();
+    const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `API ${res.status}`);
+    return json;
+  };
+
+  const ensureSession = useCallback(async () => {
+    if (session) return session;
+    if (!tenant) return null;
+    const sessionJson = await api("/api/onboarding/session", {
+      workspace_id: tenant.workspace_id,
+      brand_profile_id: tenant.brand_profile_id,
+      mode,
+    });
+    setSession(sessionJson.session);
+    return sessionJson.session;
+  }, [session, tenant, mode]);
+
+  useEffect(() => {
+    if (!tenant || restoredMemoryRef.current) return;
+    restoredMemoryRef.current = true;
+    (async () => {
+      try {
+        const qs = new URLSearchParams({
+          workspace_id: tenant.workspace_id,
+          brand_profile_id: tenant.brand_profile_id,
+        });
+        const json = await apiGet(`/api/onboarding/session?${qs.toString()}`);
+        const active = (json.sessions || []).find(s => !["approved", "skipped", "archived"].includes(s.status));
+        if (!active) return;
+        const memoryQs = new URLSearchParams({ workspace_id: tenant.workspace_id, session_id: active.id });
+        const memory = await apiGet(`/api/onboarding/memory?${memoryQs.toString()}`);
+        const snapshot = memory.snapshot || {};
+        if (!snapshot.messages?.length) return;
+        setSession(active);
+        dispatchMessages({ type:"replace", messages:[
+          ...INITIAL_MESSAGES,
+          ...snapshot.messages.map(message => makeMessage(message)),
+        ]});
+        setSetupBrief({
+          facts: snapshot.agentState?.inferred_facts || {},
+          confidence: snapshot.confidence || snapshot.agentState?.confidence || null,
+          missing: snapshot.missing || snapshot.agentState?.missing_fields || [],
+          sources: snapshot.sources || [],
+          next: snapshot.nextAction?.description || snapshot.agentState?.next_best_question || "",
+          toolSteps: (snapshot.toolCalls || []).map(call => call.label),
+          agentState: snapshot.agentState || null,
+          toolCalls: snapshot.toolCalls || [],
+          nextAction: snapshot.nextAction || null,
+        });
+        setSuggestedReplies(snapshot.suggestedReplies || []);
+      } catch {}
+    })();
+  }, [tenant]);
+
   const runAnalysis = useCallback(async () => {
     if (!tenant) return;
     dispatchMessages({ type:"append_many", messages:[
@@ -150,12 +221,8 @@ export default function OnboardingPage() {
     setLoadingTask("analyze");
     setError(null);
     try {
-      const sessionJson = await api("/api/onboarding/session", {
-        workspace_id: tenant.workspace_id,
-        brand_profile_id: tenant.brand_profile_id,
-        mode,
-      });
-      const nextSession = sessionJson.session;
+      const nextSession = await ensureSession();
+      if (!nextSession) return;
       setSession(nextSession);
 
       const sourcePayload = buildSourcePayload(intake);
@@ -196,7 +263,7 @@ export default function OnboardingPage() {
     } finally {
       setLoadingTask(null);
     }
-  }, [tenant, mode, intake]);
+  }, [tenant, intake, ensureSession]);
 
   const generateDraftWithAnswers = useCallback(async () => {
     if (!tenant || !session) return;
@@ -296,24 +363,72 @@ export default function OnboardingPage() {
     }
     if (replyTimerRef.current) clearTimeout(replyTimerRef.current);
     setAssistantTyping(true);
+    dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"work_trace", artifact:{ task:"agent", steps:WORK_STEPS.agent } }) });
     try {
-      const json = await api("/api/onboarding/chat", {
+      const activeSession = await ensureSession();
+      const streamMessageId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      let streamedText = "";
+      let sawToken = false;
+      dispatchMessages({ type:"append", message:makeMessage({ id:streamMessageId, role:"assistant", type:"text", text:"" }) });
+      const json = await streamOnboardingAgent({
+        token: await getToken(),
         workspace_id: tenant.workspace_id,
         brand_profile_id: tenant.brand_profile_id,
+        session_id: activeSession?.id || null,
         intake: nextIntake || intake,
         messages,
         user_message: sourceHint || userMessage,
+        onToken: text => {
+          sawToken = true;
+          streamedText += text;
+          dispatchMessages({ type:"update", id:streamMessageId, patch:{ text:sanitizeStreamedAssistantText(streamedText) } });
+        },
+        onToolCalls: event => {
+          if (event.tool_calls?.length) {
+            setSetupBrief(prev => ({
+              ...prev,
+              toolCalls: event.tool_calls,
+              toolSteps: event.tool_calls.map(call => call.label),
+              nextAction: event.next_action || prev.nextAction,
+            }));
+          }
+        },
       });
+      if (json.discovered_source?.url) {
+        setIntake(prev => ({
+          ...prev,
+          websiteUrl: prev.websiteUrl || json.discovered_source.url,
+          notes: [prev.notes, `Web research summary for ${json.discovered_source.company || "the brand"}:\n${json.discovered_source.summary || ""}`].filter(Boolean).join("\n\n"),
+        }));
+      }
+      setSetupBrief({
+        facts: json.agent_state?.inferred_facts || json.facts_patch || {},
+        confidence: json.confidence || null,
+        missing: json.missing || [],
+        sources: json.sources_used || [],
+        next: json.next_action?.description || json.next_question || json.reflection?.next || "",
+        toolSteps: json.tool_steps || [],
+        agentState: json.agent_state || null,
+        toolCalls: json.tool_calls || [],
+        nextAction: json.next_action || null,
+      });
+      setSuggestedReplies(json.suggested_replies || []);
       setAssistantTyping(false);
+      if (!sawToken) {
+        dispatchMessages({ type:"update", id:streamMessageId, patch:{ text:json.assistant_message || json.reply || "I need a little more context before I can guide the setup." } });
+      }
       dispatchMessages({ type:"append_many", messages:[
-        makeMessage({ role:"assistant", type:"text", text:json.reply || "I need a little more context before I can guide the setup." }),
-        ...(json.can_analyze ? [makeMessage({ role:"assistant", type:"action", text:"I can start a first pass now. I’ll show what I understood and mark uncertain parts before anything is saved.", artifact:{ action:"analyze" } })] : []),
+        ...(json.tool_calls?.length ? [makeMessage({ role:"assistant", type:"tool_calls", artifact:{ calls:json.tool_calls, nextAction:json.next_action } })] : []),
+        ...(json.reflection ? [makeMessage({ role:"assistant", type:"reflection_card", artifact:json.reflection })] : []),
+        ...(json.discovered_source?.url ? [makeMessage({ role:"assistant", type:"source", sourceKind:"website", title:"Found likely website", text:json.discovered_source.url, status:json.discovered_source.status || "stored" })] : []),
+        ...(json.can_analyze || json.can_draft ? [makeMessage({ role:"assistant", type:"action", text:json.next_action?.description || "I’m ready to run the first setup pass. I’ll extract the brand profile, strategy, programmes, and uncertainties before anything is saved.", artifact:{ action:"analyze", nextAction:json.next_action } })] : []),
       ]});
     } catch (e) {
       setAssistantTyping(false);
+      setSuggestedReplies(["I’ll paste the website", "I’ll describe the business", "I’m not sure — guide me"]);
       dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"text", text:"I’m having trouble responding dynamically right now. Tell me what the business sells, who it serves, and which platform matters first, and I’ll keep going." }) });
     }
-  }, [tenant, intake, messages, queueAssistantReply]);
+  }, [tenant, intake, messages, queueAssistantReply, ensureSession]);
 
   const onFiles = async (files) => {
     const rows = [];
@@ -344,6 +459,7 @@ export default function OnboardingPage() {
   const submitComposer = () => {
     const text = composerText.trim();
     if (!text) return;
+    setSuggestedReplies([]);
     const looksLikeUrl = /^https?:\/\/\S+$/i.test(text) || /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(text);
     if (composerMode === "website" || looksLikeUrl) {
       const url = /^https?:\/\//i.test(text) ? text : `https://${text}`;
@@ -370,6 +486,19 @@ export default function OnboardingPage() {
     dispatchMessages({ type:"append", message:makeMessage({ role:"user", type:"text", sourceKind:"guide", title:"Guide me", text:"I’m not sure — guide me." }) });
     askOnboardingAgent({ userMessage:"I'm not sure — guide me.", nextIntake });
   };
+
+  const submitSuggestedReply = useCallback((text) => {
+    if (text === "Run the first setup pass" || text === "Draft the setup pass" || text === "Show what you understood first") {
+      setSuggestedReplies([]);
+      runAnalysis();
+      return;
+    }
+    const nextIntake = { ...intake, notes: [intake.notes, text].filter(Boolean).join("\n\n") };
+    setIntake(nextIntake);
+    setSuggestedReplies([]);
+    dispatchMessages({ type:"append", message:makeMessage({ role:"user", type:"text", sourceKind:"guide", title:"Reply", text }) });
+    askOnboardingAgent({ userMessage:text, nextIntake });
+  }, [askOnboardingAgent, intake, runAnalysis]);
 
   const continueFromUnderstanding = useCallback(() => {
     const qs = buildClarifications(facts || {});
@@ -406,20 +535,25 @@ export default function OnboardingPage() {
       </header>
 
       <ConversationFrame>
-        <OnboardingTranscript
-          messages={messages}
-          runtime={{ facts, confidence, limitations, sourceTrace, clarifications, answers, draft }}
-          actions={{
-            runAnalysis,
-            continueFromUnderstanding,
-            generateDraftWithAnswers,
-            approve,
-            setFacts,
-            setAnswers,
-            updateMessageArtifact:(id, patch) => dispatchMessages({ type:"update_artifact", id, patch }),
-          }}
-        />
-        {assistantTyping && <TypingIndicator />}
+        <div className="ce-onboarding-workspace">
+          <div style={{ minWidth:0 }}>
+            <OnboardingTranscript
+              messages={messages}
+              runtime={{ facts, confidence, limitations, sourceTrace, clarifications, answers, draft }}
+              actions={{
+                runAnalysis,
+                continueFromUnderstanding,
+                generateDraftWithAnswers,
+                approve,
+                setFacts,
+                setAnswers,
+                updateMessageArtifact:(id, patch) => dispatchMessages({ type:"update_artifact", id, patch }),
+              }}
+            />
+            {assistantTyping && <TypingIndicator />}
+          </div>
+          <SetupBriefRail brief={setupBrief} intake={intake} phase={phase} />
+        </div>
 
         {phase !== "approved" && (
           <OnboardingComposer
@@ -431,6 +565,8 @@ export default function OnboardingPage() {
             onFiles={onFiles}
             onGuide={addGuideRequest}
             disabled={Boolean(loadingTask)}
+            suggestions={suggestedReplies}
+            onSuggestion={submitSuggestedReply}
           />
         )}
         <div ref={transcriptEndRef} />
@@ -444,13 +580,13 @@ function OnboardingShell({ children }) {
 }
 
 function ConversationFrame({ children }) {
-  return <main style={{ width:"100%", margin:"0 auto", padding:"34px 40px 210px", display:"flex", flexDirection:"column", gap:14 }}>{children}</main>;
+  return <main style={{ width:"100%", maxWidth:1160, margin:"0 auto", padding:"34px 32px 210px", display:"flex", flexDirection:"column", gap:14 }}>{children}</main>;
 }
 
 function AssistantMessage({ title, children }) {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"32px minmax(0,1fr)", gap:12, alignItems:"start" }} className="anim-fade">
-      <div style={{ width:32, height:32, borderRadius:9, background:"var(--t1)", color:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, boxShadow:"var(--shadow-sm)" }}>CE</div>
+      <div className="ce-agent-avatar">CE</div>
       <Panel className="ce-chat-bubble ce-chat-bubble-assistant" style={{ background:"var(--sheet)", padding:"12px 14px", width:"100%" }}>
         {title && <div style={{ fontSize:15, fontWeight:700, color:"var(--t1)", marginBottom:5 }}>{title}</div>}
         <div style={{ fontSize:13, color:"var(--t2)", lineHeight:1.6 }}>{children}</div>
@@ -466,7 +602,7 @@ function AssistantActionRow({ children }) {
 function AssistantCardMessage({ children }) {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"32px minmax(0,1fr)", gap:12, alignItems:"start" }} className="anim-fade">
-      <div style={{ width:32, height:32, borderRadius:9, background:"var(--t1)", color:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, boxShadow:"var(--shadow-sm)" }}>CE</div>
+      <div className="ce-agent-avatar">CE</div>
       {children}
     </div>
   );
@@ -490,14 +626,109 @@ function OnboardingTranscript({ messages, runtime, actions }) {
   );
 }
 
+function SetupBriefRail({ brief, intake, phase }) {
+  const facts = brief.facts || {};
+  const sources = brief.sources?.length ? brief.sources : buildInlineSources(intake);
+  const missing = (brief.missing || []).slice(0, 4);
+  const toolSteps = (brief.toolSteps || []).slice(-5);
+  const factsRows = [
+    ["Brand", facts.company || facts.brandName || intake.manual?.brandName],
+    ["Offer", facts.priority_offer],
+    ["Audience", facts.audience],
+    ["Platforms", Array.isArray(facts.platforms) ? facts.platforms.join(", ") : facts.platforms],
+  ].filter(([, value]) => value);
+
+  return (
+    <aside className="ce-onboarding-rail">
+      <Panel className="ce-setup-brief-card ce-interactive-card" style={{ padding:14, background:"var(--sheet)" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:12 }}>
+          <div>
+            <div style={{ fontSize:12, fontWeight:800, color:"var(--t1)" }}>Setup brief</div>
+            <div style={{ fontSize:11, color:"var(--t3)", marginTop:2 }}>Live context Creative Engine is using.</div>
+          </div>
+          <Pill tone="neutral">{phase}</Pill>
+        </div>
+        <div style={{ padding:"10px 11px", border:"1px solid var(--border)", background:"var(--fill)", borderRadius:"var(--ce-radius)", marginBottom:12 }}>
+          <div style={{ fontSize:11, color:"var(--t3)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.05em" }}>Signal</div>
+          <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", gap:12, marginTop:5 }}>
+            <span style={{ fontSize:13, color:"var(--t2)" }}>Brand understanding</span>
+            <span style={{ fontSize:18, fontFamily:"var(--font-mono)", color:"var(--t1)", fontWeight:750 }}>{brief.confidence?.score ?? 0}%</span>
+          </div>
+        </div>
+
+        <RailSection title="Known">
+          {factsRows.length ? factsRows.map(([label, value]) => (
+            <div key={label} className="ce-rail-row">
+              <span>{label}</span>
+              <strong>{String(value).slice(0, 110)}</strong>
+            </div>
+          )) : <RailEmpty>Waiting for a website, notes, or a description.</RailEmpty>}
+        </RailSection>
+
+        <RailSection title="Sources">
+          {sources.length ? sources.slice(0, 5).map(source => (
+            <div key={`${source.type}_${source.title}`} className="ce-source-mini">
+              <span>{source.typeLabel || source.type}</span>
+              <strong>{source.title}</strong>
+              {source.status && <em>{source.status}</em>}
+            </div>
+          )) : <RailEmpty>No sources attached yet.</RailEmpty>}
+        </RailSection>
+
+        <RailSection title="Working on">
+          {toolSteps.length ? toolSteps.map(step => (
+            <div key={step} className="ce-work-mini"><span className="ce-work-step-dot" />{step}</div>
+          )) : <RailEmpty>I’ll show high-level work here as we talk.</RailEmpty>}
+        </RailSection>
+
+        <RailSection title="Still needed">
+          {missing.length ? missing.map(item => <div key={item} className="ce-missing-mini">{item}</div>) : <RailEmpty>No major missing field yet.</RailEmpty>}
+        </RailSection>
+
+        {brief.next && (
+          <div style={{ marginTop:12, padding:"10px 11px", borderRadius:"var(--ce-radius)", background:"var(--fill2)", border:"1px solid var(--border)", fontSize:12, color:"var(--t2)", lineHeight:1.45 }}>
+            <strong style={{ color:"var(--t1)" }}>Next:</strong> {brief.next}
+          </div>
+        )}
+      </Panel>
+    </aside>
+  );
+}
+
+function RailSection({ title, children }) {
+  return (
+    <div style={{ marginTop:12 }}>
+      <div style={{ fontSize:11, color:"var(--t3)", fontWeight:800, textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:7 }}>{title}</div>
+      <div style={{ display:"grid", gap:7 }}>{children}</div>
+    </div>
+  );
+}
+
+function RailEmpty({ children }) {
+  return <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.45 }}>{children}</div>;
+}
+
 function TranscriptMessage({ message, runtime, actions }) {
   if (message.type === "privacy") return <PrivacyNotice />;
   if (message.role === "user") {
     return <UserMessage title={message.title || "You"} icon={iconForEvent(message.sourceKind || message.type)} status={message.status}>{message.text}</UserMessage>;
   }
+  if (message.type === "source") {
+    return (
+      <AssistantMessage title={message.title || "Source found"}>
+        <span style={{ display:"inline-flex", alignItems:"center", gap:7 }}>
+          {iconForEvent(message.sourceKind || "website")}
+          <span>{message.text}</span>
+          {message.status && <Pill tone={message.status === "read" ? "success" : "neutral"}>{message.status}</Pill>}
+        </span>
+      </AssistantMessage>
+    );
+  }
   if (message.type === "text") return <AssistantMessage>{message.text}</AssistantMessage>;
+  if (message.type === "tool_calls") return <ToolCallCard calls={message.artifact?.calls || []} nextAction={message.artifact?.nextAction} />;
+  if (message.type === "reflection_card") return <ReflectionCard reflection={message.artifact} />;
   if (message.type === "action" && message.artifact?.action === "analyze") {
-    return <NextActionPrompt onAnalyze={actions.runAnalysis} sourceTrace={runtime.sourceTrace} text={message.text} />;
+    return <NextActionPrompt onAnalyze={actions.runAnalysis} sourceTrace={runtime.sourceTrace} text={message.text} nextAction={message.artifact?.nextAction} />;
   }
   if (message.type === "work_trace") return <WorkTraceMessage task={message.artifact?.task} steps={message.artifact?.steps || []} />;
   if (message.type === "understanding_card") {
@@ -531,28 +762,119 @@ function TranscriptMessage({ message, runtime, actions }) {
   return null;
 }
 
+function ToolCallCard({ calls = [], nextAction }) {
+  if (!calls.length) return null;
+  return (
+    <AssistantCardMessage>
+      <Panel className="ce-agent-tool-card ce-generated-card" style={{ width:"100%", background:"var(--sheet)", padding:"12px 14px" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:10 }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:800, color:"var(--t1)" }}>Agent work</div>
+            <div style={{ fontSize:11, color:"var(--t3)", marginTop:2 }}>High-level tool trace, not hidden reasoning.</div>
+          </div>
+          {nextAction?.label && <Pill tone="neutral">{nextAction.label}</Pill>}
+        </div>
+        <div style={{ display:"grid", gap:8 }}>
+          {calls.map(call => <ToolCallRow key={call.id || call.name} call={call} />)}
+        </div>
+      </Panel>
+    </AssistantCardMessage>
+  );
+}
+
+function ToolCallRow({ call }) {
+  const tone = call.status === "success" ? "success" : call.status === "partial" ? "warning" : call.status === "needs_input" ? "warning" : "neutral";
+  const artifactRows = summarizeToolArtifact(call.artifact);
+  return (
+    <div className="ce-tool-call-row">
+      <span className={`ce-tool-status ce-tool-status-${call.status || "neutral"}`} />
+      <div style={{ minWidth:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+          <strong>{call.label || call.name}</strong>
+          <Pill tone={tone}>{call.status || "ready"}</Pill>
+        </div>
+        <p>{call.summary || "Completed."}</p>
+        {call.source_url && <a href={call.source_url} target="_blank" rel="noreferrer">{call.source_url}</a>}
+        {artifactRows.length > 0 && (
+          <div className="ce-tool-artifacts">
+            {artifactRows.map(row => <span key={row}>{row}</span>)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function summarizeToolArtifact(artifact = {}) {
+  if (!artifact || typeof artifact !== "object") return [];
+  const rows = [];
+  if (artifact.company) rows.push(`Brand: ${artifact.company}`);
+  if (artifact.filled_fields?.length) rows.push(`Fields: ${artifact.filled_fields.join(", ")}`);
+  if (artifact.confidence_score != null) rows.push(`Signal: ${artifact.confidence_score}%`);
+  if (artifact.extracted_text_chars) rows.push(`Text read: ${artifact.extracted_text_chars} chars`);
+  if (artifact.missing_fields?.length) rows.push(`Missing: ${artifact.missing_fields.slice(0, 2).join(" · ")}`);
+  if (artifact.limitation) rows.push(artifact.limitation);
+  return rows.slice(0, 4);
+}
+
+function ReflectionCard({ reflection }) {
+  if (!reflection) return null;
+  return (
+    <AssistantCardMessage>
+      <Panel className="ce-generated-card" style={{ width:"100%", background:"var(--fill)", padding:"12px 14px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center", marginBottom:10 }}>
+          <div style={{ fontSize:13, fontWeight:750, color:"var(--t1)" }}>{reflection.title || "What I’m checking"}</div>
+          {reflection.confidence && <Pill tone="neutral">{reflection.confidence}</Pill>}
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:10 }}>
+          <ReflectionList title="Checked" items={reflection.checked} />
+          <ReflectionList title="Inferred" items={reflection.inferred} />
+          <ReflectionList title="Still missing" items={reflection.missing} />
+        </div>
+        {reflection.next && <div style={{ marginTop:10, fontSize:12, color:"var(--t2)", lineHeight:1.5 }}><b>Next move:</b> {reflection.next}</div>}
+      </Panel>
+    </AssistantCardMessage>
+  );
+}
+
+function ReflectionList({ title, items = [] }) {
+  return (
+    <div>
+      <div style={{ fontSize:11, fontWeight:700, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:5 }}>{title}</div>
+      <div style={{ display:"grid", gap:4 }}>
+        {(items.length ? items : ["No signal yet"]).slice(0, 4).map(item => (
+          <div key={item} style={{ fontSize:12, color:"var(--t2)", lineHeight:1.45 }}>• {item}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TypingIndicator() {
   return (
     <div style={{ display:"grid", gridTemplateColumns:"32px minmax(0,1fr)", gap:12, alignItems:"start" }} className="anim-fade">
-      <div style={{ width:32, height:32, borderRadius:9, background:"var(--t1)", color:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, boxShadow:"var(--shadow-sm)" }}>CE</div>
-      <Panel className="ce-chat-bubble ce-chat-bubble-assistant" style={{ background:"var(--sheet)", padding:"10px 12px", width:"fit-content" }} aria-label="Creative Engine is responding">
-        <div className="ce-typing-indicator">
-          <span />
-          <span />
-          <span />
+      <div className="ce-agent-avatar is-thinking">CE</div>
+      <Panel className="ce-chat-bubble ce-chat-bubble-assistant ce-thinking-panel" style={{ background:"var(--sheet)", padding:"10px 12px", width:"fit-content" }} aria-label="Creative Engine is responding">
+        <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+          <span style={{ fontSize:12, color:"var(--t3)", fontWeight:650 }}>Creative Engine is working</span>
+          <div className="ce-typing-indicator">
+            <span />
+            <span />
+            <span />
+          </div>
         </div>
       </Panel>
     </div>
   );
 }
 
-function NextActionPrompt({ onAnalyze, sourceTrace, text }) {
+function NextActionPrompt({ onAnalyze, sourceTrace, text, nextAction }) {
   return (
     <AssistantMessage>
       {text || "I have enough to start a first pass. If a source cannot be read, I’ll say so and offer a manual path instead of pretending it was analyzed."}
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
         <button onClick={onAnalyze} style={buttonStyle("primary")}>
-          <ArrowRight size={14}/>Understand this business
+          <ArrowRight size={14}/>{nextAction?.type === "draft_strategy" ? "Draft setup pass" : "Understand this business"}
         </button>
         <SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />
       </div>
@@ -585,14 +907,23 @@ function iconForEvent(kind) {
   return <Pencil size={14}/>;
 }
 
-function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles, onGuide, disabled }) {
+function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles, onGuide, disabled, suggestions = [], onSuggestion }) {
   const placeholder = mode === "website"
     ? "Paste the website URL..."
     : mode === "notes"
       ? "Paste notes, FAQs, positioning, or claims to handle carefully..."
       : "Describe the business, paste a website, or add notes...";
   return (
-    <Panel className="ce-chat-composer" style={{ position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)", width:"calc(100vw - 80px)", zIndex:50, background:"var(--sheet)", boxShadow:"var(--shadow-lg)", padding:10 }}>
+    <Panel className="ce-chat-composer" style={{ position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)", width:"min(760px, calc(100vw - 64px))", zIndex:50, background:"var(--sheet)", boxShadow:"var(--shadow-lg)", padding:10 }}>
+      {suggestions.length > 0 && (
+        <div className="ce-suggested-replies" aria-label="Suggested replies">
+          {suggestions.slice(0, 4).map(suggestion => (
+            <button key={suggestion} type="button" onClick={() => onSuggestion?.(suggestion)}>
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
       <textarea
         value={value}
         onChange={e => setValue(e.target.value)}
@@ -626,13 +957,24 @@ function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles,
 }
 
 function WorkTraceMessage({ task, steps }) {
-  const title = task === "approve" ? "Saving the approved strategy." : task === "draft" ? "Preparing the strategy draft." : "Understanding the business.";
+  const title = task === "approve" ? "Saving the approved strategy." : task === "draft" ? "Preparing the strategy draft." : task === "agent" ? "Planning the next setup move." : "Understanding the business.";
   return (
-    <AssistantMessage title={title}>
-      <div style={{ marginTop:4 }}>
-        <WorkTrace steps={steps} compact />
-      </div>
-    </AssistantMessage>
+    <AssistantCardMessage>
+      <Panel className="ce-thinking-panel ce-generated-card" style={{ background:"var(--sheet)", padding:"13px 14px", width:"100%" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center", marginBottom:10 }}>
+          <div style={{ fontSize:14, color:"var(--t1)", fontWeight:750 }}>{title}</div>
+          <div className="ce-typing-indicator" aria-hidden="true"><span/><span/><span/></div>
+        </div>
+        <div style={{ display:"grid", gap:7 }}>
+          {steps.map((step, index) => (
+            <div key={step} className="ce-work-step-row" style={{ display:"flex", alignItems:"center", gap:8, animationDelay:`${index * 55}ms`, fontSize:12, color:"var(--t2)" }}>
+              <span className="ce-work-step-dot" style={{ animationDelay:`${index * 90}ms` }} />
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </AssistantCardMessage>
   );
 }
 
@@ -903,6 +1245,82 @@ function buildSourceTrace(intake, savedSources) {
   }
   if (savedSources?.length) work.push(`Saved ${savedSources.length} source record${savedSources.length === 1 ? "" : "s"}`);
   return { sources, work, confidence:sources.length ? "Source trace is based on available V1 intake records." : null };
+}
+
+async function streamOnboardingAgent({ token, onToken, onToolCalls, ...body }) {
+  const res = await fetch("/api/onboarding/agent-stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || `API ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalPayload = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream:true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() || "";
+    for (const chunk of chunks) {
+      const event = parseSseChunk(chunk);
+      if (!event) continue;
+      if (event.event === "token") onToken?.(event.data.text || "");
+      if (event.event === "tool_calls") onToolCalls?.(event.data);
+      if (event.event === "final") finalPayload = event.data;
+      if (event.event === "error") throw new Error(event.data.error || "Onboarding stream failed");
+    }
+  }
+
+  if (buffer.trim()) {
+    const event = parseSseChunk(buffer);
+    if (event?.event === "final") finalPayload = event.data;
+  }
+
+  if (!finalPayload) throw new Error("Onboarding stream ended without a final payload.");
+  return finalPayload;
+}
+
+function parseSseChunk(chunk) {
+  const lines = String(chunk || "").split("\n");
+  const eventLine = lines.find(line => line.startsWith("event:"));
+  const dataLine = lines.find(line => line.startsWith("data:"));
+  if (!dataLine) return null;
+  try {
+    return {
+      event: eventLine ? eventLine.replace(/^event:\s*/, "").trim() : "message",
+      data: JSON.parse(dataLine.replace(/^data:\s*/, "")),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeStreamedAssistantText(text) {
+  return String(text || "")
+    .replace(/<brand_extract>[\s\S]*?<\/brand_extract>/g, "")
+    .split("<brand_extract>")[0]
+    .trimStart();
+}
+
+function buildInlineSources(intake) {
+  const sources = [];
+  if (intake.websiteUrl) sources.push({ title:intake.websiteUrl, type:"website", typeLabel:"Website", status:"stored" });
+  if (intake.notes) sources.push({ title:"Pasted notes", type:"text_note", typeLabel:"Notes", status:"parsed" });
+  for (const file of intake.files || []) {
+    sources.push({ title:file.name, type:file.mime_type || "file", typeLabel:"File", status:file.status || "stored" });
+  }
+  if (Object.values(intake.manual || {}).some(v => Array.isArray(v) ? v.length : v)) {
+    sources.push({ title:"Manual answers", type:"manual_answer", typeLabel:"Answers", status:"provided" });
+  }
+  return sources;
 }
 
 function buildSourcePayload(intake) {

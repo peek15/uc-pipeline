@@ -1,7 +1,7 @@
 "use client";
 import { ArrowRight, CheckCircle, Circle, FileText } from "lucide-react";
 import { EmptyState, PageHeader, Panel, SectionHeader, SourceReviewButton, StatCard, buttonStyle } from "@/components/OperationalUI";
-import { getActiveProgrammes, getBrandProgrammes, getBrandTargetPlatforms } from "@/lib/brandConfig";
+import { getActiveProgrammes, getBrandName, getBrandProgrammes, getBrandTargetPlatforms } from "@/lib/brandConfig";
 
 function countWhere(stories, statuses) {
   const set = new Set(statuses);

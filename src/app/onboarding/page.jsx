@@ -289,6 +289,32 @@ export default function OnboardingPage() {
     }, options.delay ?? 620);
   }, []);
 
+  const askOnboardingAgent = useCallback(async ({ userMessage = "", nextIntake, sourceHint = "" }) => {
+    if (!tenant) {
+      queueAssistantReply("I’m still loading the workspace. Try again in a moment.");
+      return;
+    }
+    if (replyTimerRef.current) clearTimeout(replyTimerRef.current);
+    setAssistantTyping(true);
+    try {
+      const json = await api("/api/onboarding/chat", {
+        workspace_id: tenant.workspace_id,
+        brand_profile_id: tenant.brand_profile_id,
+        intake: nextIntake || intake,
+        messages,
+        user_message: sourceHint || userMessage,
+      });
+      setAssistantTyping(false);
+      dispatchMessages({ type:"append_many", messages:[
+        makeMessage({ role:"assistant", type:"text", text:json.reply || "I need a little more context before I can guide the setup." }),
+        ...(json.can_analyze ? [makeMessage({ role:"assistant", type:"action", text:"I can start a first pass now. I’ll show what I understood and mark uncertain parts before anything is saved.", artifact:{ action:"analyze" } })] : []),
+      ]});
+    } catch (e) {
+      setAssistantTyping(false);
+      dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"text", text:"I’m having trouble responding dynamically right now. Tell me what the business sells, who it serves, and which platform matters first, and I’ll keep going." }) });
+    }
+  }, [tenant, intake, messages, queueAssistantReply]);
+
   const onFiles = async (files) => {
     const rows = [];
     for (const file of Array.from(files || [])) {
@@ -304,12 +330,14 @@ export default function OnboardingPage() {
         note: isText ? "Text parsed for V1 analysis." : isPdf || isImage ? "Stored as a source record. Deep analysis is not available yet." : "Stored, but this file type is not parsed in V1.",
       });
     }
-    setIntake(prev => ({ ...prev, files: [...prev.files, ...rows] }));
+    const nextIntake = { ...intake, files: [...intake.files, ...rows] };
+    setIntake(nextIntake);
     if (rows.length) {
       dispatchMessages({ type:"append_many", messages:rows.map(file => makeMessage({ role:"user", type:"source", sourceKind:"file", title:file.name, text:file.note, status:file.status })) });
-      queueAssistantReply(rows.some(file => file.status === "parsed")
-        ? "I added the file. Text files can help the first pass immediately; files marked pending will stay as source records until deeper parsing exists."
-        : "I added the file as a source record. If it is a PDF or image, I won’t pretend I analyzed it yet.", { nextAction:"analyze" });
+      askOnboardingAgent({
+        nextIntake,
+        sourceHint: rows.map(file => `${file.name}: ${file.status}. ${file.note}`).join("\n"),
+      });
     }
   };
 
@@ -319,28 +347,28 @@ export default function OnboardingPage() {
     const looksLikeUrl = /^https?:\/\/\S+$/i.test(text) || /^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(text);
     if (composerMode === "website" || looksLikeUrl) {
       const url = /^https?:\/\//i.test(text) ? text : `https://${text}`;
-      setIntake(prev => ({ ...prev, websiteUrl: url }));
+      const nextIntake = { ...intake, websiteUrl: url };
+      setIntake(nextIntake);
       dispatchMessages({ type:"append", message:makeMessage({ role:"user", type:"source", sourceKind:"website", title:"Website", text:url }) });
-      queueAssistantReply("Got it. I’ll use this as the source URL for the first strategy pass. If the page cannot be read safely, I’ll ask you to paste the important text.", { nextAction:"analyze" });
+      askOnboardingAgent({ userMessage:text, nextIntake, sourceHint:`Website URL: ${url}` });
     } else {
-      setIntake(prev => ({
-        ...prev,
-        notes: [prev.notes, text].filter(Boolean).join("\n\n"),
-      }));
+      const nextIntake = { ...intake, notes: [intake.notes, text].filter(Boolean).join("\n\n") };
+      setIntake(nextIntake);
       dispatchMessages({ type:"append", message:makeMessage({ role:"user", type:"text", sourceKind:"notes", title: composerMode === "notes" ? "Notes" : "Description", text }) });
-      queueAssistantReply("Thanks. I’ll treat that as source context and look for the offer, audience, tone, risks, and missing pieces.", { nextAction:"analyze" });
+      askOnboardingAgent({ userMessage:text, nextIntake });
     }
     setComposerText("");
     setComposerMode("message");
   };
 
   const addGuideRequest = () => {
-    setIntake(prev => ({
-      ...prev,
-      notes: [prev.notes, "User asked Creative Engine to guide setup and suggest conservative defaults where the sources are incomplete."].filter(Boolean).join("\n\n"),
-    }));
+    const nextIntake = {
+      ...intake,
+      notes: [intake.notes, "User asked Creative Engine to guide setup and suggest conservative defaults where the sources are incomplete."].filter(Boolean).join("\n\n"),
+    };
+    setIntake(nextIntake);
     dispatchMessages({ type:"append", message:makeMessage({ role:"user", type:"text", sourceKind:"guide", title:"Guide me", text:"I’m not sure — guide me." }) });
-    queueAssistantReply("No problem. Send anything you know in plain language. I’ll suggest conservative defaults where the evidence is thin and mark uncertain areas before anything is saved.");
+    askOnboardingAgent({ userMessage:"I'm not sure — guide me.", nextIntake });
   };
 
   const continueFromUnderstanding = useCallback(() => {

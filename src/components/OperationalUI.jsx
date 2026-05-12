@@ -36,7 +36,6 @@ export function PageHeader({ title, description, meta, action }) {
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
       <div style={{ minWidth: 220, flex: "1 1 360px" }}>
         <h1 style={{ fontSize: 18, fontWeight: 650, letterSpacing: 0, margin: "0 0 4px", color: "var(--t1)" }}>{title}</h1>
-        {description && <p style={{ fontSize: 12, color: "var(--t3)", lineHeight: 1.5, margin: 0, maxWidth: 720 }}>{description}</p>}
       </div>
       {(meta || action) && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -53,7 +52,6 @@ export function SectionHeader({ title, description, meta, action }) {
     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:10 }}>
       <div style={{ minWidth:0 }}>
         <div style={{ fontSize:13, fontWeight:650, color:"var(--t1)", letterSpacing:0 }}>{title}</div>
-        {description && <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.45, marginTop:2 }}>{description}</div>}
       </div>
       {(meta || action) && (
         <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>

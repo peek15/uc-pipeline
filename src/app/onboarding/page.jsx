@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, FileText, Globe2, HelpCircle, Pencil, RefreshCw, ShieldAlert, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, FileText, Globe2, HelpCircle, Paperclip, Pencil, RefreshCw, Send, ShieldAlert } from "lucide-react";
 import { supabase, getBrandProfiles, getWorkspaces, createBrandProfile } from "@/lib/db";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { applyClarificationAnswers, blankOnboardingIntake, buildClarifications } from "@/lib/onboarding";
@@ -36,6 +36,7 @@ export default function OnboardingPage() {
   const [mode, setMode] = useState("workspace_setup");
   const [composerMode, setComposerMode] = useState("message");
   const [composerText, setComposerText] = useState("");
+  const [chatEvents, setChatEvents] = useState([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: authSession } }) => {
@@ -213,6 +214,15 @@ export default function OnboardingPage() {
       });
     }
     setIntake(prev => ({ ...prev, files: [...prev.files, ...rows] }));
+    if (rows.length) {
+      setChatEvents(prev => [
+        ...prev,
+        ...rows.map(file => ({ role:"user", kind:"file", title:file.name, text:file.note, status:file.status })),
+        { role:"assistant", kind:"reply", text: rows.some(file => file.status === "parsed")
+          ? "I added the file. Text files can help the first pass immediately; files marked pending will stay as source records until deeper parsing exists."
+          : "I added the file as a source record. If it is a PDF or image, I will not pretend I analyzed it yet." },
+      ]);
+    }
   };
 
   const submitComposer = () => {
@@ -222,11 +232,21 @@ export default function OnboardingPage() {
     if (composerMode === "website" || looksLikeUrl) {
       const url = /^https?:\/\//i.test(text) ? text : `https://${text}`;
       setIntake(prev => ({ ...prev, websiteUrl: url }));
+      setChatEvents(prev => [
+        ...prev,
+        { role:"user", kind:"website", title:"Website", text:url },
+        { role:"assistant", kind:"reply", text:"Got it. I’ll use this as the source URL for the first strategy pass. If the page cannot be read safely, I’ll ask you to paste the important text." },
+      ]);
     } else {
       setIntake(prev => ({
         ...prev,
         notes: [prev.notes, text].filter(Boolean).join("\n\n"),
       }));
+      setChatEvents(prev => [
+        ...prev,
+        { role:"user", kind:"notes", title: composerMode === "notes" ? "Notes" : "Description", text },
+        { role:"assistant", kind:"reply", text:"Thanks. I’ll treat that as source context and look for the offer, audience, tone, risks, and missing pieces." },
+      ]);
     }
     setComposerText("");
     setComposerMode("message");
@@ -237,6 +257,11 @@ export default function OnboardingPage() {
       ...prev,
       notes: [prev.notes, "User asked Creative Engine to guide setup and suggest conservative defaults where the sources are incomplete."].filter(Boolean).join("\n\n"),
     }));
+    setChatEvents(prev => [
+      ...prev,
+      { role:"user", kind:"guide", title:"Guide me", text:"I’m not sure — guide me." },
+      { role:"assistant", kind:"reply", text:"No problem. Send anything you know in plain language. I’ll suggest conservative defaults where the evidence is thin and mark uncertain areas before anything is saved." },
+    ]);
   };
 
   if (authLoading) return <OnboardingShell><SkeletonCard lines={4} style={{ maxWidth:720, margin:"18vh auto" }} /></OnboardingShell>;
@@ -261,17 +286,18 @@ export default function OnboardingPage() {
       <ConversationFrame>
         {error && <ErrorCard message={error} onRetry={phase === "intake" ? runAnalysis : generateDraftWithAnswers} />}
 
-        <AssistantMessage title="Tell me what business or brand we are setting up.">
-          You can paste a website, upload a file, or describe it in your own words. I’ll collect the useful sources in the conversation, then ask only for what is missing.
+        <AssistantMessage>
+          Tell me what business or brand we are setting up. You can paste a website, upload a file, or describe it in your own words.
         </AssistantMessage>
 
         <PrivacyNotice />
 
         {phase === "intake" && (
           <>
-            <SourceConversationMessages intake={intake} sourceTrace={sourceTrace} onFiles={onFiles} />
-            {hasAnySource(intake) && (
-              <AssistantMessage title="Ready when you are.">
+            {!chatEvents.length && <StarterPrompts setValue={setComposerText} setMode={setComposerMode} onGuide={addGuideRequest} />}
+            <SourceConversationMessages intake={intake} sourceTrace={sourceTrace} events={chatEvents} />
+            {hasUserProvidedSource(intake) && (
+              <AssistantMessage>
                 I have enough to start a first pass. If a source cannot be read, I’ll say so and offer a manual path instead of pretending it was analyzed.
                 <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
                   <button onClick={runAnalysis} disabled={Boolean(loadingTask)} style={buttonStyle("primary")}>
@@ -289,6 +315,7 @@ export default function OnboardingPage() {
               onSubmit={submitComposer}
               onFiles={onFiles}
               onGuide={addGuideRequest}
+              disabled={Boolean(loadingTask)}
             />
           </>
         )}
@@ -329,15 +356,15 @@ function OnboardingShell({ children }) {
 }
 
 function ConversationFrame({ children }) {
-  return <main style={{ maxWidth:900, margin:"0 auto", padding:"28px 20px 80px", display:"flex", flexDirection:"column", gap:16 }}>{children}</main>;
+  return <main style={{ maxWidth:820, margin:"0 auto", padding:"34px 20px 210px", display:"flex", flexDirection:"column", gap:14 }}>{children}</main>;
 }
 
 function AssistantMessage({ title, children }) {
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"34px minmax(0,1fr)", gap:12, alignItems:"start" }} className="anim-fade">
-      <div style={{ width:34, height:34, borderRadius:10, background:"var(--t1)", color:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800 }}>CE</div>
-      <Panel style={{ background:"var(--sheet)" }}>
-        <div style={{ fontSize:15, fontWeight:700, color:"var(--t1)", marginBottom:5 }}>{title}</div>
+    <div style={{ display:"grid", gridTemplateColumns:"32px minmax(0,1fr)", gap:12, alignItems:"start" }} className="anim-fade">
+      <div style={{ width:32, height:32, borderRadius:9, background:"var(--t1)", color:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, boxShadow:"var(--shadow-sm)" }}>CE</div>
+      <Panel className="ce-chat-bubble ce-chat-bubble-assistant" style={{ background:"var(--sheet)", padding:"12px 14px", maxWidth:680 }}>
+        {title && <div style={{ fontSize:15, fontWeight:700, color:"var(--t1)", marginBottom:5 }}>{title}</div>}
         <div style={{ fontSize:13, color:"var(--t2)", lineHeight:1.6 }}>{children}</div>
       </Panel>
     </div>
@@ -356,62 +383,69 @@ function PrivacyNotice() {
   );
 }
 
-function SourceConversationMessages({ intake, sourceTrace }) {
-  const hasSources = hasAnySource(intake);
-  if (!hasSources) {
-    return (
-      <AssistantMessage title="Start with whatever is easiest.">
-        A short description is enough to begin. A website or text notes will make the first strategy draft more specific.
-      </AssistantMessage>
-    );
-  }
+function StarterPrompts({ setValue, setMode, onGuide }) {
   return (
-    <div style={{ display:"grid", gap:10 }}>
-      {intake.websiteUrl && <UserMessage title="Website added" icon={<Globe2 size={14}/>}>{intake.websiteUrl}</UserMessage>}
-      {intake.notes && <UserMessage title="Notes added" icon={<Pencil size={14}/>}>{summarizeInline(intake.notes)}</UserMessage>}
-      {(intake.files || []).map((file, index) => (
-        <UserMessage key={`${file.name}-${index}`} title={file.name} icon={<FileText size={14}/>}>
-          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-            <span>{file.note}</span>
-            <Pill tone={file.status === "parsed" ? "success" : file.status === "pending analysis" ? "warning" : "neutral"}>{file.status}</Pill>
-          </div>
-        </UserMessage>
-      ))}
-      {Object.values(intake.manual || {}).some(v => Array.isArray(v) ? v.length : v) && (
-        <UserMessage title="Workspace context" icon={<HelpCircle size={14}/>}>
-          {intake.manual.brandName ? `${intake.manual.brandName} is the starting brand context.` : "Manual guidance is available for this setup."}
-        </UserMessage>
-      )}
-      <div style={{ paddingLeft:46 }}>
-        <SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />
-      </div>
+    <div style={{ paddingLeft:44, display:"flex", gap:8, flexWrap:"wrap" }} className="anim-fade">
+      <button className="ce-action-chip" onClick={() => { setMode("message"); setValue("We help "); }} style={buttonStyle("ghost")}>Describe the business</button>
+      <button className="ce-action-chip" onClick={() => { setMode("website"); setValue("https://"); }} style={buttonStyle("ghost")}><Globe2 size={13}/>Add website</button>
+      <button className="ce-action-chip" onClick={() => { setMode("notes"); setValue("Notes:\n"); }} style={buttonStyle("ghost")}><Pencil size={13}/>Paste notes</button>
+      <button className="ce-action-chip" onClick={onGuide} style={buttonStyle("ghost")}><HelpCircle size={13}/>Guide me</button>
     </div>
   );
 }
 
-function UserMessage({ title, icon, children }) {
+function SourceConversationMessages({ intake, sourceTrace, events }) {
+  const hasSources = hasUserProvidedSource(intake);
+  if (!hasSources && !events.length) return null;
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 34px", gap:12, alignItems:"start" }} className="anim-fade">
-      <Panel className="ce-interactive-card" style={{ justifySelf:"end", width:"min(100%, 680px)", background:"var(--fill)", borderColor:"var(--border)" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:7, fontSize:12, fontWeight:700, color:"var(--t1)", marginBottom:5 }}>
+    <div style={{ display:"grid", gap:10 }}>
+      {events.map((event, index) => event.role === "assistant" ? (
+        <AssistantMessage key={`${event.role}-${index}`}>{event.text}</AssistantMessage>
+      ) : (
+        <UserMessage key={`${event.role}-${index}`} title={event.title} icon={iconForEvent(event.kind)} status={event.status}>{event.text}</UserMessage>
+      ))}
+      {hasSources && (
+      <div style={{ paddingLeft:44 }}>
+        <SourceReviewButton sources={sourceTrace.sources} work={sourceTrace.work} confidence={sourceTrace.confidence} />
+      </div>
+      )}
+    </div>
+  );
+}
+
+function UserMessage({ title, icon, status, children }) {
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 32px", gap:12, alignItems:"start" }} className="anim-fade">
+      <Panel className="ce-chat-bubble ce-chat-bubble-user ce-interactive-card" style={{ justifySelf:"end", width:"min(100%, 620px)", background:"var(--fill)", borderColor:"var(--border)", padding:"11px 13px" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, fontSize:12, fontWeight:700, color:"var(--t1)", marginBottom:5 }}>
+          <span style={{ display:"inline-flex", alignItems:"center", gap:7 }}>
           {icon}
           <span>{title}</span>
+          </span>
+          {status && <Pill tone={status === "parsed" ? "success" : status === "pending analysis" ? "warning" : "neutral"}>{status}</Pill>}
         </div>
         <div style={{ fontSize:12, color:"var(--t2)", lineHeight:1.55, wordBreak:"break-word" }}>{children}</div>
       </Panel>
-      <div style={{ width:34, height:34, borderRadius:10, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800 }}>You</div>
+      <div style={{ width:32, height:32, borderRadius:9, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800 }}>You</div>
     </div>
   );
 }
 
-function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles, onGuide }) {
+function iconForEvent(kind) {
+  if (kind === "website") return <Globe2 size={14}/>;
+  if (kind === "file") return <FileText size={14}/>;
+  if (kind === "guide") return <HelpCircle size={14}/>;
+  return <Pencil size={14}/>;
+}
+
+function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles, onGuide, disabled }) {
   const placeholder = mode === "website"
     ? "Paste the website URL..."
     : mode === "notes"
       ? "Paste notes, FAQs, positioning, or claims to handle carefully..."
       : "Describe the business, paste a website, or add notes...";
   return (
-    <Panel style={{ marginLeft:46, position:"sticky", bottom:18, zIndex:5, background:"var(--sheet)", boxShadow:"var(--shadow)" }}>
+    <Panel className="ce-chat-composer" style={{ position:"fixed", left:"50%", bottom:18, transform:"translateX(-50%)", width:"min(780px, calc(100vw - 32px))", zIndex:50, background:"var(--sheet)", boxShadow:"var(--shadow-lg)", padding:10 }}>
       <textarea
         value={value}
         onChange={e => setValue(e.target.value)}
@@ -422,20 +456,23 @@ function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles,
           }
         }}
         rows={3}
+        disabled={disabled}
         placeholder={placeholder}
-        style={{ ...inputStyle, minHeight:74, padding:"11px 12px", resize:"vertical", background:"transparent" }}
+        style={{ ...inputStyle, minHeight:76, padding:"12px 13px", resize:"none", background:"transparent", border:"1px solid transparent", fontSize:14 }}
       />
       <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", marginTop:10, flexWrap:"wrap" }}>
         <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
           <button type="button" className="ce-action-chip" onClick={() => setMode("website")} style={buttonStyle(mode === "website" ? "secondary" : "ghost")}><Globe2 size={13}/>Add website</button>
           <label className="ce-action-chip" style={buttonStyle("ghost")}>
-            <Upload size={13}/>Upload file
+            <Paperclip size={13}/>Upload file
             <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.md,.txt,text/plain,text/markdown,application/pdf,image/png,image/jpeg" onChange={e => onFiles(e.target.files)} style={{ display:"none" }} />
           </label>
           <button type="button" className="ce-action-chip" onClick={() => setMode("notes")} style={buttonStyle(mode === "notes" ? "secondary" : "ghost")}><Pencil size={13}/>Paste notes</button>
           <button type="button" className="ce-action-chip" onClick={onGuide} style={buttonStyle("ghost")}><HelpCircle size={13}/>I'm not sure — guide me</button>
         </div>
-        <button type="button" onClick={onSubmit} disabled={!value.trim()} style={buttonStyle("primary")}><ArrowRight size={13}/>Send</button>
+        <button type="button" className="ce-send-button" onClick={onSubmit} disabled={disabled || !value.trim()} style={buttonStyle("primary", { width:36, height:32, padding:0, borderRadius:8 })} title="Send">
+          <Send size={14}/>
+        </button>
       </div>
     </Panel>
   );
@@ -692,8 +729,19 @@ function buildSourcePayload(intake) {
   return sources;
 }
 
-function hasAnySource(intake) {
-  return Boolean(intake.websiteUrl || intake.notes || intake.files.length || Object.values(intake.manual || {}).some(v => Array.isArray(v) ? v.length : v));
+function hasUserProvidedSource(intake) {
+  const manual = intake.manual || {};
+  const manualSignals = [
+    manual.priorityOffer,
+    manual.audience,
+    manual.goal,
+    manual.toneAvoid,
+    manual.sensitiveClaims,
+    manual.assetRights,
+    ...(manual.platforms || []),
+    ...(manual.formats || []),
+  ];
+  return Boolean(intake.websiteUrl || intake.notes || intake.files.length || manualSignals.some(Boolean));
 }
 
 function summarizeInline(text, limit = 220) {

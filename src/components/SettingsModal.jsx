@@ -885,9 +885,9 @@ function BillingSection({ billing, billingLoading, billingAction, billingMsg, wo
 // ── Section nav ──
 const SECTIONS = [
   { key:"workspace",   label:"Workspace" },
-  { key:"brand",       label:"Brand profile mirror" },
-  { key:"strategy",    label:"Strategy mirror" },
-  { key:"programmes",  label:"Programmes mirror" },
+  { key:"brand",       label:"Brand profile" },
+  { key:"strategy",    label:"Strategy" },
+  { key:"programmes",  label:"Programmes" },
   { key:"rules",       label:"Rules & Alerts" },
   { key:"appearance",  label:"Appearance" },
   { key:"privacy",     label:"Privacy & Data" },
@@ -1914,10 +1914,9 @@ ${fileText.slice(0,3000)}` : text };
         <div style={{ width:200, borderRight:"1px solid var(--border2)", padding:"20px 0", flexShrink:0, display:"flex", flexDirection:"column" }}>
 	          <div style={{ padding:"0 16px 16px", borderBottom:"1px solid var(--border2)", marginBottom:8 }}>
 	            <div style={{ fontSize:13, fontWeight:600, color:"var(--t1)" }}>Settings</div>
-	            <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>Admin and technical configuration</div>
 	          </div>
           {SECTIONS.map(s=>(
-            <button key={s.key} onClick={()=>setSection(s.key)} style={{
+            <button key={s.key} className={`ce-settings-nav-item${section===s.key ? " is-active" : ""}`} onClick={()=>setSection(s.key)} style={{
               display:"flex", alignItems:"center", justifyContent:"space-between",
               padding:"9px 16px", fontSize:13, fontWeight:section===s.key?500:400, letterSpacing:0,
               background:section===s.key?"var(--fill2)":"transparent",
@@ -2784,7 +2783,7 @@ ${fileText.slice(0,3000)}` : text };
                 <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Theme</div>
                 <div style={{ display:"flex", gap:8 }}>
                   {[{key:"system",label:"System",hint:"Follows OS setting"},{key:"light",label:"Light"},{key:"dark",label:"Dark"}].map(t=>(
-                    <button key={t.key} onClick={()=>upd("appearance.theme",t.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.theme||"system")===t.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.theme||"system")===t.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>
+                    <button key={t.key} className="ce-choice-card" onClick={()=>upd("appearance.theme",t.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.theme||"system")===t.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.theme||"system")===t.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>
                       <div style={{ fontSize:12, fontWeight:500, color:(settings.appearance?.theme||"system")===t.key?"var(--bg)":"var(--t1)" }}>{t.label}</div>
                       {t.hint&&<div style={{ fontSize:10, color:(settings.appearance?.theme||"system")===t.key?"rgba(255,255,255,0.6)":"var(--t3)", marginTop:2 }}>{t.hint}</div>}
                     </button>
@@ -2795,10 +2794,9 @@ ${fileText.slice(0,3000)}` : text };
 	              {/* Density */}
 	              <div>
 	                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:10 }}>Density</div>
-                <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Affects card spacing and padding throughout the app.</div>
                 <div style={{ display:"flex", gap:8 }}>
                   {[{key:"compact",label:"Compact",hint:"Smaller cards, more stories visible"},{key:"comfortable",label:"Comfortable",hint:"Balanced (default)"},{key:"spacious",label:"Spacious",hint:"More breathing room"}].map(d=>(
-                    <button key={d.key} onClick={()=>upd("appearance.density",d.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>
+                    <button key={d.key} className="ce-choice-card" onClick={()=>upd("appearance.density",d.key)} style={{ flex:1, padding:"10px 12px", borderRadius:9, border:`0.5px solid ${(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--border)"}`, background:(settings.appearance?.density||"comfortable")===d.key?"var(--t1)":"var(--fill2)", cursor:"pointer", textAlign:"left" }}>
                       <div style={{ fontSize:12, fontWeight:500, color:(settings.appearance?.density||"comfortable")===d.key?"var(--bg)":"var(--t1)" }}>{d.label}</div>
                       <div style={{ fontSize:10, color:(settings.appearance?.density||"comfortable")===d.key?"rgba(255,255,255,0.6)":"var(--t3)", marginTop:2 }}>{d.hint}</div>
                     </button>
@@ -2809,7 +2807,6 @@ ${fileText.slice(0,3000)}` : text };
 	              {/* Pipeline display */}
 	              <div>
 	                <div style={{ fontSize:11, fontWeight:500, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>Pipeline display</div>
-	                <div style={{ fontSize:11, color:"var(--t3)", marginBottom:10 }}>Choose how much scoring and metadata Creative Engine shows in Pipeline.</div>
 	                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:8 }}>
 	                  {[
 	                    { key:"essential", label:"Essential", hint:"Shows status, next action, and readiness." },
@@ -2817,7 +2814,7 @@ ${fileText.slice(0,3000)}` : text };
 	                  ].map(option => {
 	                    const selected = (pipelineDisplayMode || "essential") === option.key;
 	                    return (
-	                      <button key={option.key} onClick={() => onPipelineDisplayModeChange?.(option.key)} style={{ padding:"10px 12px", borderRadius:9, border:`0.5px solid ${selected ? "var(--t1)" : "var(--border)"}`, background:selected ? "var(--t1)" : "var(--fill2)", cursor:"pointer", textAlign:"left" }}>
+	                      <button key={option.key} className="ce-choice-card" onClick={() => onPipelineDisplayModeChange?.(option.key)} style={{ padding:"10px 12px", borderRadius:9, border:`0.5px solid ${selected ? "var(--t1)" : "var(--border)"}`, background:selected ? "var(--t1)" : "var(--fill2)", cursor:"pointer", textAlign:"left" }}>
 	                        <div style={{ fontSize:12, fontWeight:600, color:selected ? "var(--bg)" : "var(--t1)" }}>{option.label}</div>
 	                        <div style={{ fontSize:10, color:selected ? "rgba(255,255,255,0.68)" : "var(--t3)", marginTop:2, lineHeight:1.4 }}>{option.hint}</div>
 	                      </button>

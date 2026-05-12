@@ -83,7 +83,7 @@ function advanceLabel(nextStage) {
   return STAGES[nextStage]?.label || "Move";
 }
 
-export default function PipelineView({ stories, onSelect, onStageChange, onBulkAction, onBulkReject, onBulkDelete, onUpdate, setActiveTab, settings = null, campaigns = [], displayMode = "essential", onDisplayModeChange }) {
+export default function PipelineView({ stories, onSelect, onStageChange, onBulkAction, onBulkReject, onBulkDelete, onUpdate, setActiveTab, settings = null, campaigns = [], displayMode = "essential" }) {
   // Filter state
   const [stageFilter, setStageFilter] = usePersistentState("pipeline_stage",     "all");
   const [search,      setSearch]      = usePersistentState("pipeline_search",    "");
@@ -170,12 +170,6 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
   for (const s of filtered) { bySt[s.status] = bySt[s.status]||[]; bySt[s.status].push(s); }
   const stageOrder = ["accepted","approved","scripted","produced","published"];
   const visibleIds = (stageFilter==="all" ? stageOrder : [stageFilter]).flatMap(k=>(bySt[k]||[]).map(s=>s.id));
-  const activeItems = stories.filter(s => !["rejected","archived"].includes(s.status));
-  const readyToCreateCount = stories.filter(s => ["approved","scripted"].includes(s.status)).length;
-  const needsReviewCount = stories.filter(s => getGateStatus(s) === "blocked" || Number(s.quality_gate_warnings) > 0).length;
-  const readyToExportCount = stories.filter(s => s.status === "produced").length;
-  const scheduledCount = stories.filter(s => !!s.scheduled_date).length;
-
   // ── Keyboard navigation ──
   useEffect(() => {
     const handler = (e) => {
@@ -255,36 +249,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
     <div ref={containerRef} className="animate-fade-in" tabIndex={-1} style={{outline:"none"}}>
       <PageHeader
         title="Pipeline"
-        description="Track content items in progress, their next action, readiness, and review state."
-        meta={`${filtered.length} visible · ${stories.length} total`}
-        action={
-          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-            <span style={{ fontSize:11, color:"var(--t4)" }}>Display</span>
-            {["essential", "detailed"].map(mode => (
-              <button key={mode} onClick={() => onDisplayModeChange?.(mode)} style={buttonStyle(displayMode === mode ? "primary" : "ghost", { padding:"5px 10px", textTransform:"capitalize" })}>
-                {mode}
-              </button>
-            ))}
-          </div>
-        }
       />
-
-      <Panel style={{ marginBottom: 12, padding: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8 }}>
-          {[
-            { label: "In progress", value: activeItems.length },
-            { label: "Ready to create", value: readyToCreateCount },
-            { label: "Needs review", value: needsReviewCount },
-            { label: "Ready to export", value: readyToExportCount },
-            { label: "Scheduled", value: scheduledCount },
-          ].map(item => (
-            <div key={item.label} style={{ padding: "9px 10px", borderRadius: 8, background: "var(--fill2)", border: "0.5px solid var(--border)" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>{item.label}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: "var(--t1)", fontFamily: "var(--font-mono)" }}>{item.value}</div>
-            </div>
-          ))}
-        </div>
-      </Panel>
 
       {/* Controls */}
       <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:8,marginBottom:12,alignItems:"center"}}>

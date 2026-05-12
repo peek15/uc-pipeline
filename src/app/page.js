@@ -27,7 +27,7 @@ import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.36.0";
+const VERSION = "3.36.2";
 const PIPELINE_DISPLAY_STORAGE_KEY = "ce_pipeline_display_mode";
 
 const PRIMARY_TABS = [
@@ -551,11 +551,7 @@ export default function Home() {
     }; input.click();
   };
 
-  const counts   = {};
-  for (const s of stories) counts[s.status] = (counts[s.status]||0)+1;
-  const bankSize = stories.filter(s=>["approved","scripted","produced"].includes(s.status)).length;
-  const brandName = getBrandName(appSettings);
-  const currentBrandLabel = brandProfiles.find(p => p.id === activeTenant.brand_profile_id)?.name || brandName;
+  const currentBrandLabel = brandProfiles.find(p => p.id === activeTenant.brand_profile_id)?.name || getBrandName(appSettings) || "Creative Engine";
   const showOnboardingPrompt = shouldPromptOnboarding(appSettings);
   const onboardingUrl = `/onboarding?workspace_id=${encodeURIComponent(activeTenant.workspace_id || "")}&brand_profile_id=${encodeURIComponent(activeTenant.brand_profile_id || "")}&mode=${brandProfiles.length <= 1 ? "workspace_setup" : "brand_setup"}`;
 
@@ -617,11 +613,12 @@ export default function Home() {
           {sidebarOpen
             ? <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentBrandLabel}</span>
+                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Creative Engine</span>
                   <span style={{ fontSize:9, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
                 </div>
                 {workspaces.length > 1 && (
                   <select
+                    className="ce-select-control"
                     value={activeTenant.workspace_id}
                     onChange={(e) => setTenant({ workspace_id: e.target.value, brand_profile_id: e.target.value })}
                     title="Workspace"
@@ -634,6 +631,7 @@ export default function Home() {
                 )}
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 26px", gap:5 }}>
                   <select
+                    className="ce-select-control"
                     value={activeTenant.brand_profile_id}
                     onChange={(e) => setTenant({ ...activeTenant, brand_profile_id: e.target.value })}
                     title="Brand profile"
@@ -644,7 +642,7 @@ export default function Home() {
                       <option key={profile.id} value={profile.id}>{profile.name || "Untitled brand"}</option>
                     ))}
                   </select>
-                  <button onClick={createBrand} title="Create brand" style={{ height:26, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t3)", cursor:"pointer", fontSize:16, lineHeight:"20px", padding:0 }}>+</button>
+                  <button className="ce-icon-button" onClick={createBrand} title="Create brand" style={{ height:26, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t3)", cursor:"pointer", fontSize:16, lineHeight:"20px", padding:0 }}>+</button>
                 </div>
               </div>
             : <div style={{ height:16, flexShrink:0 }} />
@@ -655,7 +653,7 @@ export default function Home() {
             {PRIMARY_TABS.map(t => {
               const active = tab === t.key;
               return (
-                <button key={t.key} onClick={() => setTab(t.key)} title={t.label} style={{
+                <button key={t.key} className={`ce-sidebar-item${active ? " is-active" : ""}`} onClick={() => setTab(t.key)} title={t.label} style={{
                   width:"100%", display:"flex", alignItems:"center",
                   justifyContent: sidebarOpen ? "flex-start" : "center",
                   gap: sidebarOpen ? 10 : 0,
@@ -678,7 +676,7 @@ export default function Home() {
             {SECONDARY_TABS.map(t => {
               const active = tab === t.key;
               return (
-                <button key={t.key} onClick={() => setTab(t.key)} title={`${t.label} (legacy planning)`} style={{
+                <button key={t.key} className={`ce-sidebar-item ce-sidebar-item-secondary${active ? " is-active" : ""}`} onClick={() => setTab(t.key)} title={`${t.label} (legacy planning)`} style={{
                   width:"100%", display:"flex", alignItems:"center",
                   justifyContent: sidebarOpen ? "flex-start" : "center",
                   gap: sidebarOpen ? 10 : 0,
@@ -700,7 +698,7 @@ export default function Home() {
 
           {/* Bottom — settings + user */}
           <div style={{ padding: sidebarOpen ? "8px" : "8px 4px", flexShrink:0, borderTop:"0.5px solid var(--border2)" }}>
-            <button onClick={() => setShowSettings(s=>!s)} title="Settings" style={{
+            <button className={`ce-sidebar-item${showSettings ? " is-active" : ""}`} onClick={() => setShowSettings(s=>!s)} title="Settings" style={{
               width:"100%", display:"flex", alignItems:"center",
               justifyContent: sidebarOpen ? "flex-start" : "center",
               gap: sidebarOpen ? 10 : 0,
@@ -715,7 +713,7 @@ export default function Home() {
 
             {/* User row */}
             <div style={{ position:"relative" }}>
-              <button onClick={() => setShowUserMenu(m=>m==="user"?null:"user")} title={user.user_metadata?.full_name || user.email} style={{
+              <button className={`ce-sidebar-item${showUserMenu==="user" ? " is-active" : ""}`} onClick={() => setShowUserMenu(m=>m==="user"?null:"user")} title={user.user_metadata?.full_name || user.email} style={{
                 width:"100%", display:"flex", alignItems:"center",
                 justifyContent: sidebarOpen ? "flex-start" : "center",
                 gap: sidebarOpen ? 8 : 0,
@@ -739,20 +737,20 @@ export default function Home() {
                     <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>{user.email}</div>
                   </div>
                   <div style={{ height:"0.5px", background:"var(--border2)", margin:"0 4px 4px" }}/>
-                  <button onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={menuBtn}
+                  <button className="ce-menu-item" onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={menuBtn}
                     onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <Settings size={12}/> Settings
                   </button>
-                  <button onClick={()=>{importCSV();setShowUserMenu(null);}} style={menuBtn}
+                  <button className="ce-menu-item" onClick={()=>{importCSV();setShowUserMenu(null);}} style={menuBtn}
                     onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <Upload size={12}/> Import CSV
                   </button>
-                  <button onClick={()=>{exportCSV();setShowUserMenu(null);}} style={menuBtn}
+                  <button className="ce-menu-item" onClick={()=>{exportCSV();setShowUserMenu(null);}} style={menuBtn}
                     onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <Download size={12}/> Export CSV
                   </button>
                   <div style={{ height:"0.5px", background:"var(--border2)", margin:"4px 4px" }}/>
-                  <button onClick={handleSignOut} style={menuBtn}
+                  <button className="ce-menu-item" onClick={handleSignOut} style={menuBtn}
                     onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <LogOut size={12}/> Sign out
                   </button>
@@ -770,34 +768,13 @@ export default function Home() {
         <header style={{ flexShrink:0, height:48, display:"flex", alignItems:"center", gap:10, padding:"0 16px", background:"var(--nav)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderBottom:"0.5px solid var(--border)", zIndex:20, position:"sticky", top:0 }}>
 
           {/* Sidebar toggle */}
-          <button onClick={()=>setSidebarOpen(s=>!s)} title="Toggle sidebar (⌘\\)" style={{ width:30, height:30, borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)", flexShrink:0 }}>
+          <button className="ce-icon-button" onClick={()=>setSidebarOpen(s=>!s)} title="Toggle sidebar (⌘\\)" style={{ width:30, height:30, borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)", flexShrink:0 }}>
             <PanelLeft size={14} />
           </button>
 
           <div style={{ width:"0.5px", height:16, background:"var(--border)", flexShrink:0 }} />
 
-          {/* Stage pills */}
-          <div style={{ display:"flex", gap:4, flex:1, overflow:"hidden" }}>
-            {[
-              {k:"accepted",  dot:"var(--t4)"},
-              {k:"approved",  dot:"#5B8FB9"},
-              {k:"scripted",  dot:"#8B7EC8"},
-              {k:"produced",  dot:"#C49A3C"},
-              {k:"published", dot:"#4A9B7F"},
-            ].map(({k, dot}) => (counts[k]||0) > 0 ? (
-              <div key={k} style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"var(--fill2)", border:"0.5px solid var(--border2)", flexShrink:0 }}>
-                <span style={{ width:5, height:5, borderRadius:"50%", background:dot, flexShrink:0, display:"inline-block" }} />
-                <span style={{ fontSize:11, color:"var(--t2)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{counts[k]}</span>
-                <span style={{ fontSize:10, color:"var(--t3)" }}>{STAGES[k].label}</span>
-              </div>
-            ) : null)}
-            {bankSize > 0 && (
-              <div style={{ display:"flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:99, background:"rgba(74,155,127,0.08)", border:"0.5px solid rgba(74,155,127,0.2)", flexShrink:0 }}>
-                <span style={{ width:5, height:5, borderRadius:"50%", background:"#4A9B7F", display:"inline-block" }} />
-                <span style={{ fontSize:10, fontWeight:500, color:"#4A9B7F" }}>{bankSize} ready</span>
-              </div>
-            )}
-          </div>
+          <div style={{ flex:1 }} />
 
           {/* Current section label */}
           <span style={{ fontSize:12, fontWeight:500, color:"var(--t3)", flexShrink:0 }}>
@@ -868,7 +845,7 @@ export default function Home() {
                 />
               </div>
               <div style={{ display: tab==="pipeline"   ? "block" : "none" }}>
-                <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} campaigns={campaigns} displayMode={pipelineDisplayMode} onDisplayModeChange={updatePipelineDisplayMode} />
+                <PipelineView stories={stories} onSelect={setSelected} onStageChange={stageChange} onBulkAction={bulkAction} onBulkReject={bulkReject} onBulkDelete={bulkDelete} onUpdate={updateStory} setActiveTab={setTab} settings={appSettings} campaigns={campaigns} displayMode={pipelineDisplayMode} />
               </div>
               <div style={{ display: tab==="research"   ? "block" : "none" }}>
                 <ResearchView stories={stories} onAddStories={addStories} onStateChange={setResearchState} prefill={researchPrefill} onPrefillUsed={() => setResearchPrefill(null)} settings={appSettings} tenant={activeTenant} />

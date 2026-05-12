@@ -177,13 +177,8 @@ export default function ProductionAlert({ stories, onNavigate, onPrefillResearch
     });
   }
 
-  // No alerts
-  if (bullets.length === 0) return (
-    <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderRadius:10, background:"var(--fill2)", border:"1px solid var(--border)", marginBottom:16, fontSize:12, color:"var(--t3)" }}>
-      <span style={{ width:8, height:8, borderRadius:"50%", background:"#4A9B7F", display:"inline-block", flexShrink:0 }} />
-      Production looks healthy — {stockLevel} stories ready, calendar well-covered.
-    </div>
-  );
+  // No alerts: stay quiet unless something needs attention.
+  if (bullets.length === 0) return null;
 
   const visibleBullets = bullets.filter(b => !dismissed.has(b.id));
   if (visibleBullets.length === 0) return null;

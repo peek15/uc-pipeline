@@ -206,7 +206,13 @@ input, textarea, select { font-family: inherit; }
 .ce-interactive,
 .ce-interactive-row,
 .ce-interactive-card,
-.ce-action-chip {
+.ce-action-chip,
+.ce-sidebar-item,
+.ce-settings-nav-item,
+.ce-menu-item,
+.ce-choice-card,
+.ce-icon-button,
+.ce-select-control {
   transition:
     background 140ms ease,
     border-color 140ms ease,
@@ -218,7 +224,13 @@ input, textarea, select { font-family: inherit; }
 
 .ce-interactive-row:hover,
 .ce-interactive-card:hover,
-.ce-action-chip:hover {
+.ce-action-chip:hover,
+.ce-sidebar-item:hover,
+.ce-settings-nav-item:hover,
+.ce-menu-item:hover,
+.ce-choice-card:hover,
+.ce-icon-button:hover,
+.ce-select-control:hover {
   border-color: var(--border-in) !important;
   background: var(--fill2) !important;
 }
@@ -226,8 +238,96 @@ input, textarea, select { font-family: inherit; }
 .ce-interactive-row:active,
 .ce-interactive-card:active,
 .ce-action-chip:active,
+.ce-sidebar-item:active,
+.ce-settings-nav-item:active,
+.ce-menu-item:active,
+.ce-choice-card:active,
+.ce-icon-button:active,
 button:active:not(:disabled) {
   transform: translateY(1px);
+}
+
+.ce-sidebar-item {
+  position: relative;
+}
+
+.ce-settings-nav-item {
+  position: relative;
+}
+
+.ce-sidebar-item::after {
+  content: "";
+  position: absolute;
+  inset: 5px auto 5px 5px;
+  width: 2px;
+  border-radius: 99px;
+  background: transparent;
+  transition: background 140ms ease, opacity 140ms ease;
+  opacity: 0;
+}
+
+.ce-settings-nav-item::after {
+  content: "";
+  position: absolute;
+  inset: 7px auto 7px 6px;
+  width: 2px;
+  border-radius: 99px;
+  background: transparent;
+  opacity: 0;
+  transition: background 140ms ease, opacity 140ms ease;
+}
+
+.ce-sidebar-item:hover::after {
+  background: var(--t4);
+  opacity: 0.45;
+}
+
+.ce-settings-nav-item:hover::after {
+  background: var(--t4);
+  opacity: 0.45;
+}
+
+.ce-sidebar-item.is-active::after {
+  background: var(--t1);
+  opacity: 0.9;
+}
+
+.ce-settings-nav-item.is-active::after {
+  background: var(--t1);
+  opacity: 0.9;
+}
+
+.ce-sidebar-item svg,
+.ce-icon-button svg,
+.ce-action-chip svg {
+  transition: color 140ms ease, opacity 140ms ease, transform 140ms ease, stroke-width 140ms ease;
+}
+
+.ce-sidebar-item:hover svg,
+.ce-icon-button:hover svg,
+.ce-action-chip:hover svg {
+  transform: translateX(1px);
+}
+
+.ce-chat-bubble {
+  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.ce-chat-bubble:hover {
+  border-color: var(--border-in) !important;
+}
+
+.ce-chat-composer {
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.ce-chat-composer:focus-within {
+  border-color: var(--border-in) !important;
+  box-shadow: var(--shadow-lg), 0 0 0 3px var(--ce-focus-ring) !important;
+}
+
+.ce-send-button:hover:not(:disabled) svg {
+  transform: translateX(1px);
 }
 
 .ce-secondary-action {

@@ -1,10 +1,15 @@
 {
   "name": "uc-pipeline",
-  "version": "3.37.3",
+  "version": "3.48.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "eval:onboarding": "node scripts/onboarding-eval.mjs",
+    "eval:gateway": "node scripts/intelligence-gateway-eval.mjs",
+    "eval:runtime": "node scripts/intelligence-runtime-eval.mjs",
+    "eval:jobs": "node scripts/intelligence-jobs-eval.mjs",
+    "eval:intelligence": "npm run eval:gateway && npm run eval:onboarding && npm run eval:runtime && npm run eval:jobs",
     "start": "next start"
   },
   "dependencies": {

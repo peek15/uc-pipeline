@@ -43,6 +43,9 @@ function buildSnapshot(events) {
   let missing = [];
   let sources = [];
   let nextAction = null;
+  let agentPlan = null;
+  let factEvidence = {};
+  let researchJob = null;
 
   for (const event of events) {
     const payload = event.payload_json || {};
@@ -56,14 +59,19 @@ function buildSnapshot(events) {
       toolCalls = payload.tool_calls || toolCalls;
       sources = payload.sources_used || sources;
       nextAction = payload.next_action || nextAction;
+      agentPlan = payload.agent_plan || agentPlan;
+      researchJob = payload.research_job || researchJob;
     }
     if (event.event_type === "agent_state") {
       agentState = payload.agent_state || agentState;
+      agentPlan = payload.agent_plan || agentPlan;
+      factEvidence = payload.fact_evidence || factEvidence;
+      researchJob = payload.research_job || researchJob;
       confidence = payload.confidence || confidence;
       missing = payload.missing || missing;
       suggestedReplies = payload.suggested_replies || suggestedReplies;
     }
   }
 
-  return { messages, agentState, toolCalls, suggestedReplies, confidence, missing, sources, nextAction };
+  return { messages, agentState, agentPlan, factEvidence, researchJob, toolCalls, suggestedReplies, confidence, missing, sources, nextAction };
 }

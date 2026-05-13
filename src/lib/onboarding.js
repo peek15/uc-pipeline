@@ -158,6 +158,8 @@ export function applyClarificationAnswers(facts = {}, answers = {}) {
         : value;
     } else if (value === "I'm not sure — suggest for me") {
       next[key] = suggestedValueFor(key, facts);
+    } else if (value === "Use the safest default") {
+      next[key] = suggestedValueFor(key, facts);
     } else if (value) {
       next[key] = value;
     }
@@ -336,11 +338,44 @@ function summarizeSources(intake) {
   return parts.join(" ");
 }
 
-function suggestedValueFor(key) {
-  if (key === "audience") return "New prospects";
-  if (key === "content_goal") return "Build trust";
-  if (key === "platforms") return ["LinkedIn", "Instagram"];
-  if (key === "asset_rights") return "Not sure";
+export function suggestedValueFor(key, facts = {}) {
+  const offer = facts.priority_offer || facts.products_services || "the offer";
+  const audience = facts.audience || "";
+  const text = `${offer} ${audience} ${facts.source_summary || ""} ${(facts.platforms || []).join(" ")}`.toLowerCase();
+
+  if (key === "audience") {
+    if (/\b(b2b|enterprise|saas|software|platform|teams|companies|businesses|operators|founders)\b/.test(text)) {
+      return `B2B buyers and teams evaluating ${offer}`;
+    }
+    if (/\b(local|restaurant|clinic|studio|shop|venue|community)\b/.test(text)) {
+      return "Local customers and nearby prospects";
+    }
+    if (/\b(creator|course|newsletter|community|consumer|fans)\b/.test(text)) {
+      return "Interested prospects and existing community members";
+    }
+    return `Prospective customers evaluating ${offer}`;
+  }
+
+  if (key === "content_goal") {
+    if (/\b(lead|demo|sales|book|pipeline|conversion|revenue)\b/.test(text)) return "Generate leads";
+    if (/\b(retention|customer|support|onboarding|education|help)\b/.test(text)) return "Educate the market";
+    if (/\b(trust|proof|case|testimonial|credibility|regulated)\b/.test(text)) return "Build trust";
+    return "Build trust";
+  }
+
+  if (key === "platforms") {
+    if (/\b(b2b|enterprise|saas|software|founder|professional|teams|companies)\b/.test(text)) return ["LinkedIn", "Newsletter"];
+    if (/\b(video|visual|consumer|creator|community|food|fitness|beauty|fashion|local)\b/.test(text)) return ["Instagram", "TikTok"];
+    return ["LinkedIn", "Instagram"];
+  }
+
+  if (key === "formats") {
+    if (/\b(b2b|enterprise|saas|software|professional)\b/.test(text)) return ["Founder post", "Case study", "Carousel"];
+    return ["Short video", "Carousel", "Text post"];
+  }
+
+  if (key === "tone_avoid") return "Avoid unsupported claims, invented proof, aggressive promises, and anything that implies guaranteed outcomes.";
+  if (key === "asset_rights") return "Not sure — do not rely on unverified assets until rights are confirmed.";
   return "";
 }
 

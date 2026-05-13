@@ -20,10 +20,10 @@
 // ═══════════════════════════════════════════════════════════
 
 import { createClient } from "@supabase/supabase-js";
+import { assertGatewayBudget } from "@/lib/ai/gatewayBudget";
+import { prepareGatewayPromptCall } from "@/lib/ai/gateway";
 import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
-import { assertProviderAllowedForData } from "@/lib/privacy/providerPrivacyProfiles";
 import { DEFAULT_DATA_CLASS, DEFAULT_PRIVACY_MODE, normalizeDataClass, normalizePrivacyMode } from "@/lib/privacy/privacyTypes";
-import { buildProviderSafePayload } from "@/lib/privacy/promptMinimization";
 import { summarizeError } from "@/lib/privacy/safeLogging";
 
 const SUPABASE_URL              = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -66,6 +66,82 @@ function providerStatusError(provider, status) {
   return `${provider} ${status}: provider returned an error. Raw provider body was not stored.`;
 }
 
+async function logProviderCall({
+  action,
+  providerName,
+  modelVersion = null,
+  brandProfileId,
+  workspaceId,
+  userEmail,
+  success = true,
+  durationMs = null,
+  costEstimate = 0,
+  error = null,
+  gateway,
+}) {
+  try {
+    const safeError = error ? summarizeError(error) : {};
+    await serviceClient().from("ai_calls").insert({
+      type: action,
+      provider_name: providerName,
+      model_version: modelVersion,
+      tokens_input: null,
+      tokens_output: null,
+      cost_estimate: costEstimate,
+      brand_profile_id: brandProfileId,
+      workspace_id: workspaceId || null,
+      user_email: userEmail || null,
+      success,
+      duration_ms: durationMs,
+      error_type: safeError.error_type || null,
+      error_message: safeError.error_message || null,
+      cost_center: gateway?.costFields?.cost_center || null,
+      cost_category: gateway?.costFields?.cost_category || null,
+      operation_type: action,
+      data_class: gateway?.dataClass || null,
+      privacy_mode: gateway?.privacyMode || null,
+      provider_privacy_profile: gateway?.providerPrivacyProfile || null,
+      payload_hash: gateway?.payloadHash || null,
+      metadata_json: {
+        ...(gateway?.metadata || {}),
+        provider_action: action,
+        raw_payload_logged: false,
+      },
+    });
+  } catch {}
+}
+
+async function prepareProviderGateway({
+  action,
+  providerName,
+  prompt,
+  brandProfileId,
+  workspaceId,
+  user,
+  dataClass,
+  privacyMode,
+  costCenter,
+  costCategory,
+  model = null,
+}) {
+  return prepareGatewayPromptCall({
+    type: action,
+    prompt,
+    providerKey: providerName,
+    model,
+    dataClass,
+    privacyMode,
+    context: {
+      workspace_id: workspaceId,
+      brand_profile_id: brandProfileId,
+      user_id: user?.id || null,
+      cost_center: costCenter,
+      cost_category: costCategory,
+      operation_type: action,
+    },
+  });
+}
+
 // ═══════════════════════════════════════════════════════════
 // Main handler
 // ═══════════════════════════════════════════════════════════
@@ -93,13 +169,18 @@ export async function POST(request) {
       privacyMode: normalizePrivacyMode(privacy_mode),
       workspaceId,
     };
-    if (action === "voice.generate")    return await voiceGenerate(brand_profile_id, params, privacy);
-    if (action === "visual.generate")   return await visualGenerate(brand_profile_id, params, privacy);
-    if (action === "licensed.search")   return await licensedSearch(brand_profile_id, params, privacy);
+    const baseContext = { user, workspaceId };
+    if (action === "voice.generate")    return await voiceGenerate(brand_profile_id, params, privacy, baseContext);
+    if (action === "visual.generate")   return await visualGenerate(brand_profile_id, params, privacy, baseContext);
+    if (action === "licensed.search")   return await licensedSearch(brand_profile_id, params, privacy, baseContext);
     return err(`Unknown action: ${action}`);
   } catch (e) {
     const safe = summarizeError(e);
-    const status = e.code === "PROVIDER_PRIVACY_BLOCKED" ? 403 : 500;
+    const status = e.code === "PROVIDER_PRIVACY_BLOCKED"
+      ? 403
+      : e.code === "AI_GATEWAY_BUDGET_BLOCKED"
+      ? 429
+      : 500;
     return err(safe.error_message, status);
   }
 }
@@ -111,31 +192,56 @@ export async function POST(request) {
 // params: { text, voice_id, language?, model_id? }
 // returns: { audio_base64, mime, duration_ms?, cost_estimate, provider_name }
 
-async function voiceGenerate(brand_profile_id, params, privacy) {
+async function voiceGenerate(brand_profile_id, params, privacy, context) {
   const { text, voice_id, language = "en", model_id } = params;
   if (!text)     return err("Missing text");
   if (!voice_id) return err("Missing voice_id");
 
   const row = await loadProviderRow(brand_profile_id, "voice");
-  const profile = assertProviderAllowedForData({ providerKey: row.provider_name, dataClass: privacy.dataClass, privacyMode: privacy.privacyMode, operationType: "voice.generate" });
-  const safePayload = buildProviderSafePayload({
-    messages: [{ role: "user", content: text }],
+  const cfg   = row.config || {};
+  const model = model_id || cfg.model_id || "eleven_multilingual_v2";
+  const gateway = await prepareProviderGateway({
+    action: "voice.generate",
+    providerName: row.provider_name,
+    prompt: text,
+    brandProfileId: brand_profile_id,
+    workspaceId: privacy.workspaceId,
+    user: context.user,
     dataClass: privacy.dataClass,
     privacyMode: privacy.privacyMode,
+    costCenter: "production",
+    costCategory: "voice_generation",
+    model,
+  });
+  await assertGatewayBudget({
+    svc: serviceClient(),
+    workspaceId: privacy.workspaceId,
     operationType: "voice.generate",
   });
-  const safeText = safePayload.sanitizedMessages[0]?.content || text;
+  const safeText = gateway.prompt || text;
   const t0 = Date.now();
 
   if (row.provider_name === "stub") {
     // Generate 1 second of silence as placeholder MP3
     const silence = "//uQRAAAAAAAAAAAAAAAAAAAAAAA"; // tiny base64 placeholder
+    await logProviderCall({
+      action: "voice.generate",
+      providerName: "stub",
+      modelVersion: model,
+      brandProfileId: brand_profile_id,
+      workspaceId: privacy.workspaceId,
+      userEmail: context.user?.email,
+      durationMs: 0,
+      costEstimate: 0,
+      gateway,
+    });
     return ok({
       audio_base64: silence,
       mime: "audio/mp3",
       duration_ms: 1000,
       cost_estimate: 0,
       provider_name: "stub",
+      gateway: gateway.metadata,
       latency_ms: 0,
     });
   }
@@ -143,9 +249,6 @@ async function voiceGenerate(brand_profile_id, params, privacy) {
   if (row.provider_name === "elevenlabs") {
     const apiKey = row.secrets?.api_key;
     if (!apiKey) return err("ElevenLabs api_key not set");
-
-    const cfg   = row.config || {};
-    const model = model_id || cfg.model_id || "eleven_multilingual_v2";
 
     const elevenRes = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`,
@@ -170,7 +273,20 @@ async function voiceGenerate(brand_profile_id, params, privacy) {
     );
 
     if (!elevenRes.ok) {
-      return err(providerStatusError("ElevenLabs", elevenRes.status), 502);
+      const message = providerStatusError("ElevenLabs", elevenRes.status);
+      await logProviderCall({
+        action: "voice.generate",
+        providerName: "elevenlabs",
+        modelVersion: model,
+        brandProfileId: brand_profile_id,
+        workspaceId: privacy.workspaceId,
+        userEmail: context.user?.email,
+        success: false,
+        durationMs: Date.now() - t0,
+        error: new Error(message),
+        gateway,
+      });
+      return err(message, 502);
     }
 
     const buf = await elevenRes.arrayBuffer();
@@ -180,12 +296,25 @@ async function voiceGenerate(brand_profile_id, params, privacy) {
     // Creator plan = $22 / 100k chars => $0.00022/char
     const cost_estimate = safeText.length * 0.00022;
 
+    await logProviderCall({
+      action: "voice.generate",
+      providerName: "elevenlabs",
+      modelVersion: model,
+      brandProfileId: brand_profile_id,
+      workspaceId: privacy.workspaceId,
+      userEmail: context.user?.email,
+      durationMs: Date.now() - t0,
+      costEstimate: cost_estimate,
+      gateway,
+    });
+
     return ok({
       audio_base64: audioBase64,
       mime: "audio/mp3",
       cost_estimate,
       provider_name: "elevenlabs",
-      provider_privacy_profile: profile.provider_key,
+      provider_privacy_profile: gateway.providerPrivacyProfile,
+      gateway: gateway.metadata,
       latency_ms: Date.now() - t0,
     });
   }
@@ -200,22 +329,47 @@ async function voiceGenerate(brand_profile_id, params, privacy) {
 // params: { prompt, aspect?, count? }
 // returns: { images: [{ url, cost_estimate, prompt }], provider_name }
 
-async function visualGenerate(brand_profile_id, params, privacy) {
+async function visualGenerate(brand_profile_id, params, privacy, context) {
   const { prompt, aspect = "9:16", count = 1 } = params;
   if (!prompt) return err("Missing prompt");
 
   const row = await loadProviderRow(brand_profile_id, "visual_atmospheric");
-  const profile = assertProviderAllowedForData({ providerKey: row.provider_name, dataClass: privacy.dataClass, privacyMode: privacy.privacyMode, operationType: "visual.generate" });
-  const safePayload = buildProviderSafePayload({
-    messages: [{ role: "user", content: prompt }],
+  const cfg = row.config || {};
+  const modelId = cfg.model_id || "black-forest-labs/flux-1.1-pro";
+  const gateway = await prepareProviderGateway({
+    action: "visual.generate",
+    providerName: row.provider_name,
+    prompt,
+    brandProfileId: brand_profile_id,
+    workspaceId: privacy.workspaceId,
+    user: context.user,
     dataClass: privacy.dataClass,
     privacyMode: privacy.privacyMode,
-    operationType: "visual.generate",
+    costCenter: "production",
+    costCategory: "visual_generation",
+    model: modelId,
   });
-  const safePrompt = safePayload.sanitizedMessages[0]?.content || prompt;
+  await assertGatewayBudget({
+    svc: serviceClient(),
+    workspaceId: privacy.workspaceId,
+    operationType: "visual.generate",
+    estimatedCost: Math.max(1, Number(count) || 1) * 0.04,
+  });
+  const safePrompt = gateway.prompt || prompt;
   const t0 = Date.now();
 
   if (row.provider_name === "stub") {
+    await logProviderCall({
+      action: "visual.generate",
+      providerName: "stub",
+      modelVersion: modelId,
+      brandProfileId: brand_profile_id,
+      workspaceId: privacy.workspaceId,
+      userEmail: context.user?.email,
+      durationMs: 0,
+      costEstimate: 0,
+      gateway,
+    });
     return ok({
       images: Array.from({ length: count }, (_, i) => ({
         url: `https://placehold.co/720x1280/333/fff?text=stub+${i + 1}`,
@@ -223,6 +377,7 @@ async function visualGenerate(brand_profile_id, params, privacy) {
         prompt: safePrompt,
       })),
       provider_name: "stub",
+      gateway: gateway.metadata,
       latency_ms: 0,
     });
   }
@@ -230,9 +385,6 @@ async function visualGenerate(brand_profile_id, params, privacy) {
   if (row.provider_name === "flux") {
     const apiToken = row.secrets?.api_token;
     if (!apiToken) return err("Replicate api_token not set");
-
-    const cfg = row.config || {};
-    const modelId = cfg.model_id || "black-forest-labs/flux-1.1-pro";
 
     // Replicate's predictions API. Fire `count` predictions in parallel.
     const aspectMap = { "9:16": "9:16", "16:9": "16:9", "1:1": "1:1" };
@@ -258,7 +410,8 @@ async function visualGenerate(brand_profile_id, params, privacy) {
           }),
         }).then(async r => {
           if (!r.ok) {
-            throw new Error(providerStatusError("Replicate", r.status));
+            const message = providerStatusError("Replicate", r.status);
+            throw new Error(message);
           }
           return r.json();
         })
@@ -272,10 +425,24 @@ async function visualGenerate(brand_profile_id, params, privacy) {
       replicate_id: p.id,
     })).filter(i => i.url);
 
+    const costEstimate = images.reduce((sum, image) => sum + (image.cost_estimate || 0), 0);
+    await logProviderCall({
+      action: "visual.generate",
+      providerName: "flux",
+      modelVersion: modelId,
+      brandProfileId: brand_profile_id,
+      workspaceId: privacy.workspaceId,
+      userEmail: context.user?.email,
+      durationMs: Date.now() - t0,
+      costEstimate,
+      gateway,
+    });
+
     return ok({
       images,
       provider_name: "flux",
-      provider_privacy_profile: profile.provider_key,
+      provider_privacy_profile: gateway.providerPrivacyProfile,
+      gateway: gateway.metadata,
       latency_ms: Date.now() - t0,
     });
   }
@@ -294,22 +461,42 @@ async function visualGenerate(brand_profile_id, params, privacy) {
 // params: { query, count?, orientation? }
 // returns: { images: [{ url, photographer, source_url, cost_estimate }], provider_name }
 
-async function licensedSearch(brand_profile_id, params, privacy) {
+async function licensedSearch(brand_profile_id, params, privacy, context) {
   const { query, count = 6, orientation = "portrait" } = params;
   if (!query) return err("Missing query");
 
   const row = await loadProviderRow(brand_profile_id, "visual_licensed");
-  const profile = assertProviderAllowedForData({ providerKey: row.provider_name, dataClass: privacy.dataClass, privacyMode: privacy.privacyMode, operationType: "licensed.search" });
-  const safePayload = buildProviderSafePayload({
-    messages: [{ role: "user", content: query }],
+  const gateway = await prepareProviderGateway({
+    action: "licensed.search",
+    providerName: row.provider_name,
+    prompt: query,
+    brandProfileId: brand_profile_id,
+    workspaceId: privacy.workspaceId,
+    user: context.user,
     dataClass: privacy.dataClass,
     privacyMode: privacy.privacyMode,
+    costCenter: "production",
+    costCategory: "licensed_media_search",
+  });
+  await assertGatewayBudget({
+    svc: serviceClient(),
+    workspaceId: privacy.workspaceId,
     operationType: "licensed.search",
   });
-  const safeQuery = safePayload.sanitizedMessages[0]?.content || query;
+  const safeQuery = gateway.prompt || query;
   const t0 = Date.now();
 
   if (row.provider_name === "stub") {
+    await logProviderCall({
+      action: "licensed.search",
+      providerName: "stub",
+      brandProfileId: brand_profile_id,
+      workspaceId: privacy.workspaceId,
+      userEmail: context.user?.email,
+      durationMs: 0,
+      costEstimate: 0,
+      gateway,
+    });
     return ok({
       images: Array.from({ length: count }, (_, i) => ({
         url:           `https://placehold.co/720x1280/444/fff?text=stub+licensed+${i + 1}`,
@@ -318,6 +505,7 @@ async function licensedSearch(brand_profile_id, params, privacy) {
         cost_estimate: 0,
       })),
       provider_name: "stub",
+      gateway: gateway.metadata,
       latency_ms: 0,
     });
   }
@@ -336,7 +524,19 @@ async function licensedSearch(brand_profile_id, params, privacy) {
       headers: { Authorization: apiKey },
     });
     if (!res.ok) {
-      return err(providerStatusError("Pexels", res.status), 502);
+      const message = providerStatusError("Pexels", res.status);
+      await logProviderCall({
+        action: "licensed.search",
+        providerName: "pexels",
+        brandProfileId: brand_profile_id,
+        workspaceId: privacy.workspaceId,
+        userEmail: context.user?.email,
+        success: false,
+        durationMs: Date.now() - t0,
+        error: new Error(message),
+        gateway,
+      });
+      return err(message, 502);
     }
     const data = await res.json();
     const images = (data.photos || []).map(p => ({
@@ -349,10 +549,22 @@ async function licensedSearch(brand_profile_id, params, privacy) {
       height:        p.height,
     })).filter(i => i.url);
 
+    await logProviderCall({
+      action: "licensed.search",
+      providerName: "pexels",
+      brandProfileId: brand_profile_id,
+      workspaceId: privacy.workspaceId,
+      userEmail: context.user?.email,
+      durationMs: Date.now() - t0,
+      costEstimate: 0,
+      gateway,
+    });
+
     return ok({
       images,
       provider_name: "pexels",
-      provider_privacy_profile: profile.provider_key,
+      provider_privacy_profile: gateway.providerPrivacyProfile,
+      gateway: gateway.metadata,
       latency_ms: Date.now() - t0,
     });
   }

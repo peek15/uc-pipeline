@@ -57,9 +57,13 @@ scheduling, provider operations, quality gates, and analytics.
 - New table: `onboarding_agent_memory` stores user turns, assistant turns, tool calls, sources, and agent-state snapshots. Do not store raw provider secrets, base64 media, or unnecessary full raw documents there.
 - Tool cards should show high-level work artifacts: source URL, extracted fields, confidence, missing fields, limitations. They must not expose chain-of-thought.
 - The agent should dynamically choose the next action: ask for source, ask clarification, review understanding, or draft setup pass. Avoid hardcoded form gates.
-- Web lookup is limited official-source assistance only. Do not describe it as competitor research, market intelligence, social scanning, or exhaustive crawling.
+- Source intelligence is limited official-source assistance only. It may read the homepage plus a few same-domain About/Product/Services-style pages and extract evidence snippets/confidence. Do not describe it as competitor research, market intelligence, social scanning, legal review, or exhaustive crawling.
+- Source evidence should be treated as inferred support, not ground truth. If confidence is low or pages cannot be read, ask for confirmation.
 - PDF/images remain stored/pending unless real parsing is implemented. Never claim they were analyzed when they were not.
 - User approval remains mandatory before saving Brand Profile, Content Strategy, Programmes, Risk/Claims Guidance, or first ideas.
+- Fact confirmation uses `/api/onboarding/fact` and `onboarding_extracted_facts.status`. Confirmed/edited facts should override inference; rejected/unsure facts should not be repeated as reliable assumptions.
+- Apply `supabase-sprint10-onboarding-fact-confirmation.sql` before relying on persisted fact review in production.
+- Draft refinement uses `/api/onboarding/refine-draft`. It may revise draft JSON and supersede previous draft rows, but must never write final settings without explicit approval.
 
 ## Stack
 - Next.js 14 App Router
@@ -267,6 +271,24 @@ scheduling, provider operations, quality gates, and analytics.
 - Gather onboarding inputs through chat-like turns, source chips, attachment actions, and dynamic cards; avoid showing all website/manual/platform inputs at once.
 - Use WorkTrace only for high-level task progress while the system is actually working. Do not expose chain-of-thought, fake source analysis, or timestamp-heavy logs.
 - PDF and image uploads may be stored, but must be marked pending if they are not actually parsed.
+- Text, markdown, and manual-answer onboarding sources can carry lightweight source intelligence summaries/evidence snippets; PDF/image OCR remains unavailable unless explicitly implemented.
+- Onboarding should persist and restore functional session state through the existing onboarding memory/state APIs where available. Recovery snapshots are practical state restore, not chain-of-thought replay.
+- Onboarding agent turns should use the planner core in `src/lib/onboardingPlanner.js`: respect planner stage, field confidence, source coverage, missing required fields, and next action.
+- Source-to-fact traceability matters. When facts are inferred from sources, preserve evidence snippets/field metadata where available and show uncertainty rather than presenting guesses as confirmed facts.
+- Text/markdown and readable text-based PDFs may be parsed for onboarding. Scanned PDFs and images require real OCR before analysis can be claimed.
+- Agent evaluation scenarios live in `ONBOARDING_AGENT_EVAL_SCENARIOS.md`; update them when changing onboarding behavior.
+- Run `npm run eval:onboarding` after changing onboarding agent behavior. It is a static contract check, not a substitute for runtime LLM QA.
+- “I'm not sure — suggest for me” must use conservative context-aware defaults and must not turn asset-rights uncertainty into approval.
+- Drafts should carry source citations and explicit assumptions when evidence is available or confidence is low.
+- Source research should go through `src/lib/onboardingResearchJobs.js` when possible so retries, partial results, and persisted job state stay consistent.
+- Apply `supabase-sprint10-onboarding-research-jobs.sql` before relying on persisted onboarding research job history in production.
+- `/api/onboarding/ocr` is OCR-ready but does not provide full image/scanned-PDF OCR. It may reuse readable text/PDF extraction and must return `requires_ocr` rather than fake analysis when OCR is unavailable.
+- Onboarding drafts should pass through `src/lib/onboardingStrategyCritic.js` before user approval so generic drafts, missing offer/audience, weak programmes, unsupported claims, and missing citations are surfaced.
+- On approval, durable brand memory and refresh diff should be written through `src/lib/onboardingBrandMemory.js`.
+- Respect V1 guardrails in `src/lib/onboardingGuardrails.js`; these are safety/cost controls, not billing features.
+- Research jobs may be run inline, enqueued, or processed through `/api/onboarding/research-job`. A real scheduler/worker must call `action: "process"`; do not imply background processing is automatic until that exists.
+- OCR provider status lives in `src/lib/onboardingOcrProvider.js`; provider is currently `none`, so scanned PDFs/images must remain `requires_ocr`.
+- `npm run eval:onboarding` supports optional live API evals through `ONBOARDING_EVAL_*` env vars.
 - Approval is still required before saving final Brand Profile, Content Strategy, Programmes, or Risk/Claims Guidance.
 - Create should foreground campaign/programme context, content item title, current stage, next action, and real readiness first.
 - UC/emotional archetype metadata must not dominate generic Creative Engine UI; move internal metadata to Details, Advanced metadata, Review work, Detailed display mode, or profile-specific UI.
@@ -318,6 +340,49 @@ scheduling, provider operations, quality gates, and analytics.
 - Uses a left production queue plus selected-story agent workspace.
 - Queue filters include all, needs brief, needs assets, needs voice, needs assembly, and ready review.
 - Selected stories show a readiness strip for brief, assets, voice, visuals, and assembly.
+
+## Universal AI Gateway
+- Runner-based AI calls must go through `src/lib/ai/gateway.js` via `runPrompt` or `runPromptStream`.
+- New AI work should pass `workspace_id`, `brand_profile_id`, `task_type`, `cost_center`, and `cost_category` where available.
+- The gateway records task type, cost fields, model-routing recommendation metadata, data class, privacy mode, provider privacy profile, and payload hash.
+- Raw prompts and raw provider responses must not be written to unsafe logs.
+- Workspace-scoped calls should use Sprint 7 privacy checks before provider execution.
+- Gateway preparation supports prompt calls and message/system calls.
+- `/api/claude` and `/api/agent` now use gateway preparation before provider execution.
+- Concrete provider execution remains on the existing Anthropic/OpenAI route implementations; do not add new providers or claim verified ZDR/no-retention routing.
+- `/api/provider-call` also uses gateway preparation for voice, visual, and licensed media provider payloads.
+- Provider cost/audit rows must include gateway metadata and must not include raw prompts, raw content, raw provider responses, secrets, or base64 media.
+- Optional environment budget caps are handled by `src/lib/ai/gatewayBudget.js`.
+- Supported cap env vars are `AI_GATEWAY_DAILY_COST_LIMIT_USD` and `AI_GATEWAY_DAILY_CALL_LIMIT`.
+- Budget checks are fail-open when caps are unset or unavailable; do not hardcode commercial limits or build pricing/credits here.
+
+## Intelligence Evaluation
+- Static and optional live intelligence evals live in `scripts/`.
+- Runtime scenario catalog: `evals/intelligence-runtime-scenarios.json`.
+- Run `npm run eval:intelligence` after intelligence-layer changes.
+- Live runtime evals require `INTELLIGENCE_EVAL_BASE_URL`, `INTELLIGENCE_EVAL_TOKEN`, `INTELLIGENCE_EVAL_WORKSPACE_ID`, and `INTELLIGENCE_EVAL_SESSION_ID`.
+- Add golden scenarios when changing onboarding, gateway policy, agent behavior, privacy blocking, or provider routing.
+- Evals should check behavior and safety signals, not raw chain-of-thought or raw provider payloads.
+
+## Intelligence Jobs
+- Generic intelligence job helpers live in `src/lib/intelligenceJobs.js`.
+- Generic job route: `/api/intelligence-jobs`.
+- SQL migration: `supabase-sprint11-intelligence-jobs.sql`.
+- Use `intelligence_jobs` for slow/retryable intelligence work that should not remain purely synchronous.
+- Jobs must be workspace-scoped and must require workspace membership for user-facing APIs.
+- Active processors include `onboarding_research` and `ocr_extraction`.
+- OCR jobs update `onboarding_sources.metadata_json` with status, provider, gateway, and limitation metadata.
+- Do not persist raw base64 media in job input; durable async image OCR needs a file storage reference.
+- Do not assume background processing exists until a worker/cron/queue provider is wired.
+
+## Onboarding OCR
+- OCR provider abstraction lives in `src/lib/onboardingOcrProvider.js`.
+- Image OCR can run with `OPENAI_API_KEY`; optional model override is `ONBOARDING_OCR_OPENAI_MODEL`.
+- OCR calls must use gateway/privacy preparation and must not store raw base64 images.
+- If no OCR provider is configured, images and scanned PDFs must remain honestly marked `requires_ocr`.
+- Readable-text PDFs can use the lightweight parser; scanned PDF rendering is not implemented yet.
+- OCR output is assistive evidence only; users still review and approve final strategy.
+- Queued OCR jobs provide lifecycle tracking for pending PDF/image sources, but scanned PDF rendering and durable async image OCR still need a storage/rendering layer.
 
 ## Supabase
 - Canonical schema file: `supabase-schema.sql`

@@ -1,0 +1,127 @@
+{
+  "version": "2026-05-13.1",
+  "description": "Golden runtime scenarios for Creative Engine intelligence surfaces. Live scenarios run only when INTELLIGENCE_EVAL_* environment variables are provided.",
+  "required_env": {
+    "base_url": "INTELLIGENCE_EVAL_BASE_URL",
+    "token": "INTELLIGENCE_EVAL_TOKEN",
+    "workspace_id": "INTELLIGENCE_EVAL_WORKSPACE_ID",
+    "brand_profile_id": "INTELLIGENCE_EVAL_BRAND_PROFILE_ID",
+    "session_id": "INTELLIGENCE_EVAL_SESSION_ID"
+  },
+  "scenarios": [
+    {
+      "id": "onboarding_company_name_only",
+      "suite": "onboarding",
+      "method": "POST",
+      "path": "/api/onboarding/agent-step",
+      "body": {
+        "workspace_id": "$workspace_id",
+        "brand_profile_id": "$brand_profile_id",
+        "session_id": "$session_id",
+        "intake": { "websiteUrl": "", "notes": "", "manual": {}, "files": [] },
+        "messages": [],
+        "user_message": "I own company Acme Analytics."
+      },
+      "expect": {
+        "status": 200,
+        "json_required_paths": ["assistant_message", "agent_plan", "next_action", "suggested_replies", "sources_used"],
+        "json_contains_any": {
+          "assistant_message": ["Acme", "website", "official", "look"]
+        },
+        "json_reject_any": {
+          "assistant_message": ["not precise enough", "insufficient information", "cannot help"]
+        }
+      }
+    },
+    {
+      "id": "onboarding_weak_input_guides_user",
+      "suite": "onboarding",
+      "method": "POST",
+      "path": "/api/onboarding/agent-step",
+      "body": {
+        "workspace_id": "$workspace_id",
+        "brand_profile_id": "$brand_profile_id",
+        "session_id": "$session_id",
+        "intake": { "websiteUrl": "", "notes": "", "manual": {}, "files": [] },
+        "messages": [],
+        "user_message": "test"
+      },
+      "expect": {
+        "status": 200,
+        "json_required_paths": ["assistant_message", "next_action", "agent_plan.stage", "suggested_replies"],
+        "json_contains_any": {
+          "assistant_message": ["website", "business", "brand", "describe", "source"]
+        },
+        "json_reject_any": {
+          "assistant_message": ["draft strategy", "approved", "saved"]
+        }
+      }
+    },
+    {
+      "id": "onboarding_explicit_website_tracks_source",
+      "suite": "onboarding",
+      "method": "POST",
+      "path": "/api/onboarding/agent-step",
+      "body": {
+        "workspace_id": "$workspace_id",
+        "brand_profile_id": "$brand_profile_id",
+        "session_id": "$session_id",
+        "intake": { "websiteUrl": "https://example.com", "notes": "", "manual": {}, "files": [] },
+        "messages": [],
+        "user_message": "Use this website as the source."
+      },
+      "expect": {
+        "status": 200,
+        "json_required_paths": ["assistant_message", "sources_used", "agent_plan.source_coverage", "tool_calls"],
+        "json_contains_any": {
+          "assistant_message": ["website", "source", "understand", "confirm"]
+        },
+        "json_reject_any": {
+          "assistant_message": ["analyzed the full site", "guaranteed", "approved"]
+        }
+      }
+    },
+    {
+      "id": "agent_gateway_streams_without_raw_payload",
+      "suite": "gateway",
+      "method": "POST",
+      "path": "/api/agent",
+      "stream": true,
+      "body": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "workspace_id": "$workspace_id",
+        "brand_profile_id": "$brand_profile_id",
+        "task_type": "general_help",
+        "system": "You are Creative Engine. Answer in one short sentence.",
+        "messages": [{ "role": "user", "content": "Say hello and mention Creative Engine." }],
+        "maxTokens": 120
+      },
+      "expect": {
+        "status": 200,
+        "text_contains_any": ["Creative Engine", "hello"],
+        "text_reject_any": ["raw_prompt", "api_key", "Bearer"]
+      }
+    },
+    {
+      "id": "claude_gateway_blocks_d4_secret",
+      "suite": "gateway",
+      "method": "POST",
+      "path": "/api/claude",
+      "body": {
+        "workspace_id": "$workspace_id",
+        "brand_profile_id": "$brand_profile_id",
+        "task_type": "general_help",
+        "prompt": "This is a deliberately blocked secret-class payload eval.",
+        "data_class": "d4_secret",
+        "maxTokens": 50
+      },
+      "expect": {
+        "status": 403,
+        "json_contains_any": {
+          "error": ["D4_SECRET", "cannot be sent", "secret"]
+        }
+      }
+    }
+  ]
+}

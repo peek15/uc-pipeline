@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import { assertGatewayBudget } from "@/lib/ai/gatewayBudget";
 import { estimateCost } from "@/lib/ai/costs";
 import { getAuthenticatedUser } from "@/lib/apiAuth";
-import { getCostFieldsForTask } from "@/lib/agent/taskTypes";
-import { preparePrivacyCheckedAI } from "@/lib/privacy/aiPrivacyGateway";
+import { prepareGatewayMessageCall } from "@/lib/ai/gateway";
 import { DEFAULT_DATA_CLASS, DEFAULT_PRIVACY_MODE } from "@/lib/privacy/privacyTypes";
 import { summarizeError } from "@/lib/privacy/safeLogging";
 
@@ -210,7 +210,7 @@ function transformMessagesForOpenAI(messages, system) {
   return out;
 }
 
-async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, workspaceId, userEmail, taskType, costCenter, costCategory, dataClass, privacyMode, providerPrivacyProfile, payloadHash }) {
+async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, workspaceId, userEmail, taskType, costCenter, costCategory, dataClass, privacyMode, providerPrivacyProfile, payloadHash, gatewayMetadata }) {
   if (!key) throw new Error("Anthropic API key not configured");
 
   const { readable, writable } = new TransformStream();
@@ -334,7 +334,7 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
           privacy_mode:      privacyMode || null,
           provider_privacy_profile: providerPrivacyProfile || null,
           payload_hash:      payloadHash || null,
-          metadata_json:     { raw_payload_logged: false },
+          metadata_json:     { ...(gatewayMetadata || {}), raw_payload_logged: false },
           success:          succeeded,
           duration_ms,
         });
@@ -345,7 +345,7 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
 }
 
-async function callOpenAI({ model, system, messages, maxTokens, key, profileId, workspaceId, userEmail, taskType, costCenter, costCategory, dataClass, privacyMode, providerPrivacyProfile, payloadHash }) {
+async function callOpenAI({ model, system, messages, maxTokens, key, profileId, workspaceId, userEmail, taskType, costCenter, costCategory, dataClass, privacyMode, providerPrivacyProfile, payloadHash, gatewayMetadata }) {
   if (!key) throw new Error("OpenAI API key not configured");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -423,7 +423,7 @@ async function callOpenAI({ model, system, messages, maxTokens, key, profileId, 
           privacy_mode:      privacyMode || null,
           provider_privacy_profile: providerPrivacyProfile || null,
           payload_hash:      payloadHash || null,
-          metadata_json:     { raw_payload_logged: false },
+          metadata_json:     { ...(gatewayMetadata || {}), raw_payload_logged: false },
           success:          succeeded,
           duration_ms,
         });
@@ -472,47 +472,62 @@ export async function POST(request) {
   const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700, brand_profile_id, workspace_id, task_type, source_view, source_entity_type, source_entity_id, data_class = DEFAULT_DATA_CLASS, privacy_mode = DEFAULT_PRIVACY_MODE } = await request.json();
   const profileId   = brand_profile_id || null;
   const workspaceId = workspace_id || null;
-  const { cost_center: costCenter, cost_category: costCategory } = getCostFieldsForTask(task_type || "general_help");
 
   try {
-    const prepared = preparePrivacyCheckedAI({
-      workspaceId,
-      brandProfileId: profileId,
-      userId: user.id,
-      operationType: task_type || "agent-call",
+    const gateway = await prepareGatewayMessageCall({
+      type: "agent-call",
       providerKey: provider,
       model,
       messages,
       system,
+      maxTokens,
       dataClass: data_class,
       privacyMode: privacy_mode,
-      costCenter,
-      costCategory,
-      metadata: { source_view, source_entity_type, source_entity_id },
+      stream: true,
+      context: {
+        workspace_id: workspaceId,
+        brand_profile_id: profileId,
+        user_id: user.id,
+        task_type: task_type || "general_help",
+        operation_type: task_type || "agent-call",
+        source_view,
+        source_entity_type,
+        source_entity_id,
+      },
+    });
+    await assertGatewayBudget({
+      svc: serviceClient(),
+      workspaceId,
+      operationType: gateway.taskType || task_type || "agent-call",
     });
     const key = await loadLLMKey(provider, profileId);
     const common = {
-      model,
-      system: prepared.system,
-      messages: prepared.messages,
-      maxTokens,
+      model: gateway.model,
+      system: gateway.system,
+      messages: gateway.messages,
+      maxTokens: gateway.maxTokens,
       key,
       profileId,
       workspaceId,
       userEmail: user.email,
-      taskType: task_type,
-      costCenter,
-      costCategory,
-      dataClass: prepared.dataClass,
-      privacyMode: prepared.privacyMode,
-      providerPrivacyProfile: prepared.providerProfile.provider_key,
-      payloadHash: prepared.payloadHash,
+      taskType: gateway.taskType,
+      costCenter: gateway.costFields.cost_center,
+      costCategory: gateway.costFields.cost_category,
+      dataClass: gateway.dataClass,
+      privacyMode: gateway.privacyMode,
+      providerPrivacyProfile: gateway.providerPrivacyProfile,
+      payloadHash: gateway.payloadHash,
+      gatewayMetadata: gateway.metadata,
     };
     if (provider === "openai") return await callOpenAI(common);
     return await callAnthropic({ ...common, tools: [WRITE_INSIGHT_SCHEMA, DB_READ_SCHEMA, AUDIT_READ_SCHEMA] });
   } catch (err) {
     const safe = summarizeError(err);
-    const status = err.code === "PROVIDER_PRIVACY_BLOCKED" || err.code === "D4_SECRET_BLOCKED" ? 403 : 500;
+    const status = err.code === "PROVIDER_PRIVACY_BLOCKED" || err.code === "D4_SECRET_BLOCKED"
+      ? 403
+      : err.code === "AI_GATEWAY_BUDGET_BLOCKED"
+      ? 429
+      : 500;
     return Response.json({ error: safe.error_message, error_type: safe.error_type }, { status });
   }
 }

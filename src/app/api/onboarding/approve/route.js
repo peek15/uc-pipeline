@@ -1,4 +1,5 @@
 import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
+import { attachBrandMemoryToSettings } from "@/lib/onboardingBrandMemory";
 import { mergeDraftIntoSettings } from "@/lib/onboarding";
 
 function ok(payload) { return Response.json(payload); }
@@ -27,7 +28,16 @@ export async function POST(request) {
   if (!profile) return err("Brand profile not found", 404);
 
   const current = parseSettings(profile.settings || profile.brief_doc);
-  const next = mergeDraftIntoSettings(current, draft);
+  const approvedAt = new Date().toISOString();
+  const merged = mergeDraftIntoSettings(current, draft);
+  const next = attachBrandMemoryToSettings({
+    previousSettings: current,
+    nextSettings: merged,
+    draft,
+    sessionId,
+    approvedBy: user.id,
+    approvedAt,
+  });
   const name = next.brand?.name || profile.name || "Brand";
 
   const { data: saved, error: saveErr } = await svc
@@ -44,7 +54,7 @@ export async function POST(request) {
     .single();
   if (saveErr) return err(saveErr.message, 500);
 
-  const now = new Date().toISOString();
+  const now = approvedAt;
   await svc
     .from("onboarding_sessions")
     .update({ status: "approved", approved_at: now, updated_at: now })

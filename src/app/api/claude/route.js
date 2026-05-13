@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+import { assertGatewayBudget } from "@/lib/ai/gatewayBudget";
 import { getAuthenticatedUser, requireWorkspaceMember } from "@/lib/apiAuth";
-import { preparePrivacyCheckedAI } from "@/lib/privacy/aiPrivacyGateway";
+import { prepareGatewayPromptCall } from "@/lib/ai/gateway";
 import { DEFAULT_DATA_CLASS, DEFAULT_PRIVACY_MODE } from "@/lib/privacy/privacyTypes";
 import { summarizeError } from "@/lib/privacy/safeLogging";
 
@@ -46,7 +47,20 @@ export async function POST(request) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return Response.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
 
-  const { prompt, maxTokens = 1000, stream = false, model = "sonnet", workspace_id, brand_profile_id, data_class = DEFAULT_DATA_CLASS, privacy_mode = DEFAULT_PRIVACY_MODE, operation_type = "claude" } = await request.json();
+  const {
+    prompt,
+    maxTokens = 1000,
+    stream = false,
+    model = "sonnet",
+    workspace_id,
+    brand_profile_id,
+    task_type = "legacy_claude",
+    cost_center = "legacy_claude",
+    cost_category = "generation",
+    data_class = DEFAULT_DATA_CLASS,
+    privacy_mode = DEFAULT_PRIVACY_MODE,
+    operation_type = "claude",
+  } = await request.json();
 
   const workspaceId = workspace_id || process.env.NEXT_PUBLIC_DEFAULT_WORKSPACE_ID || "00000000-0000-0000-0000-000000000001";
   const svc = serviceClient();
@@ -55,26 +69,32 @@ export async function POST(request) {
     if (member.error) return Response.json({ error: member.error }, { status: member.status });
   }
 
-  const modelId = model === "haiku"
-    ? "claude-haiku-4-5-20251001"
-    : model === "opus"
-    ? "claude-opus-4-7"
-    : "claude-sonnet-4-6";
-
   try {
-    const prepared = preparePrivacyCheckedAI({
-      workspaceId,
-      brandProfileId: brand_profile_id || null,
-      userId: user.id,
-      operationType: operation_type,
-      providerKey: "anthropic",
-      model: modelId,
-      messages: [{ role: "user", content: prompt }],
+    const gateway = await prepareGatewayPromptCall({
+      type: task_type || operation_type || "legacy_claude",
+      prompt,
+      maxTokens,
+      model,
+      stream,
       dataClass: data_class,
       privacyMode: privacy_mode,
-      costCenter: "legacy_claude",
-      costCategory: "generation",
+      context: {
+        workspace_id: workspaceId,
+        brand_profile_id: brand_profile_id || null,
+        user_id: user.id,
+        task_type,
+        cost_center,
+        cost_category,
+        operation_type,
+      },
     });
+    const modelId = gateway.model;
+    await assertGatewayBudget({
+      svc,
+      workspaceId,
+      operationType: gateway.taskType || operation_type,
+    });
+
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -84,9 +104,9 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         model: modelId,
-        max_tokens: maxTokens,
+        max_tokens: gateway.maxTokens,
         stream,
-        messages: prepared.messages,
+        messages: gateway.messages,
       }),
     });
 
@@ -169,11 +189,16 @@ export async function POST(request) {
       text:  text.trim(),
       usage: data.usage || { input_tokens: null, output_tokens: null },
       model: modelId,
+      gateway: gateway.metadata,
     });
 
   } catch (err) {
     const safe = summarizeError(err);
-    const status = err.code === "PROVIDER_PRIVACY_BLOCKED" || err.code === "D4_SECRET_BLOCKED" ? 403 : 500;
+    const status = err.code === "PROVIDER_PRIVACY_BLOCKED" || err.code === "D4_SECRET_BLOCKED"
+      ? 403
+      : err.code === "AI_GATEWAY_BUDGET_BLOCKED"
+      ? 429
+      : 500;
     return Response.json({ error: safe.error_message, error_type: safe.error_type }, { status });
   }
 }

@@ -1,6 +1,8 @@
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { buildClarifications, inferFactsFromIntake, scoreUnderstanding } from "@/lib/onboarding";
-import { extractCompanyName, researchCompanyFromText } from "@/lib/onboardingWebResearch";
+import { buildOnboardingPlan } from "@/lib/onboardingPlanner";
+import { runOnboardingResearchJob } from "@/lib/onboardingResearchJobs";
+import { extractCompanyName } from "@/lib/onboardingWebResearch";
 
 export async function buildOnboardingAgentStep({
   svc,
@@ -16,13 +18,31 @@ export async function buildOnboardingAgentStep({
   onEvent,
 }) {
   const existingSettings = await loadExistingSettings(svc, brandProfileId);
+  const factMemory = sessionId ? await loadFactMemory(svc, sessionId) : {};
   const detectedCompany = extractCompanyName(userMessage) || intake.manual?.brandName || "";
 
   onEvent?.({ type: "status", label: "Detecting business signal" });
-  const researchedSource = intake.websiteUrl ? null : await researchCompanyFromText(userMessage);
+  const researchJob = await runOnboardingResearchJob({
+    svc,
+    workspaceId,
+    brandProfileId,
+    sessionId,
+    userId,
+    mode: intake.websiteUrl ? "url" : "company",
+    url: intake.websiteUrl,
+    query: userMessage,
+    company: detectedCompany || intake.manual?.brandName || "",
+  });
+  const researchedSource = researchJob.result;
 
   const researchNotes = researchedSource?.summary
-    ? `Web lookup found likely official website for ${researchedSource.company}: ${researchedSource.url}\nTitle: ${researchedSource.title || "(none)"}\nSummary: ${researchedSource.summary}`
+    ? `Source intelligence found ${researchedSource.discovery === "provided_url" ? "the provided website" : "a likely official website"} for ${researchedSource.company || detectedCompany || "the brand"}: ${researchedSource.url}
+Confidence: ${researchedSource.confidence || "unknown"}
+Pages read:
+${(researchedSource.source_pages || []).map(page => `- ${page.title || page.url}: ${page.url}`).join("\n") || "- Homepage only"}
+Evidence:
+${(researchedSource.evidence_snippets || []).slice(0, 5).map(item => `- ${item.text} (${item.source_url})`).join("\n") || "- No concise evidence snippets extracted"}
+Summary: ${researchedSource.summary}`
     : researchedSource?.status === "not_found"
       ? `Web lookup attempted for ${researchedSource.company}, but no reliable official website was found.`
       : "";
@@ -30,7 +50,8 @@ export async function buildOnboardingAgentStep({
     ? { ...intake, websiteUrl: researchedSource?.url || intake.websiteUrl || "", notes: [intake.notes, researchNotes].filter(Boolean).join("\n\n") }
     : intake;
 
-  const facts = inferFactsFromIntake(enrichedIntake, existingSettings);
+  const inferredFacts = inferFactsFromIntake(enrichedIntake, existingSettings);
+  const facts = applyFactMemory(inferredFacts, factMemory);
   const confidence = scoreUnderstanding(facts);
   const baseClarifications = buildClarifications(facts);
   const enoughSignal = hasEnoughSignal(enrichedIntake);
@@ -46,14 +67,17 @@ export async function buildOnboardingAgentStep({
   });
 
   const clarifications = buildDynamicClarifications({ facts, baseClarifications, toolCalls, confidence, enoughSignal });
-  const missing = clarifications.slice(0, 3).map(q => q.question);
-  const reflection = buildAgentReflection({ intake: enrichedIntake, facts, confidence, missing, researchedSource, enoughSignal });
+  const agentPlan = buildOnboardingPlan({ intake: enrichedIntake, facts, confidence, clarifications, researchedSource, factMemory, existingSettings });
+  const missing = agentPlan.clarification_queue?.length
+    ? agentPlan.clarification_queue.map(q => q.question).slice(0, 3)
+    : clarifications.slice(0, 3).map(q => q.question);
+  const reflection = buildAgentReflection({ intake: enrichedIntake, facts, confidence, missing, researchedSource, enoughSignal, agentPlan });
   const toolSteps = toolCalls.map(call => call.label);
   const sourcesUsed = buildSourcesUsed({ intake: enrichedIntake, researchedSource });
-  const nextQuestion = clarifications[0]?.question || null;
-  const agentState = buildAgentState({ facts, confidence, missing, researchedSource, detectedCompany, enoughSignal, nextQuestion });
-  const nextAction = buildNextAction({ enoughSignal, nextQuestion, researchedSource, detectedCompany, confidence, clarifications });
-  const suggestedReplies = buildSuggestedReplies({ clarifications, detectedCompany, researchedSource, enoughSignal });
+  const nextQuestion = agentPlan.next_action?.question || clarifications[0]?.question || null;
+  const agentState = buildAgentState({ facts, confidence, missing, researchedSource, detectedCompany, enoughSignal, nextQuestion, agentPlan });
+  const nextAction = normalizePlannerAction(agentPlan.next_action, { enoughSignal, nextQuestion, researchedSource, detectedCompany, confidence, clarifications });
+  const suggestedReplies = buildSuggestedReplies({ clarifications, detectedCompany, researchedSource, enoughSignal, agentPlan });
   const history = buildHistory(messages, userMessage);
 
   onEvent?.({ type: "tool_calls", tool_calls: toolCalls, agent_state: agentState, next_action: nextAction });
@@ -66,7 +90,7 @@ export async function buildOnboardingAgentStep({
     const params = {
       current_brand_json: JSON.stringify(existingSettings.brand || {}, null, 2),
       current_templates_json: JSON.stringify(existingSettings.strategy?.content_templates || [], null, 2),
-      brand_memory: buildBrandMemory({ intake: enrichedIntake, facts, confidence, missing, researchedSource }),
+      brand_memory: buildBrandMemory({ intake: enrichedIntake, facts, confidence, missing, researchedSource, factMemory, agentPlan }),
       history,
     };
     if (stream) {
@@ -112,11 +136,18 @@ export async function buildOnboardingAgentStep({
     sources_used: sourcesUsed,
     next_question: nextQuestion,
     next_action: nextAction,
+    agent_plan: agentPlan,
+    fact_evidence: agentPlan.fact_evidence || {},
     suggested_replies: suggestedReplies,
     can_draft: enoughSignal && confidence.score >= 50,
     discovered_source: researchedSource?.url ? researchedSource : null,
     source,
     ai_call_id: aiCallId,
+    research_job: researchJob ? {
+      job_id: researchJob.job_id,
+      status: researchJob.status,
+      attempts: researchJob.attempts || [],
+    } : null,
     ...(limitation ? { limitation } : {}),
   };
 
@@ -164,7 +195,7 @@ export async function persistAgentMemory({ svc, sessionId, workspaceId, brandPro
       event_type: "tool_calls",
       role: "tool",
       content: "",
-      payload_json: { tool_calls: payload.tool_calls || [], next_action: payload.next_action || null, sources_used: payload.sources_used || [] },
+      payload_json: { tool_calls: payload.tool_calls || [], next_action: payload.next_action || null, sources_used: payload.sources_used || [], agent_plan: payload.agent_plan || null, research_job: payload.research_job || null },
       created_by: userId,
     },
     {
@@ -176,6 +207,9 @@ export async function persistAgentMemory({ svc, sessionId, workspaceId, brandPro
       content: "",
       payload_json: {
         agent_state: payload.agent_state || null,
+        agent_plan: payload.agent_plan || null,
+        fact_evidence: payload.fact_evidence || {},
+        research_job: payload.research_job || null,
         confidence: payload.confidence || null,
         missing: payload.missing || [],
         suggested_replies: payload.suggested_replies || [],
@@ -201,6 +235,34 @@ async function loadExistingSettings(svc, brandProfileId) {
     existingSettings = { ...existingSettings, brand: { ...(existingSettings.brand || {}), name: data.name } };
   }
   return existingSettings;
+}
+
+async function loadFactMemory(svc, sessionId) {
+  const { data, error } = await svc
+    .from("onboarding_extracted_facts")
+    .select("field_key,value,status,accepted_by_user,metadata_json,created_at")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: false });
+  if (error) return {};
+  const latest = {};
+  for (const row of data || []) {
+    if (!row.field_key || latest[row.field_key]) continue;
+    latest[row.field_key] = row;
+  }
+  return latest;
+}
+
+function applyFactMemory(facts, factMemory = {}) {
+  const next = { ...(facts || {}) };
+  for (const [key, row] of Object.entries(factMemory || {})) {
+    if (row.status === "confirmed" || row.status === "edited") {
+      next[key] = row.value;
+    }
+    if (row.status === "rejected" || row.status === "unsure") {
+      next[key] = Array.isArray(next[key]) ? [] : "";
+    }
+  }
+  return next;
 }
 
 function buildToolCalls({ intake, userMessage, detectedCompany, researchedSource, facts, confidence, missing, enoughSignal }) {
@@ -232,6 +294,8 @@ function buildToolCalls({ intake, userMessage, detectedCompany, researchedSource
         url: researchedSource?.url || "",
         title: researchedSource?.title || "",
         status: researchedSource?.status || "skipped",
+        candidates: (researchedSource?.candidates || []).slice(0, 3),
+        confidence: researchedSource?.confidence || "low",
       },
     });
   }
@@ -249,8 +313,11 @@ function buildToolCalls({ intake, userMessage, detectedCompany, researchedSource
         url: sourceUrl,
         title: researchedSource?.title || "",
         summary_snippet: truncate(researchedSource?.summary || "", 420),
+        source_pages: researchedSource?.source_pages || [],
+        evidence_snippets: researchedSource?.evidence_snippets || [],
+        source_confidence: researchedSource?.confidence || "low",
         extracted_text_chars: researchedSource?.summary?.length || 0,
-        limitation: researchedSource?.summary ? "" : "Stored URL only; readable page text was not available.",
+        limitation: researchedSource?.limitation || (researchedSource?.summary ? "" : "Stored URL only; readable page text was not available."),
       },
     });
   }
@@ -324,9 +391,10 @@ function clarificationRationale(key, facts, toolCalls) {
   return "This is the next highest-leverage missing setup field.";
 }
 
-function buildAgentState({ facts, confidence, missing, researchedSource, detectedCompany, enoughSignal, nextQuestion }) {
+function buildAgentState({ facts, confidence, missing, researchedSource, detectedCompany, enoughSignal, nextQuestion, agentPlan }) {
   return {
-    current_goal: enoughSignal ? "Prepare first source analysis" : "Collect enough signal to start strategy setup",
+    current_goal: agentPlan?.current_goal || (enoughSignal ? "Prepare first source analysis" : "Collect enough signal to start strategy setup"),
+    stage: agentPlan?.stage || (enoughSignal ? "ready_to_draft" : "collecting_sources"),
     business_name: facts.company || detectedCompany || "",
     website: facts.website || researchedSource?.url || "",
     confirmed_facts: {},
@@ -342,6 +410,44 @@ function buildAgentState({ facts, confidence, missing, researchedSource, detecte
     confidence,
     next_best_question: nextQuestion,
     ready_to_draft: enoughSignal && confidence.score >= 50,
+    planner: agentPlan ? {
+      version: agentPlan.planner_version,
+      next_action: agentPlan.next_action,
+      draft_readiness: agentPlan.draft_readiness,
+      field_states: agentPlan.field_states,
+    } : null,
+  };
+}
+
+function normalizePlannerAction(plannerAction, fallbackContext) {
+  if (!plannerAction) return buildNextAction(fallbackContext);
+  if (plannerAction.type === "draft_strategy") {
+    return {
+      type: "draft_strategy",
+      label: plannerAction.label || "Draft setup pass",
+      description: plannerAction.description || "Prepare Brand Profile, Content Strategy, Programmes, risk guidance, and first ideas for review.",
+      requires_confirmation: false,
+      planner_stage: plannerAction.stage,
+    };
+  }
+  if (plannerAction.type === "review_then_draft") {
+    return {
+      type: "review_understanding",
+      label: plannerAction.label || "Review understanding",
+      description: plannerAction.description || "Show inferred facts with uncertainty before drafting.",
+      requires_confirmation: true,
+      question: plannerAction.question || null,
+      planner_stage: plannerAction.stage,
+    };
+  }
+  return {
+    type: plannerAction.type || "ask_clarification",
+    label: plannerAction.label || "Ask next question",
+    description: plannerAction.description || plannerAction.question || "Ask the next highest-value setup question.",
+    requires_confirmation: true,
+    question: plannerAction.question || null,
+    field_key: plannerAction.field_key || null,
+    planner_stage: plannerAction.stage,
   };
 }
 
@@ -372,7 +478,9 @@ function buildNextAction({ enoughSignal, nextQuestion, researchedSource, detecte
   };
 }
 
-function buildSuggestedReplies({ clarifications, detectedCompany, researchedSource, enoughSignal }) {
+function buildSuggestedReplies({ clarifications, detectedCompany, researchedSource, enoughSignal, agentPlan }) {
+  if (agentPlan?.next_action?.type === "review_then_draft") return ["Show what you understood first", "Draft the setup pass", "I’ll correct one thing"];
+  if (agentPlan?.next_action?.type === "ask_missing_required" && agentPlan.next_action.question) return ["I’m not sure — suggest for me", "Use the safest default"];
   if (enoughSignal) return ["Draft the setup pass", "Show what you understood first"];
   const next = clarifications[0];
   if (detectedCompany && !researchedSource?.url) return ["I’ll paste the website", "Use what you can find", "I’ll describe the offer"];
@@ -382,7 +490,16 @@ function buildSuggestedReplies({ clarifications, detectedCompany, researchedSour
 
 function buildSourcesUsed({ intake, researchedSource }) {
   const sources = [];
-  if (researchedSource?.url) sources.push({ title: researchedSource.url, type: "web_lookup", status: researchedSource.status || "stored" });
+  if (researchedSource?.url) {
+    sources.push({
+      title: researchedSource.url,
+      type: researchedSource.discovery === "provided_url" ? "website" : "web_lookup",
+      status: researchedSource.status || "stored",
+      confidence: researchedSource.confidence || "low",
+      source_pages: researchedSource.source_pages || [],
+      evidence_snippets: researchedSource.evidence_snippets || [],
+    });
+  }
   if (intake.websiteUrl && intake.websiteUrl !== researchedSource?.url) sources.push({ title: intake.websiteUrl, type: "website", status: "stored" });
   if (intake.notes) sources.push({ title: "User notes", type: "text_note", status: "parsed" });
   for (const file of intake.files || []) sources.push({ title: file.name, type: file.mime_type || "file", status: file.status || "stored" });
@@ -398,20 +515,35 @@ function buildHistory(messages, userMessage) {
   return rows.join("\n\n");
 }
 
-function buildBrandMemory({ intake, facts, confidence, missing, researchedSource }) {
+function buildBrandMemory({ intake, facts, confidence, missing, researchedSource, factMemory = {}, agentPlan = null }) {
   const files = (intake.files || []).map(f => `${f.name}: ${f.status}. ${f.note || ""}`).join("\n");
+  const reviewedFacts = Object.entries(factMemory)
+    .map(([key, row]) => `${key}: ${row.status}${row.value ? ` -> ${JSON.stringify(row.value).slice(0, 300)}` : ""}`)
+    .join("\n");
   return [
     intake.websiteUrl ? `Website URL: ${intake.websiteUrl}` : "",
     intake.notes ? `User notes:\n${String(intake.notes).slice(-3000)}` : "",
     files ? `Files:\n${files}` : "",
     researchedSource?.url ? `Web research tool result:\n${researchedSource.url}\n${researchedSource.summary || ""}` : "",
+    reviewedFacts ? `User-reviewed fact memory:\n${reviewedFacts}` : "",
+    agentPlan ? `Planner state:\n${JSON.stringify({
+      stage: agentPlan.stage,
+      next_action: agentPlan.next_action,
+      draft_readiness: agentPlan.draft_readiness,
+      field_states: (agentPlan.field_states || []).map(field => ({
+        key: field.key,
+        status: field.status,
+        confidence: field.confidence,
+        evidence_count: field.evidence?.length || 0,
+      })),
+    }, null, 2)}` : "",
     `Inferred facts:\n${JSON.stringify(facts, null, 2)}`,
     `Brand understanding: ${confidence.score}%`,
     missing.length ? `Missing/uncertain:\n- ${missing.join("\n- ")}` : "No major missing fields detected.",
   ].filter(Boolean).join("\n\n");
 }
 
-function buildAgentReflection({ intake, facts, confidence, missing, researchedSource, enoughSignal }) {
+function buildAgentReflection({ intake, facts, confidence, missing, researchedSource, enoughSignal, agentPlan = null }) {
   const checked = [];
   if (researchedSource?.url) checked.push(`Found likely official website: ${researchedSource.url}`);
   else if (researchedSource?.status === "not_found") checked.push(`Tried web lookup for ${researchedSource.company}; no reliable official site found`);
@@ -427,7 +559,7 @@ function buildAgentReflection({ intake, facts, confidence, missing, researchedSo
     (facts.platforms || []).length ? `Likely platforms: ${facts.platforms.slice(0, 3).join(", ")}` : "",
   ].filter(Boolean);
 
-  const next = enoughSignal ? "Ready to run the first source analysis and show a confirmable strategy draft path." : missing[0] || "Need a website, description, offer, or audience before drafting.";
+  const next = agentPlan?.next_action?.description || (enoughSignal ? "Ready to run the first source analysis and show a confirmable strategy draft path." : missing[0] || "Need a website, description, offer, or audience before drafting.");
   return {
     title: "How I’m orienting the setup",
     checked,
@@ -435,6 +567,7 @@ function buildAgentReflection({ intake, facts, confidence, missing, researchedSo
     missing: missing.length ? missing : ["No major missing fields detected yet"],
     next,
     confidence: `${confidence.score}% setup signal`,
+    planner_stage: agentPlan?.stage || null,
   };
 }
 

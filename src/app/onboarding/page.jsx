@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Check, FileText, Globe2, HelpCircle, Paperclip, 
 import { supabase, getBrandProfiles, getWorkspaces, createBrandProfile } from "@/lib/db";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { applyClarificationAnswers, blankOnboardingIntake, buildClarifications } from "@/lib/onboarding";
+import { extractFileTextForOnboarding } from "@/lib/onboardingDocumentIntelligence";
 import { EmptyState, Panel, Pill, SectionHeader, SkeletonCard, SourceReviewButton, buttonStyle } from "@/components/OperationalUI";
 
 const UNSURE = "I'm not sure — suggest for me";
@@ -85,6 +86,7 @@ export default function OnboardingPage() {
   const [assistantTyping, setAssistantTyping] = useState(false);
   const [setupBrief, setSetupBrief] = useState(EMPTY_SETUP_BRIEF);
   const [suggestedReplies, setSuggestedReplies] = useState([]);
+  const [factReviews, setFactReviews] = useState({});
   const transcriptEndRef = useRef(null);
   const replyTimerRef = useRef(null);
   const restoredMemoryRef = useRef(false);
@@ -175,6 +177,16 @@ export default function OnboardingPage() {
     return sessionJson.session;
   }, [session, tenant, mode]);
 
+  const persistOnboardingState = useCallback(async (sessionId, snapshot) => {
+    if (!tenant || !sessionId) return;
+    await api("/api/onboarding/state", {
+      workspace_id: tenant.workspace_id,
+      brand_profile_id: tenant.brand_profile_id,
+      session_id: sessionId,
+      state: snapshot,
+    }).catch(() => null);
+  }, [tenant]);
+
   useEffect(() => {
     if (!tenant || restoredMemoryRef.current) return;
     restoredMemoryRef.current = true;
@@ -188,29 +200,84 @@ export default function OnboardingPage() {
         const active = (json.sessions || []).find(s => !["approved", "skipped", "archived"].includes(s.status));
         if (!active) return;
         const memoryQs = new URLSearchParams({ workspace_id: tenant.workspace_id, session_id: active.id });
+        const stateJson = await apiGet(`/api/onboarding/state?${memoryQs.toString()}`).catch(() => ({}));
         const memory = await apiGet(`/api/onboarding/memory?${memoryQs.toString()}`);
         const snapshot = memory.snapshot || {};
-        if (!snapshot.messages?.length) return;
         setSession(active);
-        dispatchMessages({ type:"replace", messages:[
-          ...INITIAL_MESSAGES,
-          ...snapshot.messages.map(message => makeMessage(message)),
-        ]});
-        setSetupBrief({
-          facts: snapshot.agentState?.inferred_facts || {},
-          confidence: snapshot.confidence || snapshot.agentState?.confidence || null,
-          missing: snapshot.missing || snapshot.agentState?.missing_fields || [],
-          sources: snapshot.sources || [],
-          next: snapshot.nextAction?.description || snapshot.agentState?.next_best_question || "",
-          toolSteps: (snapshot.toolCalls || []).map(call => call.label),
-          agentState: snapshot.agentState || null,
-          toolCalls: snapshot.toolCalls || [],
-          nextAction: snapshot.nextAction || null,
-        });
-        setSuggestedReplies(snapshot.suggestedReplies || []);
+        if (snapshot.messages?.length) {
+          dispatchMessages({ type:"replace", messages:[
+            ...INITIAL_MESSAGES,
+            ...snapshot.messages.map(message => makeMessage(message)),
+          ]});
+        }
+        if (stateJson.state) {
+          restoreOnboardingState(stateJson.state, {
+            setPhase,
+            setIntake,
+            setSources,
+            setFacts,
+            setConfidence,
+            setClarifications,
+            setAnswers,
+            setDraft,
+            setLimitations,
+            setSetupBrief,
+            setSuggestedReplies,
+          });
+        } else if (snapshot.messages?.length) {
+          setSetupBrief({
+            facts: snapshot.agentState?.inferred_facts || {},
+            confidence: snapshot.confidence || snapshot.agentState?.confidence || null,
+            missing: snapshot.missing || snapshot.agentState?.missing_fields || [],
+            sources: snapshot.sources || [],
+            next: snapshot.nextAction?.description || snapshot.agentState?.next_best_question || "",
+            toolSteps: (snapshot.toolCalls || []).map(call => call.label),
+            agentState: snapshot.agentState || null,
+            agentPlan: snapshot.agentPlan || null,
+            factEvidence: snapshot.factEvidence || {},
+            researchJob: snapshot.researchJob || null,
+            toolCalls: snapshot.toolCalls || [],
+            nextAction: snapshot.nextAction || null,
+          });
+          setSuggestedReplies(snapshot.suggestedReplies || []);
+        }
+        await loadFactReviews(active.id);
       } catch {}
     })();
   }, [tenant]);
+
+  const loadFactReviews = useCallback(async (sessionId) => {
+    if (!tenant || !sessionId) return {};
+    const qs = new URLSearchParams({ workspace_id: tenant.workspace_id, session_id: sessionId });
+    const json = await apiGet(`/api/onboarding/fact?${qs.toString()}`);
+    setFactReviews(json.facts || {});
+    return json.facts || {};
+  }, [tenant]);
+
+  const reviewFact = useCallback(async ({ fieldKey, value, status, note = "" }) => {
+    if (!tenant || !fieldKey) return;
+    const activeSession = await ensureSession();
+    if (!activeSession) return;
+    const json = await api("/api/onboarding/fact", {
+      workspace_id: tenant.workspace_id,
+      session_id: activeSession.id,
+      field_key: fieldKey,
+      value,
+      status,
+      note,
+      source_refs: setupBrief.sources || [],
+    });
+    setFactReviews(prev => ({ ...prev, [fieldKey]: json.fact }));
+    if (status === "confirmed" || status === "edited") {
+      setSetupBrief(prev => ({ ...prev, facts: { ...(prev.facts || {}), [fieldKey]: value } }));
+      setFacts(prev => prev ? { ...prev, [fieldKey]: value } : prev);
+    }
+    if (status === "rejected" || status === "unsure") {
+      const emptyValue = Array.isArray(value) ? [] : "";
+      setSetupBrief(prev => ({ ...prev, facts: { ...(prev.facts || {}), [fieldKey]: emptyValue } }));
+      setFacts(prev => prev ? { ...prev, [fieldKey]: emptyValue } : prev);
+    }
+  }, [tenant, ensureSession, setupBrief.sources]);
 
   const runAnalysis = useCallback(async () => {
     if (!tenant) return;
@@ -232,7 +299,8 @@ export default function OnboardingPage() {
           session_id: nextSession.id,
           sources: sourcePayload,
         });
-        setSources(sourceJson.sources || sourcePayload);
+        sourcePayload.splice(0, sourcePayload.length, ...(sourceJson.sources || sourcePayload));
+        setSources(sourcePayload);
       }
 
       const analyzed = await api("/api/onboarding/analyze", {
@@ -247,13 +315,26 @@ export default function OnboardingPage() {
       setDraft(analyzed.draft);
       setLimitations(analyzed.limitations || []);
       setPhase("understood");
+      await persistOnboardingState(nextSession.id, {
+        phase:"understood",
+        intake,
+        sources: sourcePayload,
+        facts: analyzed.facts,
+        confidence: analyzed.confidence,
+        clarifications: analyzed.clarifications || [],
+        answers,
+        draft: analyzed.draft,
+        limitations: analyzed.limitations || [],
+        setupBrief,
+        suggestedReplies,
+      });
       dispatchMessages({ type:"append_many", messages:[
         makeMessage({ role:"assistant", type:"text", text:"I found a first picture of the brand. Review this with me before I draft the strategy." }),
         makeMessage({ role:"assistant", type:"understanding_card", artifact:{
           facts:analyzed.facts,
           confidence:analyzed.confidence,
           limitations:analyzed.limitations || [],
-          sourceTrace:buildSourceTrace(intake, sourcePayload),
+          sourceTrace:buildSourceTrace(intake, sourcePayload, analyzed.fact_evidence),
         }}),
       ]});
     } catch (e) {
@@ -263,7 +344,7 @@ export default function OnboardingPage() {
     } finally {
       setLoadingTask(null);
     }
-  }, [tenant, intake, ensureSession]);
+  }, [tenant, intake, ensureSession, answers, setupBrief, suggestedReplies, persistOnboardingState]);
 
   const generateDraftWithAnswers = useCallback(async () => {
     if (!tenant || !session) return;
@@ -292,14 +373,28 @@ export default function OnboardingPage() {
         intake,
         answers: keyedAnswers,
       });
-      setFacts(applyClarificationAnswers(analyzed.facts || facts || {}, keyedAnswers));
+      const nextFacts = applyClarificationAnswers(analyzed.facts || facts || {}, keyedAnswers);
+      setFacts(nextFacts);
       setConfidence(analyzed.confidence);
       setClarifications(analyzed.clarifications || []);
       setDraft(analyzed.draft);
       setPhase("draft");
+      await persistOnboardingState(session.id, {
+        phase:"draft",
+        intake,
+        sources,
+        facts: nextFacts,
+        confidence: analyzed.confidence,
+        clarifications: analyzed.clarifications || [],
+        answers,
+        draft: analyzed.draft,
+        limitations,
+        setupBrief,
+        suggestedReplies,
+      });
       dispatchMessages({ type:"append_many", messages:[
         makeMessage({ role:"assistant", type:"text", text:"Here’s the draft. Nothing is saved yet; review it first, then approve when it feels right." }),
-        makeMessage({ role:"assistant", type:"draft_card", artifact:{ draft:analyzed.draft, sourceTrace } }),
+        makeMessage({ role:"assistant", type:"draft_card", artifact:{ draft:analyzed.draft, sourceTrace: buildSourceTrace(intake, sources, analyzed.fact_evidence) } }),
       ]});
     } catch (e) {
       const message = friendlyOnboardingError(e.message);
@@ -308,7 +403,7 @@ export default function OnboardingPage() {
     } finally {
       setLoadingTask(null);
     }
-  }, [tenant, session, answers, clarifications, intake, facts]);
+  }, [tenant, session, answers, clarifications, intake, facts, sources, limitations, setupBrief, suggestedReplies, persistOnboardingState, sourceTrace]);
 
   const approve = useCallback(async () => {
     if (!tenant || !session || !draft) return;
@@ -330,6 +425,19 @@ export default function OnboardingPage() {
         localStorage.setItem("active_tenant", JSON.stringify(tenant));
       } catch {}
       setPhase("approved");
+      await persistOnboardingState(session.id, {
+        phase:"approved",
+        intake,
+        sources,
+        facts,
+        confidence,
+        clarifications,
+        answers,
+        draft,
+        limitations,
+        setupBrief,
+        suggestedReplies,
+      });
       dispatchMessages({ type:"append_many", messages:[
         makeMessage({ role:"assistant", type:"text", text:"Done. Strategy, programmes, and first ideas are ready to use." }),
         makeMessage({ role:"assistant", type:"completion_card" }),
@@ -341,7 +449,53 @@ export default function OnboardingPage() {
     } finally {
       setLoadingTask(null);
     }
-  }, [tenant, session, draft]);
+  }, [tenant, session, draft, intake, sources, facts, confidence, clarifications, answers, limitations, setupBrief, suggestedReplies, persistOnboardingState]);
+
+  const refineDraft = useCallback(async (instruction) => {
+    if (!tenant || !session || !draft || !instruction.trim()) return;
+    dispatchMessages({ type:"append_many", messages:[
+      makeMessage({ role:"user", type:"text", title:"Refinement", text:instruction }),
+      makeMessage({ role:"assistant", type:"text", text:"I’ll revise the draft before anything is saved. I’ll keep the previous version superseded and show what changed." }),
+      makeMessage({ role:"assistant", type:"work_trace", artifact:{ task:"draft", steps:["Reading refinement request", "Revising draft strategy", "Superseding previous draft", "Preparing change summary"] } }),
+    ]});
+    setLoadingTask("refine");
+    setError(null);
+    try {
+      const json = await api("/api/onboarding/refine-draft", {
+        workspace_id: tenant.workspace_id,
+        brand_profile_id: tenant.brand_profile_id,
+        session_id: session.id,
+        draft,
+        facts: facts || setupBrief.facts || {},
+        instruction,
+      });
+      setDraft(json.draft);
+      setPhase("draft");
+      await persistOnboardingState(session.id, {
+        phase:"draft",
+        intake,
+        sources,
+        facts: facts || setupBrief.facts || {},
+        confidence,
+        clarifications,
+        answers,
+        draft: json.draft,
+        limitations,
+        setupBrief,
+        suggestedReplies,
+      });
+      dispatchMessages({ type:"append_many", messages:[
+        makeMessage({ role:"assistant", type:"text", text:formatRefinementChanges(json.changes || []) }),
+        makeMessage({ role:"assistant", type:"draft_card", artifact:{ draft:json.draft, sourceTrace, changes:json.changes || [] } }),
+      ]});
+    } catch (e) {
+      const message = friendlyOnboardingError(e.message);
+      setError(message);
+      dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"error", text:message }) });
+    } finally {
+      setLoadingTask(null);
+    }
+  }, [tenant, session, draft, facts, setupBrief, sourceTrace, intake, sources, confidence, clarifications, answers, limitations, suggestedReplies, persistOnboardingState]);
 
   const queueAssistantReply = useCallback((text, options = {}) => {
     if (replyTimerRef.current) clearTimeout(replyTimerRef.current);
@@ -394,14 +548,24 @@ export default function OnboardingPage() {
           }
         },
       });
+      let nextIntakeForState = nextIntake || intake;
       if (json.discovered_source?.url) {
-        setIntake(prev => ({
-          ...prev,
-          websiteUrl: prev.websiteUrl || json.discovered_source.url,
-          notes: [prev.notes, `Web research summary for ${json.discovered_source.company || "the brand"}:\n${json.discovered_source.summary || ""}`].filter(Boolean).join("\n\n"),
-        }));
+        nextIntakeForState = {
+          ...nextIntakeForState,
+          websiteUrl: nextIntakeForState.websiteUrl || json.discovered_source.url,
+          notes: [nextIntakeForState.notes, `Source intelligence summary for ${json.discovered_source.company || "the brand"}:
+URL: ${json.discovered_source.url}
+Confidence: ${json.discovered_source.confidence || "unknown"}
+Pages read:
+${(json.discovered_source.source_pages || []).map(page => `- ${page.title || page.url}: ${page.url}`).join("\n") || "- Homepage only"}
+Evidence:
+${(json.discovered_source.evidence_snippets || []).slice(0, 5).map(item => `- ${item.text}`).join("\n") || "- No concise evidence snippets extracted"}
+Summary:
+${json.discovered_source.summary || ""}`].filter(Boolean).join("\n\n"),
+        };
+        setIntake(nextIntakeForState);
       }
-      setSetupBrief({
+      const nextSetupBrief = {
         facts: json.agent_state?.inferred_facts || json.facts_patch || {},
         confidence: json.confidence || null,
         missing: json.missing || [],
@@ -409,10 +573,29 @@ export default function OnboardingPage() {
         next: json.next_action?.description || json.next_question || json.reflection?.next || "",
         toolSteps: json.tool_steps || [],
         agentState: json.agent_state || null,
+        agentPlan: json.agent_plan || null,
+        factEvidence: json.fact_evidence || {},
+        researchJob: json.research_job || null,
         toolCalls: json.tool_calls || [],
         nextAction: json.next_action || null,
+      };
+      const nextSuggestedReplies = json.suggested_replies || [];
+      setSetupBrief(nextSetupBrief);
+      setSuggestedReplies(nextSuggestedReplies);
+      const researchSteps = (json.research_job?.attempts || []).map(attempt => `Research attempt ${attempt.attempt}: ${attempt.status}${attempt.confidence ? ` (${attempt.confidence})` : ""}`);
+      await persistOnboardingState(activeSession?.id, {
+        phase,
+        intake: nextIntakeForState,
+        sources,
+        facts,
+        confidence,
+        clarifications,
+        answers,
+        draft,
+        limitations,
+        setupBrief: nextSetupBrief,
+        suggestedReplies: nextSuggestedReplies,
       });
-      setSuggestedReplies(json.suggested_replies || []);
       setAssistantTyping(false);
       if (!sawToken) {
         dispatchMessages({ type:"update", id:streamMessageId, patch:{ text:json.assistant_message || json.reply || "I need a little more context before I can guide the setup." } });
@@ -420,6 +603,7 @@ export default function OnboardingPage() {
       dispatchMessages({ type:"append_many", messages:[
         ...(json.tool_calls?.length ? [makeMessage({ role:"assistant", type:"tool_calls", artifact:{ calls:json.tool_calls, nextAction:json.next_action } })] : []),
         ...(json.reflection ? [makeMessage({ role:"assistant", type:"reflection_card", artifact:json.reflection })] : []),
+        ...(researchSteps.length ? [makeMessage({ role:"assistant", type:"work_trace", artifact:{ task:"research", steps:researchSteps } })] : []),
         ...(json.discovered_source?.url ? [makeMessage({ role:"assistant", type:"source", sourceKind:"website", title:"Found likely website", text:json.discovered_source.url, status:json.discovered_source.status || "stored" })] : []),
         ...(json.can_analyze || json.can_draft ? [makeMessage({ role:"assistant", type:"action", text:json.next_action?.description || "I’m ready to run the first setup pass. I’ll extract the brand profile, strategy, programmes, and uncertainties before anything is saved.", artifact:{ action:"analyze", nextAction:json.next_action } })] : []),
       ]});
@@ -428,21 +612,23 @@ export default function OnboardingPage() {
       setSuggestedReplies(["I’ll paste the website", "I’ll describe the business", "I’m not sure — guide me"]);
       dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"text", text:"I’m having trouble responding dynamically right now. Tell me what the business sells, who it serves, and which platform matters first, and I’ll keep going." }) });
     }
-  }, [tenant, intake, messages, queueAssistantReply, ensureSession]);
+  }, [tenant, intake, messages, queueAssistantReply, ensureSession, persistOnboardingState, phase, sources, facts, confidence, clarifications, answers, draft, limitations]);
 
   const onFiles = async (files) => {
     const rows = [];
     for (const file of Array.from(files || [])) {
-      const isText = file.type.startsWith("text/") || /\.(md|txt)$/i.test(file.name);
-      const isPdf = /\.pdf$/i.test(file.name) || file.type === "application/pdf";
-      const isImage = file.type.startsWith("image/") || /\.(jpg|jpeg|png)$/i.test(file.name);
+      const intelligence = await extractFileTextForOnboarding(file);
       rows.push({
         name: file.name,
         mime_type: file.type || "application/octet-stream",
         size: file.size,
-        text: isText ? await file.text() : "",
-        status: isText ? "parsed" : isPdf || isImage ? "pending analysis" : "unsupported",
-        note: isText ? "Text parsed for V1 analysis." : isPdf || isImage ? "Stored as a source record. Deep analysis is not available yet." : "Stored, but this file type is not parsed in V1.",
+        text: intelligence.text || "",
+        image_base64: intelligence.image_base64 || "",
+        status: intelligence.status,
+        note: intelligence.note,
+        extraction_method: intelligence.extraction_method,
+        ocr_status: intelligence.ocr_status,
+        confidence: intelligence.confidence,
       });
     }
     const nextIntake = { ...intake, files: [...intake.files, ...rows] };
@@ -505,6 +691,19 @@ export default function OnboardingPage() {
     setClarifications(qs);
     if (qs.length) {
       setPhase("clarify");
+      persistOnboardingState(session?.id, {
+        phase:"clarify",
+        intake,
+        sources,
+        facts,
+        confidence,
+        clarifications: qs,
+        answers,
+        draft,
+        limitations,
+        setupBrief,
+        suggestedReplies,
+      });
       dispatchMessages({ type:"append_many", messages:[
         makeMessage({ role:"assistant", type:"text", text:qs.length === 1 ? "I’m missing one thing before I draft this." : "I’m missing one or two things before I draft this." }),
         makeMessage({ role:"assistant", type:"clarification_card", artifact:{ clarifications:qs, answers:{}, hiddenCount:Math.max(0, qs.length - 2) } }),
@@ -514,7 +713,7 @@ export default function OnboardingPage() {
     setPhase("draft");
     dispatchMessages({ type:"append", message:makeMessage({ role:"assistant", type:"text", text:"I have enough to draft a first strategy." }) });
     generateDraftWithAnswers();
-  }, [facts, generateDraftWithAnswers]);
+  }, [facts, generateDraftWithAnswers, session, intake, sources, confidence, answers, draft, limitations, setupBrief, suggestedReplies, persistOnboardingState]);
 
   if (authLoading) return <OnboardingShell><SkeletonCard lines={4} style={{ maxWidth:720, margin:"18vh auto" }} /></OnboardingShell>;
   if (!user) return (
@@ -539,20 +738,22 @@ export default function OnboardingPage() {
           <div style={{ minWidth:0 }}>
             <OnboardingTranscript
               messages={messages}
-              runtime={{ facts, confidence, limitations, sourceTrace, clarifications, answers, draft }}
+              runtime={{ facts, confidence, limitations, sourceTrace, clarifications, answers, draft, factReviews }}
               actions={{
                 runAnalysis,
                 continueFromUnderstanding,
                 generateDraftWithAnswers,
+                refineDraft,
                 approve,
                 setFacts,
                 setAnswers,
+                reviewFact,
                 updateMessageArtifact:(id, patch) => dispatchMessages({ type:"update_artifact", id, patch }),
               }}
             />
             {assistantTyping && <TypingIndicator />}
           </div>
-          <SetupBriefRail brief={setupBrief} intake={intake} phase={phase} />
+          <SetupBriefRail brief={setupBrief} intake={intake} phase={phase} factReviews={factReviews} onReviewFact={reviewFact} />
         </div>
 
         {phase !== "approved" && (
@@ -626,17 +827,17 @@ function OnboardingTranscript({ messages, runtime, actions }) {
   );
 }
 
-function SetupBriefRail({ brief, intake, phase }) {
+function SetupBriefRail({ brief, intake, phase, factReviews = {}, onReviewFact }) {
   const facts = brief.facts || {};
   const sources = brief.sources?.length ? brief.sources : buildInlineSources(intake);
   const missing = (brief.missing || []).slice(0, 4);
   const toolSteps = (brief.toolSteps || []).slice(-5);
   const factsRows = [
-    ["Brand", facts.company || facts.brandName || intake.manual?.brandName],
-    ["Offer", facts.priority_offer],
-    ["Audience", facts.audience],
-    ["Platforms", Array.isArray(facts.platforms) ? facts.platforms.join(", ") : facts.platforms],
-  ].filter(([, value]) => value);
+    ["Brand", "company", facts.company || facts.brandName || intake.manual?.brandName],
+    ["Offer", "priority_offer", facts.priority_offer],
+    ["Audience", "audience", facts.audience],
+    ["Platforms", "platforms", Array.isArray(facts.platforms) ? facts.platforms.join(", ") : facts.platforms],
+  ].filter(([, , value]) => value);
 
   return (
     <aside className="ce-onboarding-rail">
@@ -657,10 +858,11 @@ function SetupBriefRail({ brief, intake, phase }) {
         </div>
 
         <RailSection title="Known">
-          {factsRows.length ? factsRows.map(([label, value]) => (
+          {factsRows.length ? factsRows.map(([label, key, value]) => (
             <div key={label} className="ce-rail-row">
               <span>{label}</span>
               <strong>{String(value).slice(0, 110)}</strong>
+              <FactReviewMini status={factReviews[key]?.status} fieldKey={key} value={value} onReviewFact={onReviewFact} />
             </div>
           )) : <RailEmpty>Waiting for a website, notes, or a description.</RailEmpty>}
         </RailSection>
@@ -708,6 +910,24 @@ function RailEmpty({ children }) {
   return <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.45 }}>{children}</div>;
 }
 
+function FactReviewMini({ fieldKey, value, status, onReviewFact }) {
+  const label = status === "confirmed" || status === "edited" ? "confirmed" : status === "rejected" ? "rejected" : status === "unsure" ? "unsure" : "inferred";
+  return (
+    <div className="ce-fact-review-mini">
+      <em>{label}</em>
+      {onReviewFact && status !== "confirmed" && status !== "edited" && (
+        <button type="button" onClick={() => onReviewFact({ fieldKey, value, status:"confirmed" })}>Confirm</button>
+      )}
+      {onReviewFact && status !== "unsure" && (
+        <button type="button" onClick={() => onReviewFact({ fieldKey, value, status:"unsure", note:"User marked this fact as unsure." })}>Unsure</button>
+      )}
+      {onReviewFact && status !== "rejected" && (
+        <button type="button" onClick={() => onReviewFact({ fieldKey, value, status:"rejected", note:"User rejected this inferred fact." })}>Reject</button>
+      )}
+    </div>
+  );
+}
+
 function TranscriptMessage({ message, runtime, actions }) {
   if (message.type === "privacy") return <PrivacyNotice />;
   if (message.role === "user") {
@@ -739,6 +959,8 @@ function TranscriptMessage({ message, runtime, actions }) {
         confidence={runtime.confidence || message.artifact?.confidence}
         limitations={runtime.limitations || message.artifact?.limitations || []}
         sourceTrace={runtime.sourceTrace || message.artifact?.sourceTrace}
+        factReviews={runtime.factReviews || {}}
+        onReviewFact={actions.reviewFact}
         onContinue={actions.continueFromUnderstanding}
       />
     );
@@ -755,7 +977,7 @@ function TranscriptMessage({ message, runtime, actions }) {
     );
   }
   if (message.type === "draft_card") {
-    return <DraftCards draft={message.artifact?.draft || runtime.draft} sourceTrace={message.artifact?.sourceTrace || runtime.sourceTrace} onApprove={actions.approve} loading={false} />;
+    return <DraftCards draft={message.artifact?.draft || runtime.draft} sourceTrace={message.artifact?.sourceTrace || runtime.sourceTrace} changes={message.artifact?.changes || []} onRefine={actions.refineDraft} onApprove={actions.approve} loading={false} />;
   }
   if (message.type === "completion_card") return <ApprovedState />;
   if (message.type === "error") return <ErrorCard message={message.text} onRetry={actions.runAnalysis} />;
@@ -810,6 +1032,9 @@ function summarizeToolArtifact(artifact = {}) {
   const rows = [];
   if (artifact.company) rows.push(`Brand: ${artifact.company}`);
   if (artifact.filled_fields?.length) rows.push(`Fields: ${artifact.filled_fields.join(", ")}`);
+  if (artifact.source_confidence) rows.push(`Source confidence: ${artifact.source_confidence}`);
+  if (artifact.source_pages?.length) rows.push(`Pages read: ${artifact.source_pages.length}`);
+  if (artifact.evidence_snippets?.length) rows.push(`Evidence snippets: ${artifact.evidence_snippets.length}`);
   if (artifact.confidence_score != null) rows.push(`Signal: ${artifact.confidence_score}%`);
   if (artifact.extracted_text_chars) rows.push(`Text read: ${artifact.extracted_text_chars} chars`);
   if (artifact.missing_fields?.length) rows.push(`Missing: ${artifact.missing_fields.slice(0, 2).join(" · ")}`);
@@ -957,7 +1182,7 @@ function OnboardingComposer({ mode, value, setMode, setValue, onSubmit, onFiles,
 }
 
 function WorkTraceMessage({ task, steps }) {
-  const title = task === "approve" ? "Saving the approved strategy." : task === "draft" ? "Preparing the strategy draft." : task === "agent" ? "Planning the next setup move." : "Understanding the business.";
+  const title = task === "approve" ? "Saving the approved strategy." : task === "draft" ? "Preparing the strategy draft." : task === "research" ? "Reading available sources." : task === "agent" ? "Planning the next setup move." : "Understanding the business.";
   return (
     <AssistantCardMessage>
       <Panel className="ce-thinking-panel ce-generated-card" style={{ background:"var(--sheet)", padding:"13px 14px", width:"100%" }}>
@@ -978,7 +1203,7 @@ function WorkTraceMessage({ task, steps }) {
   );
 }
 
-function UnderstandingCard({ facts, setFacts, confidence, limitations, sourceTrace, onContinue }) {
+function UnderstandingCard({ facts, setFacts, confidence, limitations, sourceTrace, factReviews = {}, onReviewFact, onContinue }) {
   const sections = [
     ["Company", "company", "I could not identify the company name with enough confidence."],
     ["Products/services", "priority_offer", "I could not identify the priority product line from the uploaded sources."],
@@ -995,7 +1220,20 @@ function UnderstandingCard({ facts, setFacts, confidence, limitations, sourceTra
         <BrandUnderstanding score={confidence?.score || 0} signals={confidence?.signals || []} />
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginTop:14 }}>
           {sections.map(([title, key, fallback]) => (
-            <EditableFact key={key} title={title} value={Array.isArray(facts[key]) ? facts[key].join(", ") : facts[key]} fallback={fallback} onSave={value => setFacts(prev => ({ ...prev, [key]: key === "platforms" ? value.split(",").map(s => s.trim()).filter(Boolean) : value }))} />
+            <EditableFact
+              key={key}
+              fieldKey={key}
+              title={title}
+              value={Array.isArray(facts[key]) ? facts[key].join(", ") : facts[key]}
+              reviewStatus={factReviews[key]?.status}
+              fallback={fallback}
+              onReviewFact={onReviewFact}
+              onSave={value => {
+                const nextValue = key === "platforms" ? value.split(",").map(s => s.trim()).filter(Boolean) : value;
+                setFacts(prev => ({ ...prev, [key]: nextValue }));
+                onReviewFact?.({ fieldKey:key, value:nextValue, status:"edited", note:"User edited this fact in the understanding card." });
+              }}
+            />
           ))}
           <FactBlock title="Unclear / needs confirmation" value={limitations.length ? limitations.join(" ") : "No detailed limitation trace was recorded."} muted />
         </div>
@@ -1052,19 +1290,56 @@ function ClarificationCards({ clarifications, answers, setAnswers, onBack, onSub
   );
 }
 
-function DraftCards({ draft, sourceTrace, onBack, onApprove, loading }) {
+function DraftCards({ draft, sourceTrace, changes = [], onBack, onRefine, onApprove, loading }) {
+  const [instruction, setInstruction] = useState("");
   return (
     <AssistantCardMessage>
       <Panel className="ce-generated-card" style={{ width:"100%" }}>
         <SectionHeader title="Draft strategy" action={<SourceReviewButton sources={sourceTrace.sources} work={[...sourceTrace.work, "Drafted Brand Profile", "Drafted Content Strategy", "Drafted Programmes", "Prepared first content ideas"]} />} />
         <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.55, marginTop:-4, marginBottom:12 }}>Review before saving. Nothing is written to final settings until approval.</div>
+        {changes.length > 0 && (
+          <div style={{ padding:"10px 12px", border:"1px solid var(--border)", background:"var(--fill2)", borderRadius:"var(--ce-radius)", marginBottom:12 }}>
+            <div style={{ fontSize:12, fontWeight:750, color:"var(--t1)", marginBottom:6 }}>What changed</div>
+            <div style={{ display:"grid", gap:5 }}>
+              {changes.slice(0, 5).map(change => <div key={change} style={{ fontSize:12, color:"var(--t2)", lineHeight:1.45 }}>• {change}</div>)}
+            </div>
+          </div>
+        )}
         <div style={{ display:"grid", gap:12 }}>
           <JsonCard title="Brand Profile draft" data={draft.brand_profile} />
           <JsonCard title="Content Strategy draft" data={draft.content_strategy} />
+          {draft.quality_review && <QualityReviewCard review={draft.quality_review} />}
           <ProgrammeDraftCard programmes={draft.programmes || []} />
+          {(draft.source_citations || draft.assumptions) && <EvidenceAssumptionsCard citations={draft.source_citations || []} assumptions={draft.assumptions || []} />}
           <ListCard title="Risk / claims checklist" items={draft.risk_checklist || []} />
           <IdeasCard ideas={draft.first_content_ideas || []} />
       </div>
+      {onRefine && (
+        <div style={{ marginTop:14, padding:12, border:"1px solid var(--border)", background:"var(--fill)", borderRadius:"var(--ce-radius)" }}>
+          <div style={{ fontSize:13, fontWeight:750, color:"var(--t1)", marginBottom:7 }}>Refine before approval</div>
+          <textarea
+            value={instruction}
+            onChange={e => setInstruction(e.target.value)}
+            rows={2}
+            placeholder="Example: make this more B2B, focus on LinkedIn, reduce sales language..."
+            style={{ ...inputStyle, minHeight:62, resize:"vertical", padding:"9px 10px" }}
+          />
+          <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8 }}>
+            <button
+              onClick={() => {
+                const text = instruction.trim();
+                if (!text) return;
+                setInstruction("");
+                onRefine(text);
+              }}
+              disabled={loading || !instruction.trim()}
+              style={buttonStyle("secondary")}
+            >
+              Refine draft
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:14 }}>
         {onBack && <button onClick={onBack} style={buttonStyle("ghost")}>Review understanding</button>}
         <button onClick={onApprove} disabled={loading} style={buttonStyle("primary")}><Check size={14}/>Approve and save strategy</button>
@@ -1096,7 +1371,7 @@ function ChipGroup({ values, selected = [], onToggle }) {
   return <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>{values.map(value => <button key={value} onClick={() => onToggle(value)} style={chipStyle(selected.includes(value))}>{value}</button>)}</div>;
 }
 
-function EditableFact({ title, value, fallback, onSave }) {
+function EditableFact({ fieldKey, title, value, fallback, reviewStatus, onReviewFact, onSave }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || "");
   const uncertain = !value;
@@ -1116,6 +1391,9 @@ function EditableFact({ title, value, fallback, onSave }) {
           {uncertain && <ShieldAlert size={13} style={{ verticalAlign:"-2px", marginRight:5 }} />}
           {value || fallback}
         </div>
+      )}
+      {!editing && value && (
+        <FactReviewMini fieldKey={fieldKey} value={value} status={reviewStatus} onReviewFact={onReviewFact} />
       )}
     </div>
   );
@@ -1167,6 +1445,51 @@ function JsonCard({ title, data }) {
       ) : (
         <div style={{ fontSize:12, color:"var(--t3)" }}>No draft details were returned for this section.</div>
       )}
+    </div>
+  );
+}
+
+function EvidenceAssumptionsCard({ citations = [], assumptions = [] }) {
+  return (
+    <div style={factStyle}>
+      <div style={{ fontSize:14, fontWeight:750, marginBottom:8 }}>Evidence and assumptions</div>
+      <div style={{ display:"grid", gap:8 }}>
+        {citations.slice(0, 4).map(citation => (
+          <div key={citation.field_key} style={{ padding:"8px 0", borderTop:"1px solid var(--border2)" }}>
+            <div style={{ fontSize:12, color:"var(--t1)", fontWeight:700 }}>{citation.field_label} · {citation.confidence}</div>
+            {(citation.evidence || []).slice(0, 2).map(item => (
+              <div key={`${citation.field_key}-${item.excerpt}`} style={{ fontSize:12, color:"var(--t3)", lineHeight:1.45, marginTop:4 }}>
+                {item.excerpt}
+              </div>
+            ))}
+          </div>
+        ))}
+        {assumptions.slice(0, 4).map(assumption => (
+          <div key={assumption.field_key} style={{ fontSize:12, color:"var(--t3)", lineHeight:1.45 }}>
+            <b>{assumption.label}:</b> {assumption.note}
+          </div>
+        ))}
+        {!citations.length && !assumptions.length && <div style={smallText}>No detailed source trace is available for this draft.</div>}
+      </div>
+    </div>
+  );
+}
+
+function QualityReviewCard({ review }) {
+  return (
+    <div style={factStyle}>
+      <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", marginBottom:8 }}>
+        <div style={{ fontSize:14, fontWeight:750 }}>Strategy quality review</div>
+        <Pill tone={review.status === "clear" ? "success" : "warning"}>{review.score}% · {review.status}</Pill>
+      </div>
+      <div style={{ display:"grid", gap:7 }}>
+        {(review.issues || []).slice(0, 5).map(item => (
+          <div key={`${item.category}-${item.message}`} style={{ fontSize:12, color:"var(--t2)", lineHeight:1.45 }}>
+            <b>{item.severity}:</b> {item.message}
+          </div>
+        ))}
+        {!(review.issues || []).length && <div style={smallText}>No major quality issues detected in this deterministic review.</div>}
+      </div>
     </div>
   );
 }
@@ -1224,7 +1547,7 @@ function ErrorCard({ message, onRetry }) {
   );
 }
 
-function buildSourceTrace(intake, savedSources) {
+function buildSourceTrace(intake, savedSources, factEvidence = null) {
   const sources = [];
   const work = [];
   if (intake.websiteUrl) {
@@ -1243,8 +1566,39 @@ function buildSourceTrace(intake, savedSources) {
     sources.push({ title:"Manual answers", type:"User answer", confidence:"provided by user" });
     work.push("Used manual answers");
   }
+  for (const source of savedSources || []) {
+    const intelligence = source.metadata_json?.source_intelligence;
+    if (intelligence?.evidence_snippets?.length) {
+      sources.push({
+        title: source.url || source.filename || `${source.source_type || "Source"} evidence`,
+        type: source.source_type || "source",
+        confidence: intelligence.confidence || source.status || "stored",
+        evidence: intelligence.evidence_snippets.slice(0, 3),
+      });
+    }
+    if (intelligence?.summary) work.push(`Summarized ${source.url || source.filename || source.source_type || "source"} (${intelligence.confidence || "unknown"} confidence)`);
+  }
+  const evidenceCount = factEvidence
+    ? Object.values(factEvidence).reduce((total, items) => total + (Array.isArray(items) ? items.length : 0), 0)
+    : 0;
+  if (evidenceCount) work.push(`Linked ${evidenceCount} evidence snippet${evidenceCount === 1 ? "" : "s"} to inferred facts`);
   if (savedSources?.length) work.push(`Saved ${savedSources.length} source record${savedSources.length === 1 ? "" : "s"}`);
   return { sources, work, confidence:sources.length ? "Source trace is based on available V1 intake records." : null };
+}
+
+function restoreOnboardingState(state, setters) {
+  if (!state || typeof state !== "object") return;
+  if (state.phase) setters.setPhase(state.phase);
+  if (state.intake && typeof state.intake === "object") setters.setIntake({ ...blankOnboardingIntake(), ...state.intake });
+  setters.setSources(Array.isArray(state.sources) ? state.sources : []);
+  setters.setFacts(state.facts || null);
+  setters.setConfidence(state.confidence || null);
+  setters.setClarifications(Array.isArray(state.clarifications) ? state.clarifications : []);
+  setters.setAnswers(state.answers && typeof state.answers === "object" ? state.answers : {});
+  setters.setDraft(state.draft || null);
+  setters.setLimitations(Array.isArray(state.limitations) ? state.limitations : []);
+  setters.setSetupBrief(state.setupBrief && typeof state.setupBrief === "object" ? { ...EMPTY_SETUP_BRIEF, ...state.setupBrief } : EMPTY_SETUP_BRIEF);
+  setters.setSuggestedReplies(Array.isArray(state.suggestedReplies) ? state.suggestedReplies : []);
 }
 
 async function streamOnboardingAgent({ token, onToken, onToolCalls, ...body }) {
@@ -1331,7 +1685,7 @@ function buildSourcePayload(intake) {
   for (const file of intake.files || []) {
     const ext = file.name.split(".").pop()?.toLowerCase();
     const source_type = ext === "md" ? "markdown" : ext === "pdf" ? "pdf" : ["jpg", "jpeg", "png"].includes(ext) ? "image" : "text_note";
-    sources.push({ source_type, filename:file.name, mime_type:file.mime_type, text:file.text, metadata_json:{ size:file.size, status:file.status, note:file.note } });
+    sources.push({ source_type, filename:file.name, mime_type:file.mime_type, text:file.text, image_base64:file.image_base64 || "", metadata_json:{ size:file.size, status:file.status, note:file.note, extraction_method:file.extraction_method, ocr_status:file.ocr_status, confidence:file.confidence } });
   }
   return sources;
 }
@@ -1372,6 +1726,11 @@ function friendlyOnboardingError(message) {
   if (/url|website|fetch|access/i.test(text)) return "I couldn't access this page. You can paste key text, upload a document, try another URL, or continue manually.";
   if (/pdf|image|parse/i.test(text)) return "This file was uploaded, but deep analysis is not available yet. You can paste relevant text or continue with other sources.";
   return text || "I couldn't complete this analysis. You can retry or continue manually.";
+}
+
+function formatRefinementChanges(changes = []) {
+  if (!changes.length) return "I revised the draft and kept it unsaved so you can review it before approval.";
+  return `I revised the draft. Changes:\n${changes.slice(0, 5).map(change => `- ${change}`).join("\n")}`;
 }
 
 const inputStyle = { width:"100%", minHeight:34, borderRadius:"var(--ce-radius-sm)", border:"1px solid var(--border)", background:"var(--fill2)", color:"var(--t1)", fontSize:13, padding:"0 10px", outline:"none", fontFamily:"inherit", boxSizing:"border-box" };

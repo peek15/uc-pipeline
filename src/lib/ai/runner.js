@@ -9,6 +9,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { callClaudeRaw, callClaudeStreamRaw } from "@/lib/db";
+import { prepareGatewayPromptCall } from "./gateway";
 import { logAiCall, logAiCallError } from "./audit";
 
 // ── Templated prompt registry ──
@@ -79,14 +80,20 @@ export async function runPrompt({
     prompt = mod.build(params);
   }
 
-  const defaults      = mod?.defaults || {};
-  const resolvedMax   = maxTokens ?? defaults.maxTokens ?? 1000;
-  const resolvedModel = model     ?? defaults.model     ?? "sonnet";
+  const defaults = mod?.defaults || {};
+  const gateway = await prepareGatewayPromptCall({
+    type,
+    prompt,
+    context,
+    maxTokens: maxTokens ?? defaults.maxTokens,
+    model: model ?? defaults.model,
+    stream: false,
+  });
 
   const t0 = Date.now();
 
   try {
-    const { text, usage, model: modelId } = await callClaudeRaw(prompt, resolvedMax, resolvedModel);
+    const { text, usage, model: modelId } = await callClaudeRaw(gateway.prompt, gateway.maxTokens, gateway.model);
     const duration_ms = Date.now() - t0;
 
     const ai_call_id = await logAiCall({
@@ -99,6 +106,7 @@ export async function runPrompt({
       brand_profile_id: context.brand_profile_id || null,
       workspace_id:     context.workspace_id     || null,
       duration_ms,
+      ...gateway.logFields,
     });
 
     let parsed = null;
@@ -116,22 +124,24 @@ export async function runPrompt({
           error_type:    "parse",
           error_message: e?.message || String(e),
           duration_ms,
+          ...gateway.logFields,
         });
       }
     }
 
-    return { text, parsed, usage, model: modelId, ai_call_id };
+    return { text, parsed, usage, model: modelId, ai_call_id, gateway: gateway.metadata };
   } catch (e) {
     const duration_ms = Date.now() - t0;
     await logAiCallError({
       type,
-      model_version: resolvedModel,
+      model_version: gateway.model,
       story_id:         context.story_id         || null,
       brand_profile_id: context.brand_profile_id || null,
       workspace_id:     context.workspace_id     || null,
       error_type:    "provider_error",
       error_message: e?.message || String(e),
       duration_ms,
+      ...gateway.logFields,
     });
     throw e;
   }
@@ -156,15 +166,21 @@ export async function runPromptStream({
     prompt = mod.build(params);
   }
 
-  const defaults      = mod?.defaults || {};
-  const resolvedMax   = maxTokens ?? defaults.maxTokens ?? 1000;
-  const resolvedModel = model     ?? defaults.model     ?? "sonnet";
+  const defaults = mod?.defaults || {};
+  const gateway = await prepareGatewayPromptCall({
+    type,
+    prompt,
+    context,
+    maxTokens: maxTokens ?? defaults.maxTokens,
+    model: model ?? defaults.model,
+    stream: true,
+  });
 
   const t0 = Date.now();
 
   try {
     const { text, usage, model: modelId } = await callClaudeStreamRaw(
-      prompt, resolvedMax, onChunk, resolvedModel
+      gateway.prompt, gateway.maxTokens, onChunk, gateway.model
     );
     const duration_ms = Date.now() - t0;
 
@@ -178,20 +194,22 @@ export async function runPromptStream({
       brand_profile_id: context.brand_profile_id || null,
       workspace_id:     context.workspace_id     || null,
       duration_ms,
+      ...gateway.logFields,
     });
 
-    return { text, usage, model: modelId, ai_call_id };
+    return { text, usage, model: modelId, ai_call_id, gateway: gateway.metadata };
   } catch (e) {
     const duration_ms = Date.now() - t0;
     await logAiCallError({
       type,
-      model_version: resolvedModel,
+      model_version: gateway.model,
       story_id:         context.story_id         || null,
       brand_profile_id: context.brand_profile_id || null,
       workspace_id:     context.workspace_id     || null,
       error_type:    "provider_error",
       error_message: e?.message || String(e),
       duration_ms,
+      ...gateway.logFields,
     });
     throw e;
   }

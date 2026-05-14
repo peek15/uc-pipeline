@@ -259,6 +259,12 @@ function Bubble({ m, streaming }) {
             ? <span style={{ whiteSpace: "pre-wrap" }}>{text}</span>
             : <Markdown text={text} />}
       </div>
+      {m.role === "assistant" && m.memoryMeta?.count > 0 && (
+        <div style={{ fontSize: 10, color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, paddingLeft: 2 }}>
+          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--t4)", flexShrink: 0, display: "inline-block" }} />
+          Guided by {m.memoryMeta.count} workspace {m.memoryMeta.count === 1 ? "memory" : "memories"}
+        </div>
+      )}
     </div>
   );
 }
@@ -302,6 +308,7 @@ export default function AgentPanel({
   const panelRef     = useRef(null);
   const textareaRef  = useRef(null);
   const historyReady = useRef(false);
+  const memoryMetaRef = useRef(null);
 
   // ── Load history
   useEffect(() => {
@@ -458,6 +465,7 @@ export default function AgentPanel({
   const send = useCallback(async (overrideText) => {
     const text = (overrideText ?? input).trim();
     if ((!text && !pending.length) || streaming) return;
+    memoryMetaRef.current = null;
     setInput("");
     setPending([]);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -515,12 +523,17 @@ export default function AgentPanel({
           if (raw === "[DONE]") continue;
           try {
             const ev = JSON.parse(raw);
-            if (ev.text) {
+            if (ev.type === "memory_context") {
+              memoryMetaRef.current = { count: ev.count };
+            } else if (ev.text) {
               full += ev.text;
               setMessages(m => { const n = [...m]; n[n.length - 1] = { role: "assistant", content: full }; return n; });
             }
           } catch {}
         }
+      }
+      if (memoryMetaRef.current) {
+        setMessages(m => { const n = [...m]; n[n.length - 1] = { ...n[n.length - 1], content: full, memoryMeta: memoryMetaRef.current }; return n; });
       }
       runActions(full);
     } catch (err) {

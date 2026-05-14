@@ -211,7 +211,7 @@ function transformMessagesForOpenAI(messages, system) {
   return out;
 }
 
-async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, workspaceId, userEmail, taskType, costCenter, costCategory, dataClass, privacyMode, providerPrivacyProfile, payloadHash, gatewayMetadata }) {
+async function callAnthropic({ model, system, messages, maxTokens, key, tools, profileId, workspaceId, userEmail, taskType, costCenter, costCategory, dataClass, privacyMode, providerPrivacyProfile, payloadHash, gatewayMetadata, memoryCount = 0 }) {
   if (!key) throw new Error("Anthropic API key not configured");
 
   const { readable, writable } = new TransformStream();
@@ -226,6 +226,10 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
     let succeeded = false;
 
     try {
+      if (memoryCount > 0) {
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "memory_context", count: memoryCount })}\n\n`));
+      }
+
       let turnMessages = transformMessagesForAnthropic(messages);
 
       for (let turn = 0; turn < 4; turn++) {
@@ -346,7 +350,7 @@ async function callAnthropic({ model, system, messages, maxTokens, key, tools, p
   return new Response(readable, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" } });
 }
 
-async function callOpenAI({ model, system, messages, maxTokens, key, profileId, workspaceId, userEmail, taskType, costCenter, costCategory, dataClass, privacyMode, providerPrivacyProfile, payloadHash, gatewayMetadata }) {
+async function callOpenAI({ model, system, messages, maxTokens, key, profileId, workspaceId, userEmail, taskType, costCenter, costCategory, dataClass, privacyMode, providerPrivacyProfile, payloadHash, gatewayMetadata, memoryCount = 0 }) {
   if (!key) throw new Error("OpenAI API key not configured");
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -380,6 +384,9 @@ async function callOpenAI({ model, system, messages, maxTokens, key, profileId, 
     let succeeded = false;
 
     try {
+      if (memoryCount > 0) {
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "memory_context", count: memoryCount })}\n\n`));
+      }
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -534,6 +541,7 @@ export async function POST(request) {
       providerPrivacyProfile: gateway.providerPrivacyProfile,
       payloadHash: gateway.payloadHash,
       gatewayMetadata: { ...(gateway.metadata || {}), ...memoryMetadata },
+      memoryCount: workspaceMemory?.memories?.length || 0,
     };
     if (provider === "openai") return await callOpenAI(common);
     return await callAnthropic({ ...common, tools: [WRITE_INSIGHT_SCHEMA, DB_READ_SCHEMA, AUDIT_READ_SCHEMA] });

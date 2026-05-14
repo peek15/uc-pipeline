@@ -1,5 +1,6 @@
 import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
 import { buildExportPackage, canExport } from "@/lib/compliance";
+import { logWorkflowOutcomeSnapshot } from "@/lib/performance";
 
 function ok(payload) { return Response.json(payload); }
 function err(message, status = 400) { return Response.json({ error: message }, { status }); }
@@ -94,6 +95,8 @@ export async function POST(request) {
       approval_id: approval?.id || null,
     },
   }).then(() => {});
+
+  logWorkflowOutcomeSnapshot({ svc, story, tenant: { workspace_id: workspaceId, brand_profile_id: story.brand_profile_id }, stage: "exported", actorId: user.id }).catch(() => {});
 
   return ok({ export: exported, export_payload: payload });
 }

@@ -1,5 +1,6 @@
 import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
 import { canApprove } from "@/lib/compliance";
+import { logWorkflowOutcomeSnapshot } from "@/lib/performance";
 
 function ok(payload) { return Response.json(payload); }
 function err(message, status = 400) { return Response.json({ error: message }, { status }); }
@@ -109,6 +110,8 @@ export async function POST(request) {
       risk_level: check?.risk_level || null,
     },
   }).then(() => {});
+
+  logWorkflowOutcomeSnapshot({ svc, story, tenant: { workspace_id: workspaceId, brand_profile_id: story.brand_profile_id }, stage: "approved", actorId: user.id }).catch(() => {});
 
   return ok({ approval, approval_status: "approved" });
 }

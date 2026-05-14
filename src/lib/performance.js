@@ -1,6 +1,32 @@
 import { supabase } from "@/lib/db";
 import { normalizeTenant } from "@/lib/brand";
 
+// Server-safe: accepts an optional svc (service-role client) for use in API routes.
+// Falls back to the browser client when called client-side.
+export async function logWorkflowOutcomeSnapshot({ svc, story, tenant, stage = "approved", actorId = null }) {
+  if (!story?.id) return null;
+  const row = performanceSnapshotFromStory(story, {}, tenant, "workflow_outcome");
+  row.raw_source = {
+    stage,
+    actor_user_id: actorId || null,
+    workflow_outcome: true,
+    recorded_at: new Date().toISOString(),
+  };
+  try {
+    const client = svc || supabase;
+    const { data, error } = await client
+      .from("performance_snapshots")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) { console.warn("[performance] logWorkflowOutcomeSnapshot:", error.message); return null; }
+    return data?.id || null;
+  } catch (e) {
+    console.warn("[performance] logWorkflowOutcomeSnapshot:", e?.message);
+    return null;
+  }
+}
+
 function toInt(value) {
   if (value === "" || value == null) return null;
   const n = parseInt(String(value).replace(/[^0-9-]/g, ""), 10);

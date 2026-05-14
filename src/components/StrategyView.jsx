@@ -152,6 +152,21 @@ function ProgrammeEditor({ programmes, onChange }) {
   );
 }
 
+const TYPE_LABEL = {
+  programme: "Programme",
+  content_pillar: "Pillar",
+  campaign: "Campaign",
+  content_idea: "Idea",
+  platform_strategy: "Platform",
+  risk_warning: "Risk",
+};
+
+const PRIORITY_COLOR = {
+  high: "var(--warning, #C49A3C)",
+  medium: "var(--t3)",
+  low: "var(--t4)",
+};
+
 export default function StrategyView({ settings = null, tenant = null, onRunOnboarding, onOpenAssistant, onSettingsChange }) {
   const [draft, setDraft] = useState(() => cloneSettings(settings));
   const [saving, setSaving] = useState(false);
@@ -175,6 +190,30 @@ export default function StrategyView({ settings = null, tenant = null, onRunOnbo
   const programmes = draft?.strategy?.programmes || [];
   const activeProgrammes = getActiveProgrammes(draft);
   const dirty = useMemo(() => JSON.stringify(draft || {}) !== JSON.stringify(settings || {}), [draft, settings]);
+  const recommendations = (draft?.strategy?.strategy_recommendations || []).filter(r => r.status === "suggested");
+
+  const updateRecommendation = (id, patch) => {
+    const recs = (draft?.strategy?.strategy_recommendations || []).map(r => r.id === id ? { ...r, ...patch } : r);
+    updatePath("strategy.strategy_recommendations", recs);
+  };
+
+  const convertToProgramme = (rec) => {
+    setDraft(current => {
+      const recs = (current?.strategy?.strategy_recommendations || []).map(r => r.id === rec.id ? { ...r, status: "converted_to_programme" } : r);
+      const newProgramme = {
+        key: `programme_${Date.now()}`,
+        label: rec.title,
+        role: rec.rationale || "",
+        cadence: "Weekly",
+        desc: rec.rationale || "",
+        platforms: rec.platforms || [],
+        active: true,
+      };
+      const next = cloneSettings(current);
+      next.strategy = { ...next.strategy, strategy_recommendations: recs, programmes: [...(next.strategy?.programmes || []), newProgramme] };
+      return next;
+    });
+  };
 
   const updatePath = (path, value) => setDraft(current => setPath(current, path, value));
 
@@ -305,6 +344,56 @@ export default function StrategyView({ settings = null, tenant = null, onRunOnbo
           </div>
         </Panel>
       </div>
+
+      {recommendations.length > 0 && (
+        <Panel style={{ marginTop:18 }}>
+          <SectionHeader
+            title="Strategy Recommendations"
+            description="Suggestions from onboarding and the assistant. Accept, dismiss, or convert to your strategy."
+            meta={`${recommendations.length} pending`}
+            action={<button onClick={askAssistant} style={buttonStyle("ghost")}><Bot size={13}/>Ask assistant</button>}
+          />
+          <div style={{ display:"grid", gap:8 }}>
+            {recommendations.map(rec => (
+              <div key={rec.id} style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:12, alignItems:"start", padding:"12px 0", borderTop:"1px solid var(--border2)" }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:4 }}>
+                    <span style={{ fontSize:10, fontWeight:600, color:"var(--t4)", textTransform:"uppercase", letterSpacing:"0.06em", background:"var(--fill2)", border:"0.5px solid var(--border)", borderRadius:4, padding:"1px 6px" }}>
+                      {TYPE_LABEL[rec.type] || rec.type}
+                    </span>
+                    {rec.priority && rec.priority !== "low" && (
+                      <span style={{ fontSize:10, color:PRIORITY_COLOR[rec.priority] || "var(--t4)", fontWeight:500 }}>
+                        {rec.priority}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:13, fontWeight:600, color:"var(--t1)", marginBottom:3 }}>{rec.title}</div>
+                  {rec.rationale && (
+                    <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.5 }}>{rec.rationale}</div>
+                  )}
+                  {(rec.platforms?.length > 0 || rec.formats?.length > 0) && (
+                    <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginTop:6 }}>
+                      {(rec.platforms || []).map(p => (
+                        <span key={p} style={{ fontSize:10, color:"var(--t4)", background:"var(--fill2)", border:"0.5px solid var(--border)", borderRadius:4, padding:"1px 6px" }}>{p}</span>
+                      ))}
+                      {(rec.formats || []).map(f => (
+                        <span key={f} style={{ fontSize:10, color:"var(--t4)", background:"var(--fill2)", border:"0.5px solid var(--border)", borderRadius:4, padding:"1px 6px" }}>{f}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display:"flex", gap:6, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                  {rec.type === "programme" && (
+                    <button onClick={() => convertToProgramme(rec)} style={buttonStyle("secondary", { fontSize:11, padding:"4px 10px" })}>Add to programmes</button>
+                  )}
+                  <button onClick={() => updateRecommendation(rec.id, { status:"accepted" })} style={buttonStyle("ghost", { fontSize:11, padding:"4px 10px" })}><Check size={11}/>Accept</button>
+                  <button onClick={() => updateRecommendation(rec.id, { status:"dismissed" })} style={buttonStyle("ghost", { fontSize:11, padding:"4px 10px", color:"var(--t4)" })}>Dismiss</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

@@ -27,7 +27,7 @@ import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.53.0";
+const VERSION = "3.54.0";
 const PIPELINE_DISPLAY_STORAGE_KEY = "ce_pipeline_display_mode";
 
 const PRIMARY_TABS = [
@@ -854,7 +854,7 @@ export default function Home() {
                 <CreateView stories={stories} onUpdate={updateStory} mode={createMode} onModeChange={setCreateMode} tenant={activeTenant} settings={appSettings} campaigns={campaigns} onNavigate={setTab} />
               </div>
               <div style={{ display: tab==="calendar"   ? "block" : "none" }}><CalendarView   stories={stories} onUpdate={updateStory} onProduce={handleProduce} settings={appSettings} campaigns={campaigns} /></div>
-              <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} tenant={activeTenant} /></div>
+              <div style={{ display: tab==="analyze"    ? "block" : "none" }}><AnalyzeView    stories={stories} onUpdate={updateStory} tenant={activeTenant} settings={appSettings} /></div>
 
             </div>
           </main>

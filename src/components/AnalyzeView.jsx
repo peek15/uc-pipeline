@@ -1,17 +1,18 @@
 "use client";
 import { useState, useMemo } from "react";
-import { TrendingUp, Eye, Bookmark, Share2, Upload, BarChart3, Zap, CheckCircle, Clock, UserPlus } from "lucide-react";
-import { STAGES, FORMATS, FORMAT_MAP, ACCENT } from "@/lib/constants";
+import { Upload, BarChart3, CheckCircle } from "lucide-react";
+import { STAGES } from "@/lib/constants";
 import { logPerformanceSnapshot } from "@/lib/performance";
 import { PageHeader, Panel, StatCard, buttonStyle } from "@/components/OperationalUI";
+import { getAdaptiveScore } from "@/lib/adaptiveScoring";
 
 // ── Intelligence stage tracker ──
 function IntelligenceStage({ count }) {
   const stages = [
-    { stage: 1, label: "Data Capture",       threshold: 0,   desc: "Capturing training data from every publish" },
-    { stage: 2, label: "Pattern Signals", threshold: 50,  desc: "Early patterns and score correlations become visible" },
-    { stage: 3, label: "Readiness Signals",  threshold: 100, desc: "Predicted scores stay clearly labeled as directional" },
-    { stage: 4, label: "Voice Signals",  threshold: 200, desc: "Script consistency and voice patterns become easier to review" },
+    { stage: 1, label: "Data Capture",      threshold: 0,   desc: "Capturing training data from every publish" },
+    { stage: 2, label: "Pattern Signals",   threshold: 50,  desc: "Early patterns and score correlations become visible" },
+    { stage: 3, label: "Readiness Signals", threshold: 100, desc: "Predicted scores stay clearly labeled as directional" },
+    { stage: 4, label: "Voice Signals",     threshold: 200, desc: "Script consistency and voice patterns become easier to review" },
   ];
   const active = stages.filter(s => count >= s.threshold).length;
   const next   = stages.find(s => count < s.threshold);
@@ -23,7 +24,7 @@ function IntelligenceStage({ count }) {
         <span style={{ fontSize:11, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t2)" }}>Stage {active} active</span>
       </div>
       <div style={{ display:"flex", gap:4, marginBottom:10 }}>
-        {stages.map((s, i) => (
+        {stages.map((s) => (
           <div key={s.stage} style={{ flex:1, height:3, borderRadius:2, background: count>=s.threshold ? "#4A9B7F" : "var(--bg3)" }} />
         ))}
       </div>
@@ -40,7 +41,7 @@ function IntelligenceStage({ count }) {
               <div style={{ flex:1 }}>
                 <span style={{ fontSize:12, fontWeight:done?500:400, color: done?"var(--t1)":isCurrent?"var(--t2)":"var(--t3)" }}>Stage {s.stage} — {s.label}</span>
                 {isCurrent && next && (
-                  <span style={{ fontSize:11, color:"var(--t4)", marginLeft:8 }}>{next.threshold - count} videos to unlock</span>
+                  <span style={{ fontSize:11, color:"var(--t4)", marginLeft:8 }}>{next.threshold - count} content items to unlock</span>
                 )}
               </div>
             </div>
@@ -52,29 +53,73 @@ function IntelligenceStage({ count }) {
 }
 
 // ── Mini bar chart ──
-function BarChart({ data, valueKey="avg", labelKey="label", color="var(--t1)", format }) {
+function BarChart({ data, valueKey="avg", labelKey="label", color="var(--t3)" }) {
   if (!data.length) return null;
   const max = Math.max(...data.map(d => d[valueKey])) * 1.1 || 1;
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-      {data.map((d, i) => {
-        const fmt = FORMAT_MAP[d.format];
-        const barColor = fmt ? fmt.color : color;
-        return (
-          <div key={d[labelKey]||i}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                {fmt && <span style={{ width:8, height:8, borderRadius:2, background:fmt.color, display:"inline-block", flexShrink:0 }}/>}
-                <span style={{ fontSize:12, color:"var(--t2)" }}>{d[labelKey]} {d.count!=null&&<span style={{color:"var(--t4)",fontSize:11}}>({d.count})</span>}</span>
-              </div>
-              <span style={{ fontSize:12, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color: i===0?"var(--t1)":"var(--t2)" }}>{typeof d[valueKey]==="number"?d[valueKey].toFixed(1):d[valueKey]}</span>
-            </div>
-            <div style={{ height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden" }}>
-              <div style={{ height:"100%", width:`${(d[valueKey]/max)*100}%`, background:barColor, borderRadius:2, transition:"width 0.4s ease" }}/>
-            </div>
+      {data.map((d, i) => (
+        <div key={d[labelKey]||i}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+            <span style={{ fontSize:12, color:"var(--t2)" }}>{d[labelKey]} {d.count!=null && <span style={{ color:"var(--t4)", fontSize:11 }}>({d.count})</span>}</span>
+            <span style={{ fontSize:12, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color: i===0?"var(--t1)":"var(--t2)" }}>
+              {typeof d[valueKey]==="number" ? d[valueKey].toFixed(1) : d[valueKey]}
+            </span>
           </div>
-        );
-      })}
+          <div style={{ height:3, borderRadius:2, background:"var(--bg3)", overflow:"hidden" }}>
+            <div style={{ height:"100%", width:`${(d[valueKey]/max)*100}%`, background:color, borderRadius:2, transition:"width 0.4s ease" }}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Adaptive score distribution ──
+function AdaptiveScorePanel({ stories, settings }) {
+  const scored = useMemo(() => {
+    return stories
+      .filter(s => !["rejected", "archived"].includes(s.status))
+      .map(s => ({ story: s, score: getAdaptiveScore(s, settings).total }))
+      .filter(({ score }) => score > 0);
+  }, [stories, settings]);
+
+  if (!scored.length) return (
+    <div style={{ fontSize:12, color:"var(--t4)", padding:"10px 0" }}>
+      No scored content yet. Run Ideas to start building adaptive scores.
+    </div>
+  );
+
+  const high = scored.filter(({ score }) => score >= 70);
+  const mid  = scored.filter(({ score }) => score >= 40 && score < 70);
+  const low  = scored.filter(({ score }) => score < 40);
+  const avg  = Math.round(scored.reduce((s, { score }) => s + score, 0) / scored.length);
+
+  return (
+    <div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:12 }}>
+        {[
+          { label:"Strong", value:high.length, note:"≥70" },
+          { label:"Mid",    value:mid.length,  note:"40–69" },
+          { label:"Weak",   value:low.length,  note:"<40" },
+          { label:"Avg",    value:avg,         note:"/100" },
+        ].map(({ label, value, note }) => (
+          <div key={label} style={{ padding:"8px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+            <div style={{ fontSize:10, color:"var(--t4)", marginBottom:2 }}>
+              {label} <span style={{ fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{note}</span>
+            </div>
+            <div style={{ fontSize:17, fontWeight:650, color:"var(--t1)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+        {[...scored].sort((a, b) => b.score - a.score).slice(0, 6).map(({ story, score }) => (
+          <div key={story.id} style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 40px", gap:10, alignItems:"center", padding:"6px 0", borderTop:"1px solid var(--border2)" }}>
+            <div style={{ fontSize:12, color:"var(--t2)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{story.title}</div>
+            <div style={{ fontSize:12, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t1)", textAlign:"right" }}>{score}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -118,9 +163,8 @@ function ScoreCorrelation({ stories }) {
       <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
         {sorted.map(s => {
           const completion = parseFloat(s.metrics_completion);
-          const fmt = FORMAT_MAP[s.format];
           return (
-            <div key={s.id} style={{ display:"grid", gridTemplateColumns:"1fr 60px 60px", gap:12, alignItems:"center", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", borderLeft:`3px solid ${fmt?.color||"var(--border)"}` }}>
+            <div key={s.id} style={{ display:"grid", gridTemplateColumns:"1fr 60px 60px", gap:12, alignItems:"center", padding:"8px 10px", borderRadius:7, background:"var(--fill2)", borderLeft:"3px solid var(--border)" }}>
               <div style={{ fontSize:12, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
               <div style={{ textAlign:"right" }}>
                 <div style={{ fontSize:10, color:"var(--t4)" }}>Score</div>
@@ -161,7 +205,7 @@ function findCSVColumn(headers, candidates) {
   return null;
 }
 
-export default function AnalyzeView({ stories, onUpdate, tenant }) {
+export default function AnalyzeView({ stories, onUpdate, tenant, settings = null }) {
   const [activeTab,  setActiveTab]  = useState("overview");
   const [selId,      setSelId]      = useState(null);
   const [form,       setForm]       = useState({});
@@ -228,13 +272,13 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
           const story = stories.find(s => s.title?.toLowerCase().includes(title) || title.includes(s.title?.toLowerCase().slice(0,15)));
           if (!story) continue;
           const updates = {};
-          if (viewsCol&&row[viewsCol])      updates.metrics_views      = row[viewsCol];
+          if (viewsCol&&row[viewsCol])           updates.metrics_views      = row[viewsCol];
           if (completionCol&&row[completionCol]) updates.metrics_completion = row[completionCol];
-          if (savesCol&&row[savesCol])      updates.metrics_saves      = row[savesCol];
-          if (sharesCol&&row[sharesCol])    updates.metrics_shares     = row[sharesCol];
-          if (followsCol&&row[followsCol])  updates.metrics_follows    = row[followsCol];
-          if (commentsCol&&row[commentsCol]) updates.metrics_comments   = row[commentsCol];
-          if (likesCol&&row[likesCol])      updates.metrics_likes      = row[likesCol];
+          if (savesCol&&row[savesCol])           updates.metrics_saves      = row[savesCol];
+          if (sharesCol&&row[sharesCol])         updates.metrics_shares     = row[sharesCol];
+          if (followsCol&&row[followsCol])       updates.metrics_follows    = row[followsCol];
+          if (commentsCol&&row[commentsCol])     updates.metrics_comments   = row[commentsCol];
+          if (likesCol&&row[likesCol])           updates.metrics_likes      = row[likesCol];
           if (Object.keys(updates).length) {
             onUpdate(story.id, updates);
             try {
@@ -255,7 +299,7 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
     const g = {};
     for (const s of published) {
       const key = s[field]; if (!key) continue;
-      if (!g[key]) g[key] = { label:key, count:0, completions:[], views:[], saves:[], format:s.format };
+      if (!g[key]) g[key] = { label:key, count:0, completions:[], views:[], saves:[] };
       g[key].count++;
       if (s.metrics_completion) g[key].completions.push(parseFloat(s.metrics_completion));
       if (s.metrics_views)      g[key].views.push(parseInt(s.metrics_views));
@@ -264,31 +308,31 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
     return Object.values(g)
       .map(g=>({
         ...g,
-        avg: g.completions.length ? g.completions.reduce((a,b)=>a+b,0)/g.completions.length : 0,
-        avgViews: g.views.length ? g.views.reduce((a,b)=>a+b,0)/g.views.length : 0,
+        avg:      g.completions.length ? g.completions.reduce((a,b)=>a+b,0)/g.completions.length : 0,
+        avgViews: g.views.length       ? g.views.reduce((a,b)=>a+b,0)/g.views.length : 0,
       }))
       .filter(g=>g.count>0)
       .sort((a,b)=>b.avg-a.avg);
   };
 
-  const byFormat    = analyzeBy("format");
-  const byArchetype = analyzeBy("archetype");
-  const byEra       = analyzeBy("era");
+  const byContentType = analyzeBy("content_type");
+  const byChannel     = analyzeBy("channel");
+  const byFormat      = analyzeBy("format");
   const activePipelineCount = stories.filter(s => !["rejected","archived","published"].includes(s.status)).length;
   const approvedOrReadyCount = stories.filter(s => ["approved","scripted","produced"].includes(s.status)).length;
-  const topFormat = byFormat[0]?.label || null;
+  const topContentType = byContentType[0]?.label || byFormat[0]?.label || null;
   const learningSignals = [
-    topFormat ? `Most logged performance currently belongs to ${topFormat}.` : "No format pattern is available until more content has logged metrics.",
+    topContentType ? `Most logged performance currently belongs to ${topContentType}.` : "No content type pattern is available until more content has logged metrics.",
     activePipelineCount > publishedCt ? "Your pipeline currently has more in-progress content than published outputs." : "Published outputs are keeping pace with the active pipeline.",
     approvedOrReadyCount ? `${approvedOrReadyCount} content item${approvedOrReadyCount===1?"":"s"} appear ready for creation, scheduling, or export steps.` : "No approved or ready content is available for downstream workflow steps yet.",
     published.length ? "These signals are directional and based only on content and metrics already entered in this workspace." : "No performance data has been imported yet.",
   ];
 
   const TABS = [
-    { key:"overview",     label:"Overview" },
-    { key:"score",        label:"Score signals" },
-    { key:"breakdowns",   label:"Coverage" },
-    { key:"log",          label:"Log signals" },
+    { key:"overview",   label:"Overview" },
+    { key:"score",      label:"Score signals" },
+    { key:"breakdowns", label:"Coverage" },
+    { key:"log",        label:"Log signals" },
   ];
 
   const tabStyle = (k) => ({
@@ -325,19 +369,18 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
       {/* ── Overview ── */}
       {activeTab==="overview" && (
         <div>
-          {/* Summary stats */}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:10, marginBottom:20 }}>
             {[
-              { label:"Published",    value:publishedCt, suffix:"" },
-              { label:"With metrics", value:published.filter(s=>s.metrics_completion).length, suffix:"" },
+              { label:"Published",      value:publishedCt, suffix:"" },
+              { label:"With metrics",   value:published.filter(s=>s.metrics_completion).length, suffix:"" },
               { label:"Avg completion", value: published.filter(s=>s.metrics_completion).length ? (published.filter(s=>s.metrics_completion).reduce((a,s)=>a+parseFloat(s.metrics_completion),0)/published.filter(s=>s.metrics_completion).length).toFixed(1) : "—", suffix:"%" },
-              { label:"Avg score",    value: published.filter(s=>s.score_total).length ? Math.round(published.filter(s=>s.score_total).reduce((a,s)=>a+s.score_total,0)/published.filter(s=>s.score_total).length) : "—", suffix:"/100" },
+              { label:"Avg score",      value: published.filter(s=>s.score_total).length ? Math.round(published.filter(s=>s.score_total).reduce((a,s)=>a+s.score_total,0)/published.filter(s=>s.score_total).length) : "—", suffix:"/100" },
             ].map(m=>(
               <StatCard key={m.label} label={m.label} value={m.value} suffix={m.suffix} />
             ))}
           </div>
 
-          <Panel style={{ marginBottom: 20 }}>
+          <Panel style={{ marginBottom:20 }}>
             <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>What Creative Engine is learning</div>
             <div style={{ display:"grid", gap:7 }}>
               {learningSignals.map(signal => (
@@ -348,22 +391,30 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
             </div>
           </Panel>
 
-          {published.length < 3 ? (
+          {/* Adaptive score distribution */}
+          <Panel style={{ marginBottom:20 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>Adaptive score distribution</div>
+            <AdaptiveScorePanel stories={stories} settings={settings} />
+          </Panel>
+
+          {published.length >= 3 && (
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+              <Panel>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>By content type</div>
+                <BarChart data={byContentType.length ? byContentType : byFormat} valueKey="avg" labelKey="label"/>
+              </Panel>
+              <Panel>
+                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>By channel</div>
+                <BarChart data={byChannel} valueKey="avg" labelKey="label"/>
+              </Panel>
+            </div>
+          )}
+
+          {published.length < 3 && (
             <div style={{ textAlign:"center", padding:"48px 0", color:"var(--t4)" }}>
               <BarChart3 size={32} style={{ margin:"0 auto 12px", display:"block", opacity:0.25 }}/>
               <div style={{ fontSize:13 }}>Log 3+ published content items to see workspace patterns</div>
-              <div style={{ fontSize:11, marginTop:6 }}>Import from Metricool or log manually in the Log Metrics tab</div>
-            </div>
-          ) : (
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
-              <Panel>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>By Format</div>
-                <BarChart data={byFormat} valueKey="avg" labelKey="label"/>
-              </Panel>
-              <Panel>
-                <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>By Era</div>
-                <BarChart data={byEra} valueKey="avg" labelKey="label"/>
-              </Panel>
+              <div style={{ fontSize:11, marginTop:6 }}>Import from Metricool or log manually in the Log signals tab</div>
             </div>
           )}
         </div>
@@ -376,9 +427,9 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
       {activeTab==="breakdowns" && (
         <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
           {[
-            { label:"Angle", data:byArchetype },
-            { label:"Format",    data:byFormat    },
-            { label:"Era",       data:byEra       },
+            { label:"Content type", data: byContentType.length ? byContentType : byFormat },
+            { label:"Channel",      data: byChannel },
+            { label:"Format",       data: byFormat },
           ].map(({ label, data }) => (
             <Panel key={label}>
               <div style={{ fontSize:11, fontWeight:600, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:12 }}>{label} · avg completion rate</div>
@@ -407,15 +458,15 @@ export default function AnalyzeView({ stories, onUpdate, tenant }) {
               <div style={{ fontSize:14, fontWeight:500, color:"var(--t1)", marginBottom:14 }}>{sel.title}</div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:8, marginBottom:14 }}>
                 {[
-                  { k:"metrics_views",      label:"Views",        suffix:"" },
-                  { k:"metrics_completion", label:"Completion %",  suffix:"%" },
-                  { k:"metrics_saves",      label:"Saves",        suffix:"" },
-                  { k:"metrics_shares",     label:"Shares",       suffix:"" },
-                  { k:"metrics_follows",    label:"Follows",      suffix:"" },
-                  { k:"metrics_comments",   label:"Comments",     suffix:"" },
-                  { k:"metrics_likes",      label:"Likes",        suffix:"" },
-                  { k:"metrics_watch_time", label:"Watch time",   suffix:"s" },
-                ].map(({ k, label, suffix }) => (
+                  { k:"metrics_views",      label:"Views",       suffix:"" },
+                  { k:"metrics_completion", label:"Completion %", suffix:"%" },
+                  { k:"metrics_saves",      label:"Saves",       suffix:"" },
+                  { k:"metrics_shares",     label:"Shares",      suffix:"" },
+                  { k:"metrics_follows",    label:"Follows",     suffix:"" },
+                  { k:"metrics_comments",   label:"Comments",    suffix:"" },
+                  { k:"metrics_likes",      label:"Likes",       suffix:"" },
+                  { k:"metrics_watch_time", label:"Watch time",  suffix:"s" },
+                ].map(({ k, label }) => (
                   <div key={k}>
                     <div style={{ fontSize:10, color:"var(--t3)", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</div>
                     <input

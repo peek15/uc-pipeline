@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.53.0
+- App badge/package target: v3.55.0
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -232,6 +232,21 @@ scheduling, provider operations, quality gates, and analytics.
 - Shift+Option/Alt+Left/Right moves across Create steps.
 - Option/Alt+Up/Down moves between queued stories.
 - `[[nav:script]]` opens Create near writing; `[[nav:production]]` opens Create near production for backward compatibility.
+- "Open in Studio" button on the selected content item navigates to `/studio/[contentItemId]`.
+
+## Studio (v3.55.0+)
+- Route: `/studio/[contentItemId]` — standalone full-screen workspace, not embedded inside Create.
+- Create produces initial content. Studio is for reviewing, revising, versioning, regenerating, and approving generated content.
+- Studio uses a simple vertical (9:16) / horizontal (16:9) player area, not a decorative phone mockup or CapCut-style editor.
+- Timeline is block-based (Hook, Problem, Proof, CTA etc.), not frame-by-frame or multi-track.
+- Each block has: label, start/end timecode, sourceType (user_asset, ai_generated, licensed, text, voice, caption), editable flag.
+- User-asset and licensed blocks are not freely AI-regenerable; show the modifiability hint.
+- User feedback becomes structured revision cards: timecodeStart/End, subject, comment, draft instruction, status, blockId.
+- "Generate new version" shows a regeneration plan before execution. Real provider regeneration is Sprint 11B.
+- Revision persistence is local state only in Sprint 11A. Sprint 11B will add studio_blocks, content_versions, edit_requests, regeneration_jobs tables.
+- Use Claude/VS Code-style micro-interactions. No glows, gradients, bounce, or heavy animation.
+- Components: `src/components/studio/StudioWorkspace.jsx`, `src/components/studio/studioMockData.js`.
+- Page route: `src/app/studio/[contentItemId]/page.jsx`.
 
 ## Operational Surface Direction
 - Pipeline should be a calm operational list of content items, stages, blockers, and next actions.

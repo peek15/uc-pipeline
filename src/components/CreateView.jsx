@@ -935,6 +935,13 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                     <div style={{ display: "grid", justifyItems: "end", gap: 6 }}>
                       <div style={{ fontSize: 10, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>Next action</div>
                       <Pill active>{nextAction(selected, settings)}</Pill>
+                      <a
+                        href={`/studio/${selected.id}`}
+                        style={{ ...buttonStyle("ghost"), fontSize: 11, padding: "4px 10px", textDecoration: "none" }}
+                        title="Review and request precise changes."
+                      >
+                        Open in Studio
+                      </a>
                     </div>
                   </div>
 	                  <div style={{ height: 3, borderRadius: 999, background: "var(--bg3)", overflow: "hidden", margin: "12px 0" }}>

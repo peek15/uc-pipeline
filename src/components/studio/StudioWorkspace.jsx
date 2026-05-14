@@ -285,7 +285,7 @@ function RegenPlanModal({ revisions, blocks, onClose, onConfirm, creating }) {
         </div>
 
         <div style={{ padding: "10px 12px", borderRadius: 7, background: "var(--fill)", border: "0.5px solid var(--border)", fontSize: 12, color: "var(--t4)", marginBottom: 16, textAlign: "center" }}>
-          Provider regeneration is not yet implemented. Creating a new version record only.
+          Script will be revised by AI. Video rendering is not yet wired to a provider.
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -295,7 +295,7 @@ function RegenPlanModal({ revisions, blocks, onClose, onConfirm, creating }) {
             disabled={creating}
             style={buttonStyle("primary", { opacity: creating ? 0.6 : 1 })}
           >
-            {creating ? "Creating…" : "Create new version"}
+            {creating ? "Regenerating…" : "Regenerate version"}
           </button>
         </div>
       </div>
@@ -510,19 +510,38 @@ export default function StudioWorkspace({ story, storyId, loading = false }) {
     setCreatingVersion(true);
     const token = authTokenRef.current;
     if (token) {
-      const data = await fetch("/api/studio/session", {
+      const ws = story.workspace_id;
+      const sid = story.id;
+
+      // 1. Create new version record
+      const versionData = await fetch("/api/studio/session", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          workspace_id: story.workspace_id,
-          story_id: story.id,
+          workspace_id: ws,
+          story_id: sid,
           note: `Version from ${pendingCount} revision${pendingCount === 1 ? "" : "s"}`,
         }),
       }).then(r => r.ok ? r.json() : null).catch(() => null);
 
-      if (data?.version) {
-        // Reload session to get new version + blocks
-        const qs = new URLSearchParams({ workspace_id: story.workspace_id, story_id: story.id });
+      if (versionData?.version) {
+        // 2. Run AI regeneration — revises script, replaces blocks, marks revisions applied
+        const actionable = revisions.filter(r => ["pending", "ready"].includes(r.status) && r.id && !r.id.startsWith("rev_local_"));
+        if (actionable.length) {
+          await fetch("/api/studio/regenerate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              workspace_id: ws,
+              story_id: sid,
+              version_id: versionData.version.id,
+              revision_ids: actionable.map(r => r.id),
+            }),
+          }).catch(() => null);
+        }
+
+        // 3. Reload session (new blocks derived from regenerated script)
+        const qs = new URLSearchParams({ workspace_id: ws, story_id: sid });
         const refreshed = await fetch(`/api/studio/session?${qs}`, {
           headers: { Authorization: `Bearer ${token}` },
         }).then(r => r.ok ? r.json() : null).catch(() => null);
@@ -530,15 +549,20 @@ export default function StudioWorkspace({ story, storyId, loading = false }) {
           setSessionData(refreshed);
           setSelectedBlockId(null);
         }
-        // Mark actionable revisions as queued
-        setRevisions(r => r.map(rev =>
-          ["pending", "ready"].includes(rev.status) ? { ...rev, status: "queued" } : rev
-        ));
+
+        // 4. Reload revisions from DB (applied ones will reflect server state)
+        const rqs = new URLSearchParams({ workspace_id: ws, story_id: sid });
+        const revData = await fetch(`/api/studio/revisions?${rqs}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (revData?.revisions) {
+          setRevisions(revData.revisions.map(dbRevisionToLocal));
+        }
       }
     }
     setCreatingVersion(false);
     setShowRegenPlan(false);
-  }, [story?.workspace_id, story?.id, pendingCount]);
+  }, [story?.workspace_id, story?.id, pendingCount, revisions]);
 
   // ── Early return: page-level loading ──────────────────────────────────────
   if (loading) {

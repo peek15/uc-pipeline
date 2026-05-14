@@ -1,61 +1,9 @@
 import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
 import { getMockBlocks } from "@/components/studio/studioMockData";
+import { deriveBlocksFromStory } from "@/lib/studio/deriveBlocks";
 
 function ok(payload) { return Response.json(payload); }
 function err(message, status = 400) { return Response.json({ error: message }, { status }); }
-
-function formatTc(totalSec) {
-  const s = totalSec % 60;
-  const m = Math.floor(totalSec / 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-// Derive studio blocks from a story's script text.
-// Splits by paragraph, assigns labels (Hook / Body / CTA) and estimated timecodes
-// at ~2.5 words/second voiceover pace. Returns null if no usable script.
-function deriveBlocksFromStory(story) {
-  const script =
-    (story?.scripts && typeof story.scripts === "object" ? story.scripts["en"] : null) ||
-    story?.script ||
-    "";
-  if (!script?.trim()) return null;
-
-  const paragraphs = script.split(/\n\n+/).map(p => p.trim()).filter(p => p.split(/\s+/).length >= 3);
-  if (!paragraphs.length) return null;
-
-  const WPS = 2.5;
-  let t = 0;
-
-  return paragraphs.map((para, i) => {
-    const words = para.split(/\s+/).length;
-    const dur = Math.max(3, Math.round(words / WPS));
-    const start_tc = formatTc(t);
-    t += dur;
-    const end_tc = formatTc(t);
-
-    let label;
-    if (paragraphs.length === 1) label = "Script";
-    else if (i === 0) label = "Hook";
-    else if (i === paragraphs.length - 1) label = "CTA";
-    else label = paragraphs.length === 3 ? "Body" : `Body ${i}`;
-
-    return {
-      position: i,
-      label,
-      start_tc,
-      end_tc,
-      source_type: "text",
-      editable: true,
-      locked_reason: null,
-      status: "ok",
-      metadata_json: {
-        derived_from: "script",
-        text: para.substring(0, 600),
-        word_count: words,
-      },
-    };
-  });
-}
 
 // GET: load or create studio session (current version + blocks + version history)
 export async function GET(request) {
@@ -126,12 +74,7 @@ export async function GET(request) {
     // Try to derive blocks from the story's script; fall back to mock blocks
     const derived = deriveBlocksFromStory(story);
     const seedRows = derived
-      ? derived.map(b => ({
-          story_id: storyId,
-          version_id: currentVersion.id,
-          workspace_id: workspaceId,
-          ...b,
-        }))
+      ? derived.map(b => ({ story_id: storyId, version_id: currentVersion.id, workspace_id: workspaceId, ...b }))
       : getMockBlocks().map((b, i) => ({
           story_id: storyId,
           version_id: currentVersion.id,
@@ -158,7 +101,7 @@ export async function GET(request) {
   });
 }
 
-// POST: create a new version (increments version_number)
+// POST: create a new version (increments version_number, copies blocks as placeholder)
 export async function POST(request) {
   const user = await getAuthenticatedUser(request);
   if (!user) return err("Unauthorized", 401);
@@ -217,7 +160,7 @@ export async function POST(request) {
     .single();
   if (nErr) return err(nErr.message, 500);
 
-  // Copy blocks from previous version into new version
+  // Copy blocks from previous version as placeholder (regenerate will replace them)
   if (latest?.id) {
     const { data: prevBlocks } = await svc
       .from("studio_blocks")

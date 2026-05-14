@@ -205,6 +205,14 @@ export async function createWorkspace(name) {
   return (await res.json()).workspace;
 }
 
+export async function linkInvites() {
+  const token = await getToken();
+  await fetch("/api/workspace/link-invites", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` },
+  });
+}
+
 // ─── Helper to get auth token ───
 async function getToken() {
   const { data: { session } } = await supabase.auth.getSession();

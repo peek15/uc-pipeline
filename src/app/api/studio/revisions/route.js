@@ -1,4 +1,4 @@
-import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/db";
+import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
 
 function ok(payload) { return Response.json(payload); }
 function err(message, status = 400) { return Response.json({ error: message }, { status }); }

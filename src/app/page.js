@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { Home as HomeIcon, Layers, Search, CalendarDays, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot, Target, Briefcase } from "lucide-react";
 import { STAGES } from "@/lib/constants";
-import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile, getCampaigns, upsertCampaign, deleteCampaign as dbDeleteCampaign, getWorkspaces, createWorkspace } from "@/lib/db";
+import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile, getCampaigns, upsertCampaign, deleteCampaign as dbDeleteCampaign, getWorkspaces, createWorkspace, linkInvites } from "@/lib/db";
 import { batchPredict } from "@/lib/prediction";
 import { signInWithGoogle, signOut } from "@/lib/auth";
 import PipelineView from "@/components/PipelineView";
@@ -44,6 +44,85 @@ const SECONDARY_TABS = [
 ];
 const TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
 const TAB_KEYS = TABS.map(t => t.key);
+
+function WorkspaceSetupScreen({ onSignOut, userEmail }) {
+  const appName = process.env.NEXT_PUBLIC_APP_NAME || "Creative Engine";
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    setCreating(true); setError(null);
+    try {
+      const ws = await createWorkspace(name.trim());
+      window.location.href = `/onboarding?workspace_id=${encodeURIComponent(ws.id)}&mode=brand_setup`;
+    } catch (e) {
+      setError(e.message);
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+      <div style={{ width:"100%", maxWidth:400 }}>
+        <div style={{ marginBottom:32 }}>
+          <h1 className="font-display" style={{ fontSize:28, fontWeight:700, color:"var(--t1)", lineHeight:1.1, marginBottom:8 }}>
+            {appName}
+          </h1>
+          <p style={{ fontSize:14, color:"var(--t3)", lineHeight:1.5 }}>
+            Create a workspace to get started.
+          </p>
+        </div>
+
+        <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:24 }}>
+          <label style={{ fontSize:12, fontWeight:500, color:"var(--t2)" }}>Workspace name</label>
+          <input
+            autoFocus
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleCreate()}
+            placeholder="e.g. Acme Studio"
+            style={{
+              padding:"11px 14px", borderRadius:9, fontSize:14,
+              border:"0.5px solid var(--border)", background:"var(--fill2)",
+              color:"var(--t1)", outline:"none", fontFamily:"inherit",
+              width:"100%", boxSizing:"border-box",
+            }}
+          />
+          {error && <p style={{ fontSize:12, color:"var(--error)", margin:0 }}>{error}</p>}
+        </div>
+
+        <button
+          onClick={handleCreate}
+          disabled={!name.trim() || creating}
+          style={{
+            width:"100%", padding:"13px 20px", borderRadius:10,
+            background: (!name.trim() || creating) ? "var(--fill2)" : "var(--t1)",
+            color: (!name.trim() || creating) ? "var(--t3)" : "var(--bg)",
+            fontSize:14, fontWeight:600, fontFamily:"inherit",
+            border: "0.5px solid var(--border)",
+            cursor: (!name.trim() || creating) ? "not-allowed" : "pointer",
+          }}
+        >
+          {creating ? "Creating…" : "Create workspace"}
+        </button>
+
+        <div style={{ marginTop:28, padding:"14px 16px", borderRadius:9, border:"0.5px solid var(--border)", background:"var(--fill2)" }}>
+          <p style={{ fontSize:12, color:"var(--t3)", margin:0, lineHeight:1.6 }}>
+            Joining an existing workspace? Ask the workspace owner to add{" "}
+            <span style={{ color:"var(--t2)", fontWeight:500 }}>{userEmail}</span>{" "}
+            as a member — you'll see their workspace next time you sign in.
+          </p>
+        </div>
+
+        <button onClick={onSignOut} style={{ display:"block", margin:"16px auto 0", background:"none", border:"none", color:"var(--t4)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const [tenant, setTenant] = usePersistentState("active_tenant", defaultTenant());
@@ -166,11 +245,14 @@ export default function Home() {
   }, [user, activeTenant]);
 
   // Load workspaces once per login — drives workspace switcher + no-access guard.
+  // linkInvites runs first to backfill user_id on any email-pre-invited membership rows.
   useEffect(() => {
     if (!user) { setWorkspaces([]); setWorkspacesLoaded(false); return; }
-    getWorkspaces()
-      .then(ws => { setWorkspaces(ws); setWorkspacesLoaded(true); })
-      .catch(() => { setWorkspaces([]); setWorkspacesLoaded(true); });
+    linkInvites().catch(() => {}).finally(() => {
+      getWorkspaces()
+        .then(ws => { setWorkspaces(ws); setWorkspacesLoaded(true); })
+        .catch(() => { setWorkspaces([]); setWorkspacesLoaded(true); });
+    });
   }, [user]);
 
   const handleSignIn  = async () => { setAuthLoading(true); setAuthError(null); try { await signInWithGoogle(); } catch (err) { setAuthError(err.message); setAuthLoading(false); } };
@@ -564,26 +646,7 @@ export default function Home() {
   if (authLoading) return <Spinner />;
   if (!user) return <LoginScreen onSignIn={handleSignIn} loading={authLoading} error={authError} />;
   if (workspacesLoaded && workspaces.length === 0) return (
-    <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-      <div style={{ maxWidth:360, textAlign:"center" }}>
-        <p style={{ fontSize:16, fontWeight:600, color:"var(--t1)", marginBottom:8 }}>No workspace access</p>
-        <p style={{ fontSize:13, color:"var(--t3)", lineHeight:1.5, marginBottom:20 }}>
-          Your account isn't a member of any workspace. Ask a workspace owner to add you, or create one below.
-        </p>
-        <button onClick={async () => {
-          const name = prompt("New workspace name:");
-          if (!name?.trim()) return;
-          try {
-            const ws = await createWorkspace(name.trim());
-            setWorkspaces([ws]);
-            setTenant({ workspace_id: ws.id, brand_profile_id: ws.id });
-          } catch (e) { alert(e.message); }
-        }} style={{ padding:"10px 20px", borderRadius:8, background:"var(--t1)", color:"var(--bg)", border:"none", fontSize:13, fontWeight:600, cursor:"pointer" }}>
-          Create workspace
-        </button>
-        <button onClick={handleSignOut} style={{ display:"block", margin:"12px auto 0", background:"none", border:"none", color:"var(--t4)", fontSize:12, cursor:"pointer" }}>Sign out</button>
-      </div>
-    </div>
+    <WorkspaceSetupScreen onSignOut={handleSignOut} userEmail={user?.email} />
   );
   if (loading) return <Spinner />;
 

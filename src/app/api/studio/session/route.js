@@ -1,4 +1,4 @@
-import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/db";
+import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
 import { getMockBlocks } from "@/components/studio/studioMockData";
 
 function ok(payload) { return Response.json(payload); }

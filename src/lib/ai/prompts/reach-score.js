@@ -13,16 +13,20 @@ export const defaults = {
  * @param {object} params
  * @param {object} params.story
  */
-export function build({ story, brand_config = null }) {
+export function build({ story, brand_config = null, workspace_memory_context = "" }) {
   const brandName = brand_config?.brand_name || "this brand";
   const contentType = brand_config?.content_type || "content";
-  return `You are scoring a ${brandName} ${contentType} story for reach potential (discoverability by new viewers).
+  const market = [brand_config?.industry, brand_config?.target_audience, brand_config?.content_goals].filter(Boolean).join(" | ") || "the brand's market";
+  const platforms = brand_config?.target_platforms?.length ? brand_config.target_platforms.join(", ") : "configured channels";
+  const memory = workspace_memory_context ? `\nDurable workspace memory:\n${workspace_memory_context}\nUse memory as advisory context for audience fit, platform priorities, and repeated user preferences.` : "";
+  return `You are scoring a ${brandName} ${contentType} idea for adaptive reach potential in ${market}.${memory}
 
 Score this story 0-100 on reach potential based on:
-- Name recognition of the subject (40%) — how famous or recognizable is the subject/moment?
-- Recency (25%) — how recently was this in public consciousness?
-- Search volume proxy (20%) — how often is this topic searched?
-- Trending relevance (15%) — is this connected to current news?
+- Relevance to the user's audience and buyer/customer context
+- Discoverability on the target platforms: ${platforms}
+- Timeliness in the user's market
+- Shareability/searchability without overclaiming
+- Fit with the brand's content goals
 
 Story: "${story.title}"
 Subject(s): ${story.players || story.subjects || "Unknown"}

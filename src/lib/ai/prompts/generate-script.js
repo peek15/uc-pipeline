@@ -11,7 +11,7 @@ export const defaults = {
   model:     "sonnet",
 };
 
-export function build({ story, brand_config = null, content_template = null, instruction = null, current_script = null }) {
+export function build({ story, brand_config = null, content_template = null, instruction = null, current_script = null, workspace_memory_context = "" }) {
   const brandName = brand_config?.brand_name || "your brand";
   const template = content_template || brand_config?.content_templates?.find(t => t.id === story?.content_template_id) || null;
   const templateBlock = template ? `
@@ -29,12 +29,13 @@ Selected content template:
   const messagesBlock = brand_config?.key_messages ? `\nKey messages: ${brand_config.key_messages}.` : "";
   const ctaBlock = brand_config?.calls_to_action ? `\nPreferred CTAs: ${brand_config.calls_to_action}.` : "";
   const complianceBlock = brand_config?.compliance_sensitivities ? `\nCompliance sensitivities: ${brand_config.compliance_sensitivities}.` : "";
+  const memoryBlock = workspace_memory_context ? `\nDurable workspace memory:\n${workspace_memory_context}\nUse this as advisory context for approved positioning, voice, corrections, programme intent, and risk patterns. Current user instructions and the selected content item outrank memory if they conflict.` : "";
 
   const system = brand_config
     ? `You write production-ready copy for "${brandName}", a ${brand_config.content_type || "narrative"} content brand.
 
 Brand voice: ${brand_config.voice || "clear, specific, emotionally grounded"}.
-Avoid: ${brand_config.avoid || "generic phrasing, hype, filler"}.${audienceBlock}${pillarsBlock}${messagesBlock}${ctaBlock}${complianceBlock}
+Avoid: ${brand_config.avoid || "generic phrasing, hype, filler"}.${audienceBlock}${pillarsBlock}${messagesBlock}${ctaBlock}${complianceBlock}${memoryBlock}
 ${templateBlock}
 
 RULES: Match the selected template and deliverable. Short-form video scripts should be 110-150 words. Ads should include offer/proof/CTA logic. Publicity should emphasize newsworthiness and clarity. Educational content should teach one clear idea. No emojis, hashtags, or filler.
@@ -71,7 +72,7 @@ Write ${story.deliverable_type || template?.deliverable_type || "content copy"} 
 Content: ${story.angle || story.title}
 Subject(s): ${story.players || story.subjects || "Unknown"}
 Era/context: ${story.era || "Unknown"}
-Emotional angle: ${story.archetype || "Pressure"}
+Content angle: ${story.angle || story.archetype || "Unknown"}
 Objective: ${story.objective || template?.objective || "Unknown"}
 Audience: ${story.audience || template?.audience || "Unknown"}
 Channel: ${story.channel || story.platform_target || template?.channels?.[0] || "Unknown"}

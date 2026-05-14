@@ -1,6 +1,6 @@
 {
   "name": "uc-pipeline",
-  "version": "3.48.0",
+  "version": "3.53.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,7 +9,9 @@
     "eval:gateway": "node scripts/intelligence-gateway-eval.mjs",
     "eval:runtime": "node scripts/intelligence-runtime-eval.mjs",
     "eval:jobs": "node scripts/intelligence-jobs-eval.mjs",
-    "eval:intelligence": "npm run eval:gateway && npm run eval:onboarding && npm run eval:runtime && npm run eval:jobs",
+    "eval:memory": "node scripts/workspace-memory-eval.mjs",
+    "eval:scoring": "node scripts/adaptive-scoring-eval.mjs",
+    "eval:intelligence": "npm run eval:gateway && npm run eval:onboarding && npm run eval:runtime && npm run eval:jobs && npm run eval:memory && npm run eval:scoring",
     "start": "next start"
   },
   "dependencies": {

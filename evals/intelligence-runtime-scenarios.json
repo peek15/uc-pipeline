@@ -104,6 +104,19 @@
       }
     },
     {
+      "id": "workspace_memory_retrieval_governed",
+      "suite": "memory",
+      "method": "GET",
+      "path": "/api/workspace-memory?workspace_id=$workspace_id&brand_profile_id=$brand_profile_id&limit=8",
+      "expect": {
+        "status": 200,
+        "json_required_paths": ["memories", "summary", "memory_context", "source_groups"],
+        "json_reject_any": {
+          "summary": ["api_key", "Bearer ", "raw_prompt"]
+        }
+      }
+    },
+    {
       "id": "claude_gateway_blocks_d4_secret",
       "suite": "gateway",
       "method": "POST",

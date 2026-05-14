@@ -366,6 +366,119 @@ function intelligenceModules(stories, settings, conflicts, insightCount = 0, sna
   ];
 }
 
+function WorkspaceMemoryPanel({
+  memories = [],
+  loading = false,
+  error = null,
+  onRefresh,
+  onUpdateStatus,
+  onUpdateSummary,
+}) {
+  const [editingId, setEditingId] = useState(null);
+  const [draftSummary, setDraftSummary] = useState("");
+  const activeMemories = memories.filter(memory => !["dismissed", "archived", "wrong", "rejected"].includes(memory.status));
+
+  const beginEdit = (memory) => {
+    setEditingId(memory.id);
+    setDraftSummary(memory.summary || "");
+  };
+
+  const saveEdit = async (id) => {
+    await onUpdateSummary?.(id, draftSummary);
+    setEditingId(null);
+    setDraftSummary("");
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"flex-start", flexWrap:"wrap" }}>
+        <div style={{ fontSize:12, color:"var(--t3)", lineHeight:1.6, maxWidth:680 }}>
+          Review what Creative Engine can reuse as durable context. Memory guides assistant, Ideas, scoring, Create, translation, and onboarding, but it does not change strategy or content by itself.
+        </div>
+        <button onClick={onRefresh} style={{ padding:"6px 12px", borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t2)", fontSize:12, fontWeight:600, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:6 }}>
+          <RefreshCw size={12}/> Refresh
+        </button>
+      </div>
+
+      {error && <div style={{ fontSize:12, color:"var(--error)", lineHeight:1.45 }}>{error}</div>}
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:10 }}>
+        {[
+          ["Active memories", activeMemories.length],
+          ["Applied", memories.filter(m => m.status === "applied").length],
+          ["Reviewed", memories.filter(m => m.status === "reviewed").length],
+          ["Open", memories.filter(m => !m.status || m.status === "open").length],
+        ].map(([label, value]) => (
+          <div key={label} style={{ padding:"11px 13px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)" }}>
+            <div style={{ fontSize:10, color:"var(--t3)", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4 }}>{label}</div>
+            <div style={{ fontSize:18, fontWeight:650, color:"var(--t1)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize:12, color:"var(--t4)", padding:"18px 0" }}>Loading memory...</div>
+      ) : activeMemories.length ? (
+        <div style={{ display:"grid", gap:8 }}>
+          {activeMemories.map(memory => {
+            const label = memory.payload?.label || memory.payload?.memory_key || memory.category || "Memory";
+            const source = memory.source === "workspace_memory" ? "Approved workspace memory" : memory.source || "Memory";
+            const editing = editingId === memory.id;
+            return (
+              <div key={memory.id} style={{ padding:"12px 13px", borderRadius:9, background:"var(--bg)", border:"0.5px solid var(--border)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"flex-start", marginBottom:8 }}>
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
+                      <span style={{ fontSize:11, color:"var(--t1)", fontWeight:700 }}>{label}</span>
+                      <span style={{ fontSize:10, color:"var(--t4)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}>{source}</span>
+                      <span style={{ fontSize:10, color:"var(--t4)", textTransform:"uppercase", letterSpacing:"0.05em" }}>{memory.status || "open"}</span>
+                    </div>
+                    {memory.payload?.source_citations?.length > 0 && (
+                      <div style={{ fontSize:10, color:"var(--t4)", marginTop:4 }}>
+                        {memory.payload.source_citations.length} source citation{memory.payload.source_citations.length === 1 ? "" : "s"}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize:11, color:"var(--t3)", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", whiteSpace:"nowrap" }}>
+                    {Math.round((Number(memory.confidence) || 0) * 100)}%
+                  </div>
+                </div>
+
+                {editing ? (
+                  <div style={{ display:"grid", gap:8 }}>
+                    <textarea value={draftSummary} onChange={e => setDraftSummary(e.target.value)} rows={4} style={{ width:"100%", padding:"9px 10px", borderRadius:7, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:12, lineHeight:1.5, resize:"vertical", outline:"none", fontFamily:"inherit", boxSizing:"border-box" }} />
+                    <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
+                      <button onClick={() => setEditingId(null)} style={{ padding:"4px 9px", borderRadius:6, border:"0.5px solid var(--border)", background:"transparent", color:"var(--t4)", fontSize:11, cursor:"pointer" }}>Cancel</button>
+                      <button onClick={() => saveEdit(memory.id)} style={{ padding:"4px 9px", borderRadius:6, border:"0.5px solid var(--border)", background:"var(--t1)", color:"var(--bg)", fontSize:11, fontWeight:600, cursor:"pointer" }}>Save memory</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize:12, color:"var(--t1)", lineHeight:1.5 }}>{memory.summary}</div>
+                    {summarizeInsightPayload(memory.payload) && (
+                      <div style={{ fontSize:11, color:"var(--t4)", lineHeight:1.4, marginTop:5 }}>{summarizeInsightPayload(memory.payload)}</div>
+                    )}
+                    <div style={{ display:"flex", gap:6, justifyContent:"flex-end", marginTop:10, flexWrap:"wrap" }}>
+                      <button onClick={() => onUpdateStatus?.(memory.id, "applied")} style={{ padding:"4px 9px", borderRadius:6, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t2)", fontSize:11, cursor:"pointer" }}>Keep</button>
+                      <button onClick={() => beginEdit(memory)} style={{ padding:"4px 9px", borderRadius:6, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t2)", fontSize:11, cursor:"pointer" }}>Edit</button>
+                      <button onClick={() => onUpdateStatus?.(memory.id, "archived")} style={{ padding:"4px 9px", borderRadius:6, border:"0.5px solid var(--border)", background:"transparent", color:"var(--t4)", fontSize:11, cursor:"pointer" }}>Archive</button>
+                      <button onClick={() => onUpdateStatus?.(memory.id, "wrong")} style={{ padding:"4px 9px", borderRadius:6, border:"0.5px solid var(--border)", background:"transparent", color:"var(--error)", fontSize:11, cursor:"pointer" }}>Mark wrong</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ padding:"24px 14px", textAlign:"center", color:"var(--t4)", fontSize:12, border:"1px dashed var(--border)", borderRadius:10 }}>
+          No active workspace memory yet. Approved onboarding strategy and reviewed intelligence insights will appear here.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IntelligenceDashboard({
   stories,
   settings,
@@ -885,11 +998,9 @@ function BillingSection({ billing, billingLoading, billingAction, billingMsg, wo
 // ── Section nav ──
 const SECTIONS = [
   { key:"workspace",   label:"Workspace" },
-  { key:"brand",       label:"Brand profile" },
-  { key:"strategy",    label:"Strategy" },
-  { key:"programmes",  label:"Programmes" },
   { key:"rules",       label:"Rules & Alerts" },
   { key:"appearance",  label:"Appearance" },
+  { key:"memory",      label:"Workspace Memory" },
   { key:"privacy",     label:"Privacy & Data" },
   { key:"providers",   label:"Providers" },
   { key:"intelligence",label:"Intelligence" },
@@ -1228,11 +1339,11 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     let countQuery = supabase
       .from("intelligence_insights")
       .select("id", { count: "exact", head: true });
-    let listQuery = supabase
-      .from("intelligence_insights")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(12);
+	    let listQuery = supabase
+	      .from("intelligence_insights")
+	      .select("*")
+	      .order("created_at", { ascending: false })
+	      .limit(section === "memory" ? 50 : 12);
     let snapshotQuery = supabase
       .from("performance_snapshots")
       .select("id", { count: "exact", head: true });
@@ -1276,11 +1387,17 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     }
   };
 
-  useEffect(() => {
-    if (!isOpen || section !== "intelligence") return;
-    autoScannedRef.current = false;
-    loadInsights();
-  }, [isOpen, section, WORKSPACE_ID, BRAND_PROFILE_ID]);
+	  useEffect(() => {
+	    if (!isOpen || !["intelligence", "memory"].includes(section)) return;
+	    autoScannedRef.current = false;
+	    loadInsights();
+	  }, [isOpen, section, WORKSPACE_ID, BRAND_PROFILE_ID]);
+
+	  useEffect(() => {
+	    if (isOpen && ["brand", "strategy", "programmes"].includes(section)) {
+	      setSection("workspace");
+	    }
+	  }, [isOpen, section, setSection]);
 
   useEffect(() => {
     if (!isOpen || section !== "privacy" || !WORKSPACE_ID) return;
@@ -1453,17 +1570,33 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
     }
   };
 
-  const updateInsightStatus = async (id, status) => {
-    const patch = { status };
-    if (status === "dismissed") patch.dismissed_at = new Date().toISOString();
-    if (status === "applied") patch.applied_at = new Date().toISOString();
-    const { error } = await supabase.from("intelligence_insights").update(patch).eq("id", id);
-    if (error) {
-      setInsightError(error.message || "Could not update insight.");
-      return;
-    }
-    await loadInsights();
-  };
+	  const updateInsightStatus = async (id, status) => {
+	    const patch = { status };
+	    if (status === "dismissed") patch.dismissed_at = new Date().toISOString();
+	    if (status === "applied") patch.applied_at = new Date().toISOString();
+	    if (status === "archived") patch.dismissed_at = new Date().toISOString();
+	    if (status === "wrong") patch.dismissed_at = new Date().toISOString();
+	    const { error } = await supabase.from("intelligence_insights").update(patch).eq("id", id);
+	    if (error) {
+	      setInsightError(error.message || "Could not update insight.");
+	      return;
+	    }
+	    await loadInsights();
+	  };
+
+	  const updateInsightSummary = async (id, summary) => {
+	    const clean = String(summary || "").trim();
+	    if (!clean) return;
+	    const { error } = await supabase.from("intelligence_insights").update({
+	      summary: clean.slice(0, 1400),
+	      status: "reviewed",
+	    }).eq("id", id);
+	    if (error) {
+	      setInsightError(error.message || "Could not update memory.");
+	      return;
+	    }
+	    await loadInsights();
+	  };
 
   useEffect(() => {
     if (section === "brand" && isOpen && assets.length === 0) {
@@ -2767,13 +2900,25 @@ ${fileText.slice(0,3000)}` : text };
           )}
 
           {/* ── Providers ── */}
-          {section==="providers" && (
-          <ProvidersSection tenant={activeTenant} version={VERSION_NUM} />
-          )}
+	          {section==="providers" && (
+	          <ProvidersSection tenant={activeTenant} version={VERSION_NUM} />
+	          )}
 
-          {/* ── Intelligence ── */}
-          {section==="intelligence" && (
-            <IntelligenceDashboard
+	          {/* ── Workspace Memory ── */}
+	          {section==="memory" && (
+	            <WorkspaceMemoryPanel
+	              memories={insights.filter(insight => insight.category === "memory" || insight.source === "workspace_memory")}
+	              loading={insightsLoading}
+	              error={insightError}
+	              onRefresh={loadInsights}
+	              onUpdateStatus={updateInsightStatus}
+	              onUpdateSummary={updateInsightSummary}
+	            />
+	          )}
+
+	          {/* ── Intelligence ── */}
+	          {section==="intelligence" && (
+	            <IntelligenceDashboard
               stories={stories}
               settings={settings}
               conflicts={conflicts}

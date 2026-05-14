@@ -6,6 +6,7 @@ import { runPrompt, runPromptStream } from "@/lib/ai/runner";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import { brandConfigForPrompt, getContentTemplate, getBrandTaxonomy, subjectText } from "@/lib/brandConfig";
 import { tenantStorageKey, normalizeTenant } from "@/lib/brand";
+import { attachAdaptiveScore } from "@/lib/adaptiveScoring";
 
 function ScoreBar({ score, label, max = 25 }) {
   if (score == null) return null;
@@ -20,12 +21,22 @@ function ScoreBar({ score, label, max = 25 }) {
   );
 }
 
-async function scoreStories(stories, settings) {
+async function scoreStories(stories, settings, tenant) {
   const { parsed } = await runPrompt({
     type:   "score-story",
     params: { stories, brand_config: brandConfigForPrompt(settings) },
+    context: {
+      workspace_id: tenant?.workspace_id,
+      brand_profile_id: tenant?.brand_profile_id,
+    },
   });
-  return parsed || [];
+  return (parsed || []).map((score, index) => {
+    const story = stories[(score.index || index + 1) - 1] || {};
+    return {
+      ...score,
+      adaptive_score: attachAdaptiveScore(story, settings, score).metadata.adaptive_score,
+    };
+  });
 }
 
 export default function ResearchView({ stories, onAddStories, prefill, onPrefillUsed, settings, tenant }) {
@@ -120,6 +131,11 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         brand_config:   brandConfigForPrompt(settings),
       },
       maxTokens: Math.min(700 + n * 350, 8000),
+      context: {
+        workspace_id: tenant?.workspace_id,
+        brand_profile_id: tenant?.brand_profile_id,
+        task_type: "suggest_content_ideas",
+      },
     });
     if (!parsed || !Array.isArray(parsed)) throw new Error("Parse failed");
     return parsed.filter(s => s && s.title).map(s => ({
@@ -133,7 +149,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       platform_target: s.platform_target || s.channel || template?.channels?.[0] || "",
       deliverable_type: s.deliverable_type || template?.deliverable_type || "",
     }));
-  }, [batch, getExisting, settings]);
+  }, [batch, getExisting, settings, tenant]);
 
   // Single search
   const doFetch = useCallback(async () => {
@@ -155,7 +171,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       if (newStories.length > 0) {
         setScoring(true);
         try {
-          const scoreData = await scoreStories(newStories, settings);
+          const scoreData = await scoreStories(newStories, settings, tenant);
           setScores(prev => {
             const base = Object.keys(prev).length;
             const next = {...prev};
@@ -167,7 +183,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         } catch {} finally { setScoring(false); }
       }
     } catch(err) { setError(err.message); }
-  }, [topic, count, era, team, archetype, format, templateId, runSearch, stories, settings]);
+  }, [topic, count, era, team, archetype, format, templateId, runSearch, stories, settings, tenant]);
 
   // Add to queue
   const addToQueue = () => {
@@ -202,7 +218,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         if (newStories.length > 0) {
           setScoring(true);
           try {
-            const scoreData = await scoreStories(newStories, settings);
+            const scoreData = await scoreStories(newStories, settings, tenant);
             setScores(prev => {
               const base = Object.keys(prev).length;
               const next = {...prev};
@@ -246,6 +262,11 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           brand_config: brandConfigForPrompt(settings),
         },
         maxTokens: Math.min(700 + n * 350, 8000),
+        context: {
+          workspace_id: tenant?.workspace_id,
+          brand_profile_id: tenant?.brand_profile_id,
+          task_type: "suggest_content_ideas",
+        },
         onChunk: (accumulated) => {
           setStreamText(accumulated);
           const found = [...accumulated.matchAll(/"title"\s*:\s*"([^"]+)"/g)].map(m => m[1]);
@@ -285,7 +306,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
       if (newStories.length > 0) {
         setScoring(true);
         try {
-          const scoreData = await scoreStories(newStories, settings);
+          const scoreData = await scoreStories(newStories, settings, tenant);
           setScores(prev => {
             const base = Object.keys(prev).length;
             const next = { ...prev };
@@ -300,7 +321,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
     } finally {
       setSingleLoading(false);
     }
-  }, [topic, count, era, team, archetype, format, templateId, getExisting, batch, settings, stories]);
+  }, [topic, count, era, team, archetype, format, templateId, getExisting, batch, settings, stories, tenant]);
 
   const loading = singleLoading || queueRunning;
 
@@ -308,12 +329,12 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
     if (!results.length || scoring) return;
     setScoring(true);
     try {
-      const scoreData = await scoreStories(results, settings);
+      const scoreData = await scoreStories(results, settings, tenant);
       const fresh = {};
       for (const s of scoreData) { if (s.index != null) fresh[s.index - 1] = s; }
       setScores(fresh);
     } catch {} finally { setScoring(false); }
-  }, [results, settings, scoring]);
+  }, [results, settings, scoring, tenant]);
 
   const addAllToPipeline = () => {
     const gated = results
@@ -324,7 +345,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           format: s.format || format || suggestFormat(s.era),
           content_template_id: s.content_template_id || templateId,
           ...(activeCampaignId ? { campaign_id: activeCampaignId, campaign_name: activeCampaignName } : {}),
-          ...(sc ? { score_total: sc.total } : {}),
+          ...(sc ? { score_total: sc.total, metadata: { ...(s.metadata || {}), adaptive_score: sc.adaptive_score } } : {}),
         };
         return { s: normalized, i, gate: auditStoryQuality(normalized, stories, settings), score: sc };
       })
@@ -343,6 +364,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           score_obscurity: sc.obscurity,
           score_visual:    sc.visual_potential,
           score_hook:      sc.hook_strength,
+          metadata:        { ...(s.metadata || {}), adaptive_score: sc.adaptive_score },
         } : {}),
       };
     });
@@ -560,6 +582,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             {sortedResults.map(({ s, i, score: sc }) => {
               const scoreData = scores[i];
+              const adaptive = scoreData?.adaptive_score;
               const fmt = programmeMap[s.format || format || suggestFormat(s.era)];
               const gate = auditStoryQuality({ ...s, format: s.format || format || suggestFormat(s.era), score_total: scoreData?.total ?? sc }, stories, settings);
               return (
@@ -580,10 +603,10 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                       {subjectText(s)&&<div style={{ fontSize:12, color:"var(--t3)", marginBottom:8 }}>{subjectText(s)}</div>}
                     </div>
                     <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft:12 }}>
-                      {sc!=null&&(
+                      {(adaptive?.total ?? sc)!=null&&(
                         <div style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 9px", borderRadius:7, background:"var(--fill2)", border:"1px solid var(--border)" }}>
-                          <Star size={11} color={sc>=70?"var(--t1)":"var(--t3)"} fill={sc>=70?"var(--t1)":"none"} />
-                          <span style={{ fontSize:12, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t1)" }}>{sc}</span>
+                          <Star size={11} color={(adaptive?.total ?? sc)>=70?"var(--t1)":"var(--t3)"} fill={(adaptive?.total ?? sc)>=70?"var(--t1)":"none"} />
+                          <span style={{ fontSize:12, fontWeight:700, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t1)" }}>{adaptive?.total ?? sc}</span>
                           <span style={{ fontSize:10, color:"var(--t3)" }}>/100</span>
                         </div>
                       )}
@@ -606,10 +629,10 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
                   )}
                   {scoreData&&(
                     <div style={{ padding:"10px 12px", borderRadius:7, background:"var(--bg2)", border:"1px solid var(--border2)", marginTop:12, display:"flex", flexDirection:"column", gap:5 }}>
-                      <ScoreBar score={scoreData.emotional_depth}  label="Emotional depth"/>
-                      <ScoreBar score={scoreData.obscurity}        label="Obscurity"/>
-                      <ScoreBar score={scoreData.visual_potential} label="Visual potential"/>
-                      <ScoreBar score={scoreData.hook_strength}    label="Hook strength"/>
+                      <ScoreBar score={adaptive?.components?.brand_fit ?? scoreData.brand_fit} label="Brand fit" max={100}/>
+                      <ScoreBar score={adaptive?.components?.market_fit ?? scoreData.market_fit} label="Market fit" max={100}/>
+                      <ScoreBar score={adaptive?.components?.production_readiness ?? scoreData.production_readiness} label="Production" max={100}/>
+                      <ScoreBar score={adaptive?.components?.compliance_readiness ?? scoreData.compliance_readiness} label="Compliance" max={100}/>
                     </div>
                   )}
                 </div>

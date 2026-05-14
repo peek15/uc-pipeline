@@ -8,7 +8,7 @@
 //                   (agents construct their own prompts using base.js helpers)
 // ═══════════════════════════════════════════════════════════
 
-import { callClaudeRaw, callClaudeStreamRaw } from "@/lib/db";
+import { callClaudeRaw, callClaudeStreamRaw, supabase } from "@/lib/db";
 import { prepareGatewayPromptCall } from "./gateway";
 import { logAiCall, logAiCallError } from "./audit";
 
@@ -47,6 +47,14 @@ const REGISTRY = {
 
 // Passthrough used by agents — they build their own prompt
 const PASSTHROUGH_TYPES = new Set(["agent-call"]);
+const MEMORY_AWARE_TYPES = new Set([
+  "research-stories",
+  "score-story",
+  "generate-script",
+  "translate-script",
+  "reach-score",
+  "agent-call",
+]);
 
 /**
  * Run a prompt by type.
@@ -69,15 +77,20 @@ export async function runPrompt({
   parse = true,
 }) {
   let prompt, mod = null;
+  const memory = await getWorkspaceMemoryForPrompt(type, params, context);
+  const enrichedParams = memory?.summary
+    ? { ...params, workspace_memory_context: memory.summary, workspace_memory_items: memory.memories || [] }
+    : params;
 
   if (PASSTHROUGH_TYPES.has(type)) {
-    prompt = params.prompt;
+    prompt = enrichedParams.prompt;
     if (!prompt) throw new Error(`runPrompt: "${type}" requires params.prompt`);
+    if (enrichedParams.workspace_memory_context) prompt = appendWorkspaceMemory(prompt, enrichedParams.workspace_memory_context);
   } else {
     mod = REGISTRY[type];
     if (!mod) throw new Error(`runPrompt: unknown type "${type}"`);
     if (typeof mod.build !== "function") throw new Error(`runPrompt: "${type}" has no build()`);
-    prompt = mod.build(params);
+    prompt = mod.build(enrichedParams);
   }
 
   const defaults = mod?.defaults || {};
@@ -106,7 +119,7 @@ export async function runPrompt({
       brand_profile_id: context.brand_profile_id || null,
       workspace_id:     context.workspace_id     || null,
       duration_ms,
-      ...gateway.logFields,
+      ...withMemoryLogFields(gateway.logFields, memory),
     });
 
     let parsed = null;
@@ -124,7 +137,7 @@ export async function runPrompt({
           error_type:    "parse",
           error_message: e?.message || String(e),
           duration_ms,
-          ...gateway.logFields,
+          ...withMemoryLogFields(gateway.logFields, memory),
         });
       }
     }
@@ -141,7 +154,7 @@ export async function runPrompt({
       error_type:    "provider_error",
       error_message: e?.message || String(e),
       duration_ms,
-      ...gateway.logFields,
+      ...withMemoryLogFields(gateway.logFields, memory),
     });
     throw e;
   }
@@ -156,14 +169,19 @@ export async function runPromptStream({
   onChunk,
 }) {
   let prompt, mod = null;
+  const memory = await getWorkspaceMemoryForPrompt(type, params, context);
+  const enrichedParams = memory?.summary
+    ? { ...params, workspace_memory_context: memory.summary, workspace_memory_items: memory.memories || [] }
+    : params;
 
   if (PASSTHROUGH_TYPES.has(type)) {
-    prompt = params.prompt;
+    prompt = enrichedParams.prompt;
     if (!prompt) throw new Error(`runPromptStream: "${type}" requires params.prompt`);
+    if (enrichedParams.workspace_memory_context) prompt = appendWorkspaceMemory(prompt, enrichedParams.workspace_memory_context);
   } else {
     mod = REGISTRY[type];
     if (!mod) throw new Error(`runPromptStream: unknown type "${type}"`);
-    prompt = mod.build(params);
+    prompt = mod.build(enrichedParams);
   }
 
   const defaults = mod?.defaults || {};
@@ -194,7 +212,7 @@ export async function runPromptStream({
       brand_profile_id: context.brand_profile_id || null,
       workspace_id:     context.workspace_id     || null,
       duration_ms,
-      ...gateway.logFields,
+      ...withMemoryLogFields(gateway.logFields, memory),
     });
 
     return { text, usage, model: modelId, ai_call_id, gateway: gateway.metadata };
@@ -209,7 +227,7 @@ export async function runPromptStream({
       error_type:    "provider_error",
       error_message: e?.message || String(e),
       duration_ms,
-      ...gateway.logFields,
+      ...withMemoryLogFields(gateway.logFields, memory),
     });
     throw e;
   }
@@ -217,3 +235,54 @@ export async function runPromptStream({
 
 export { logAiCall, logAiCallError, getAiCalls, getStoryCost } from "./audit";
 export { estimateCost, formatCost } from "./costs";
+
+async function getWorkspaceMemoryForPrompt(type, params = {}, context = {}) {
+  if (!MEMORY_AWARE_TYPES.has(type)) return null;
+  if (params.workspace_memory_context) return { summary: params.workspace_memory_context, memories: params.workspace_memory_items || [] };
+  if (!context?.workspace_id || typeof window === "undefined") return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return null;
+    const qs = new URLSearchParams({
+      workspace_id: context.workspace_id,
+      limit: String(context.memory_limit || 8),
+    });
+    if (context.brand_profile_id) qs.set("brand_profile_id", context.brand_profile_id);
+    const res = await fetch(`/api/workspace-memory?${qs.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json?.summary) return null;
+    return json;
+  } catch {
+    return null;
+  }
+}
+
+function withMemoryLogFields(logFields, memory) {
+  if (!memory?.summary) return logFields;
+  return {
+    ...logFields,
+    metadata_json: {
+      ...(logFields?.metadata_json || {}),
+      workspace_memory_used: true,
+      workspace_memory_count: memory.memories?.length || 0,
+      workspace_memory_ids: (memory.memories || []).map(item => item.id).filter(Boolean).slice(0, 12),
+      workspace_memory_source_groups: memory.source_groups || memory.memory_context?.groups || {},
+    },
+  };
+}
+
+function appendWorkspaceMemory(prompt, memoryContext) {
+  if (!memoryContext) return prompt;
+  return `${prompt}
+
+---
+
+Durable workspace memory:
+${memoryContext}
+
+Use this memory as advisory context. Prefer explicit user instructions and current content over stale memory. Do not claim memory is a source unless it is surfaced as reviewable workspace memory.`;
+}

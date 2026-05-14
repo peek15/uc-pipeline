@@ -22,7 +22,7 @@ export const defaults = {
  * @param {string} [params.existingTitles]
  * @param {number} [params.batch]
  */
-export function build({ topic, count, era, team, archetype, format, content_template = null, existingTitles = "", batch = 1, brand_config = null }) {
+export function build({ topic, count, era, team, archetype, format, content_template = null, existingTitles = "", batch = 1, brand_config = null, workspace_memory_context = "" }) {
   const programmes = brand_config?.programmes || [];
   const programme = programmes.find(p => p.id === format || p.key === format);
   const fmtLabel = programme?.name || FORMAT_MAP[format]?.label || "";
@@ -51,8 +51,9 @@ Content template:
   const preferred = brand_config?.preferred_angles ? `\nPreferred angles: ${brand_config.preferred_angles}.` : "";
   const avoidAngles = brand_config?.avoid_angles ? `\nAvoid these angles: ${brand_config.avoid_angles}.` : "";
   const goals = brand_config?.content_goals ? `\nContent goals: ${brand_config.content_goals}.` : "";
+  const memory = workspace_memory_context ? `\nDurable workspace memory:\n${workspace_memory_context}\nUse this as advisory context for what the user has approved, corrected, or repeatedly emphasized. Current instructions and source facts outrank memory if they conflict.` : "";
 
-  return `You are a content ideation engine for "${brandName}", a ${contentType} content brand. Find ${count} distinct content ideas that fit this brand and the selected template.${voice}${avoid}${audience}${pillars}${preferred}${avoidAngles}${goals}
+  return `You are a content ideation engine for "${brandName}", a ${contentType} content brand. Find ${count} distinct content ideas that fit this brand and the selected template.${voice}${avoid}${audience}${pillars}${preferred}${avoidAngles}${goals}${memory}
 ${templateBlock}
 
 Return JSON objects with:

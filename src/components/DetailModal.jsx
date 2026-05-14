@@ -7,6 +7,7 @@ import { supabase } from "@/lib/db";
 import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentTemplates, getContentType, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
 import { buildAgentContext, buildBrandSnapshot } from "@/lib/agent/agentContext";
 import { ACKNOWLEDGEMENT_TEXT, COMPLIANCE_DISCLAIMER, warningLabel } from "@/lib/compliance";
+import { getAdaptiveScore } from "@/lib/adaptiveScoring";
 
 const ICONS = { accepted:Circle, approved:Check, scripted:FileText, produced:Film, published:Award, rejected:X, archived:Archive };
 function wc(t) { return (t||"").trim().split(/\s+/).filter(w=>w.length>0).length; }
@@ -246,6 +247,7 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
   const audience = contentAudience(current);
   const channel = contentChannel(current);
   const readiness = getReadiness(current, settings);
+  const adaptiveScore = getAdaptiveScore(current, settings);
   const rColor  = readiness.done===readiness.total?"#4A9B7F":readiness.done>=Math.ceil(readiness.total * 0.65)?"#C49A3C":"var(--t3)";
   const gate = current.quality_gate && typeof current.quality_gate === "object" ? current.quality_gate : null;
   const gateIssues = Array.isArray(gate?.issues) ? gate.issues : [];
@@ -347,10 +349,16 @@ export default function DetailModal({ story, stories=[], onClose, onDelete, onSt
 
             {/* Scores */}
             <div>
-              <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Scores</div>
+              <div style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Adaptive score</div>
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                <ScoreRow label="Community" value={current.score_total}  max={100}/>
+                <ScoreRow label="Overall" value={adaptiveScore.total}  max={100}/>
+                <ScoreRow label="Brand fit" value={adaptiveScore.components?.brand_fit}  max={100}/>
+                <ScoreRow label="Market fit" value={adaptiveScore.components?.market_fit}  max={100}/>
+                <ScoreRow label="Production" value={adaptiveScore.components?.production_readiness}  max={100}/>
+                <ScoreRow label="Compliance" value={adaptiveScore.components?.compliance_readiness}  max={100}/>
+                <div style={{fontSize:11,color:"var(--t3)",lineHeight:1.45,marginTop:2}}>{adaptiveScore.explanation}</div>
                 <ScoreRow label="Reach"     value={current.reach_score}  max={100} muted/>
+                <ScoreRow label="Legacy" value={current.score_total}  max={100} muted/>
                 {current.score_emotional!=null&&<>
                   <div style={{height:"1px",background:"var(--border2)",margin:"2px 0"}}/>
                   <ScoreRow label="Emotional"  value={current.score_emotional} max={25}/>

@@ -6,14 +6,15 @@ import { STAGES, ERAS, ARCHETYPES, FORMAT_MAP, HOOK_TYPES, EMOTIONAL_ANGLES, CON
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import { PageHeader, Pill, Panel, EmptyState, buttonStyle, InlineTextInput } from "@/components/OperationalUI";
 import { contentAudience, contentChannel, contentObjective, getBrandLanguages, getBrandProgrammes, getContentTypeLabel, getStoryScript, subjectText } from "@/lib/brandConfig";
+import { getAdaptiveScore } from "@/lib/adaptiveScoring";
 
 
 const SORT_OPTS = [
   { key: "date_desc",       label: "Newest first" },
   { key: "date_asc",        label: "Oldest first" },
-  { key: "predicted_desc",  label: "Predicted: high → low" },
-  { key: "score_desc",      label: "Score: high → low" },
-  { key: "score_asc",       label: "Score: low → high" },
+  { key: "predicted_desc",  label: "Signal: high → low" },
+  { key: "score_desc",      label: "Adaptive score: high → low" },
+  { key: "score_asc",       label: "Adaptive score: low → high" },
   { key: "reach_desc",      label: "Reach: high → low" },
   { key: "readiness_desc",  label: "Readiness: high → low" },
   { key: "title_asc",       label: "Title A → Z" },
@@ -142,7 +143,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
       if (format     && s.format         !== format)     return false;
       if (hookType   && s.hook_type      !== hookType)   return false;
       if (emotAngle  && s.emotional_angle!== emotAngle)  return false;
-      if (minScore   && (s.score_total||0)  < minScore*20) return false;
+      if (minScore   && (getAdaptiveScore(s, settings).total||0)  < minScore*20) return false;
       if (minReach   && (s.reach_score||0)  < minReach*20) return false;
       if (ptStatus === "cleared" && languageKeys.includes("pt") && !s.pt_review_cleared) return false;
       if (ptStatus === "pending" && languageKeys.includes("pt") && s.pt_review_cleared)  return false;
@@ -155,9 +156,9 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
     list.sort((a,b) => {
       if (sort==="date_desc")      return new Date(b.created_at||0) - new Date(a.created_at||0);
       if (sort==="date_asc")       return new Date(a.created_at||0) - new Date(b.created_at||0);
-      if (sort==="predicted_desc") return (b.predicted_score??b.score_total??0)-(a.predicted_score??a.score_total??0);
-      if (sort==="score_desc")     return (b.score_total||0)-(a.score_total||0);
-      if (sort==="score_asc")      return (a.score_total||0)-(b.score_total||0);
+      if (sort==="predicted_desc") return ((b.predicted_score ?? getAdaptiveScore(b, settings).total) || 0)-((a.predicted_score ?? getAdaptiveScore(a, settings).total) || 0);
+      if (sort==="score_desc")     return (getAdaptiveScore(b, settings).total||0)-(getAdaptiveScore(a, settings).total||0);
+      if (sort==="score_asc")      return (getAdaptiveScore(a, settings).total||0)-(getAdaptiveScore(b, settings).total||0);
       if (sort==="reach_desc")     return (b.reach_score||0)-(a.reach_score||0);
       if (sort==="readiness_desc") return getReadiness(b, settings).done-getReadiness(a, settings).done;
       if (sort==="title_asc")      return (a.title||"").localeCompare(b.title||"");
@@ -450,6 +451,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 const displayChannel = contentChannel(s);
                 const dateStr    = s.created_at?new Date(s.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"";
                 const hasScore   = s.score_total!=null;
+                const adaptive   = getAdaptiveScore(s, settings);
                 const camp       = s.campaign_id ? campaignMap[s.campaign_id] : null;
                 const readiness  = getReadiness(s, settings);
                 const rColor     = readiness.done===readiness.total?"var(--success)":readiness.done>=Math.ceil(readiness.total * 0.65)?"var(--warning)":"var(--t4)";
@@ -508,8 +510,9 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                       {/* Score + readiness + date */}
                       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <span title={adaptive.explanation || "Adaptive score"} style={{fontSize:11,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)",padding:"1px 4px",borderRadius:3,background:"var(--fill2)",border:"0.5px solid var(--border)"}}>{adaptive.total}</span>
                           <span style={{fontSize:9,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:rColor,padding:"1px 4px",borderRadius:3,background:readiness.done===readiness.total?"rgba(74,155,127,0.1)":"transparent"}}>{readiness.done}/{readiness.total}</span>
-	                          {detailedMode&&hasScore&&<span style={{fontSize:11,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)"}}>{s.score_total}</span>}
+	                          {detailedMode&&hasScore&&<span title="Legacy score" style={{fontSize:10,fontWeight:600,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t3)"}}>legacy {s.score_total}</span>}
 	                          {detailedMode&&!hasScore&&s.obscurity>0&&<ScoreDots score={s.obscurity}/>}
                         </div>
 	                        {detailedMode&&s.reach_score!=null&&<span style={{fontSize:10,color:"var(--t4)",fontFamily:"ui-monospace,'SF Mono',Menlo,monospace"}}>reach {s.reach_score}</span>}
@@ -588,12 +591,19 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 	                        {detailedMode&&hasScore&&(
                           <div style={{padding:"10px 12px",borderRadius:7,background:"var(--bg2)",border:"1px solid var(--border2)",marginBottom:10}}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                              <span style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>AI Score</span>
+                              <span style={{fontSize:10,fontWeight:600,color:"var(--t3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Adaptive score</span>
                               <div style={{display:"flex",gap:12,alignItems:"center"}}>
                                 {s.reach_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}}>↗ reach <span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t2)",fontWeight:600}}>{s.reach_score}</span></span>}
                                 {s.predicted_score!=null&&<span style={{fontSize:11,color:"var(--t3)"}} title={`Directional readiness signal from gate risk and workspace history. Confidence: ${Math.round(((s.metadata?.prediction?.confidence)||0)*100)}%`}>signal <span style={{fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:s.predicted_score>=s.score_total?"var(--success)":s.predicted_score<s.score_total-10?"var(--error)":"var(--t2)",fontWeight:600}}>{s.predicted_score}</span></span>}
-                                <span style={{fontSize:13,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)"}}>{s.score_total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span></span>
+                                <span title={adaptive.explanation} style={{fontSize:13,fontWeight:700,fontFamily:"ui-monospace,'SF Mono',Menlo,monospace",color:"var(--t1)"}}>{adaptive.total}<span style={{fontSize:10,color:"var(--t3)",fontWeight:400}}>/100</span></span>
                               </div>
+                            </div>
+                            <div style={{fontSize:11,color:"var(--t3)",lineHeight:1.5,marginBottom:8}}>{adaptive.explanation}</div>
+                            <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:8}}>
+                              <ScoreBar score={adaptive.components?.brand_fit} label="Brand fit" max={100}/>
+                              <ScoreBar score={adaptive.components?.market_fit} label="Market fit" max={100}/>
+                              <ScoreBar score={adaptive.components?.production_readiness} label="Production" max={100}/>
+                              <ScoreBar score={adaptive.components?.compliance_readiness} label="Compliance" max={100}/>
                             </div>
                             {s.score_emotional!=null&&(
                               <div style={{display:"flex",flexDirection:"column",gap:5}}>

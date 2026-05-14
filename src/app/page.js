@@ -27,7 +27,7 @@ import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 
-const VERSION = "3.48.0";
+const VERSION = "3.53.0";
 const PIPELINE_DISPLAY_STORAGE_KEY = "ce_pipeline_display_mode";
 
 const PRIMARY_TABS = [
@@ -410,7 +410,7 @@ export default function Home() {
     const { text: enText } = await runPrompt({
       type:    "generate-script",
       params:  { story, brand_config: brandConfigForPrompt(appSettings) },
-      context: { story_id: storyId },
+      context: { story_id: storyId, workspace_id: activeTenant?.workspace_id, brand_profile_id: activeTenant?.brand_profile_id, task_type: "rewrite_script" },
       parse:   false,
     });
     await updateStory(storyId, { ...storyScriptPatch("en", enText, story), script_version: 1, status: "scripted" });
@@ -422,7 +422,7 @@ export default function Home() {
       const { text: translated } = await runPrompt({
         type:    "translate-script",
         params:  { script: enText, lang_key: lang.key, brand_config: brandConfigForPrompt(appSettings) },
-        context: { story_id: storyId },
+        context: { story_id: storyId, workspace_id: activeTenant?.workspace_id, brand_profile_id: activeTenant?.brand_profile_id, task_type: "rewrite_script" },
         parse:   false,
       });
       const patch = storyScriptPatch(lang.key, translated, storySnapshot);

@@ -27,6 +27,7 @@ function runStaticChecks() {
   check("Scenario catalog has at least five scenarios", (catalog.scenarios || []).length >= 5);
   check("Scenario catalog covers onboarding", catalog.scenarios.some(s => s.suite === "onboarding"));
   check("Scenario catalog covers gateway", catalog.scenarios.some(s => s.suite === "gateway"));
+  check("Scenario catalog covers memory governance", catalog.scenarios.some(s => s.suite === "memory"));
   check("Scenarios use auth-aware placeholders", JSON.stringify(catalog).includes("$workspace_id"));
   checkFile("Onboarding agent-step route delegates to chat route", "src/app/api/onboarding/agent-step/route.js", [
     "export { POST } from \"../chat/route\"",
@@ -44,6 +45,11 @@ function runStaticChecks() {
   checkFile("Package exposes runtime eval", "package.json", [
     "\"eval:runtime\"",
     "scripts/intelligence-runtime-eval.mjs",
+  ]);
+  checkFile("Runtime eval can exercise workspace memory", "evals/intelligence-runtime-scenarios.json", [
+    "workspace_memory_retrieval_governed",
+    "/api/workspace-memory",
+    "memory_context",
   ]);
 }
 
@@ -66,13 +72,15 @@ async function runLiveScenarios() {
 
 async function runLiveScenario({ scenario, baseUrl, token, values }) {
   const body = resolvePlaceholders(scenario.body || {}, values);
-  const res = await fetch(`${baseUrl}${scenario.path}`, {
-    method: scenario.method || "POST",
+  const method = scenario.method || "POST";
+  const resolvedPath = resolveStringPlaceholders(scenario.path, values);
+  const res = await fetch(`${baseUrl}${resolvedPath}`, {
+    method,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(body),
+    ...(method === "GET" || method === "HEAD" ? {} : { body: JSON.stringify(body) }),
   });
 
   const expectedStatus = scenario.expect?.status || 200;
@@ -161,6 +169,10 @@ function resolvePlaceholders(value, values) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolvePlaceholders(item, values)]));
   }
   return value;
+}
+
+function resolveStringPlaceholders(value, values) {
+  return String(value || "").replace(/\$([a-z_]+)/g, (_, key) => encodeURIComponent(values[key] ?? ""));
 }
 
 function getPath(object, dottedPath) {

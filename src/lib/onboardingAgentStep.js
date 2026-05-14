@@ -3,6 +3,7 @@ import { buildClarifications, inferFactsFromIntake, scoreUnderstanding } from "@
 import { buildOnboardingPlan } from "@/lib/onboardingPlanner";
 import { runOnboardingResearchJob } from "@/lib/onboardingResearchJobs";
 import { extractCompanyName } from "@/lib/onboardingWebResearch";
+import { retrieveWorkspaceMemory } from "@/lib/workspaceMemory";
 
 export async function buildOnboardingAgentStep({
   svc,
@@ -18,6 +19,7 @@ export async function buildOnboardingAgentStep({
   onEvent,
 }) {
   const existingSettings = await loadExistingSettings(svc, brandProfileId);
+  const workspaceMemory = await retrieveWorkspaceMemory({ svc, workspaceId, brandProfileId, limit: 10 });
   const factMemory = sessionId ? await loadFactMemory(svc, sessionId) : {};
   const detectedCompany = extractCompanyName(userMessage) || intake.manual?.brandName || "";
 
@@ -90,7 +92,7 @@ Summary: ${researchedSource.summary}`
     const params = {
       current_brand_json: JSON.stringify(existingSettings.brand || {}, null, 2),
       current_templates_json: JSON.stringify(existingSettings.strategy?.content_templates || [], null, 2),
-      brand_memory: buildBrandMemory({ intake: enrichedIntake, facts, confidence, missing, researchedSource, factMemory, agentPlan }),
+      brand_memory: buildBrandMemory({ intake: enrichedIntake, facts, confidence, missing, researchedSource, factMemory, agentPlan, workspaceMemory }),
       history,
     };
     if (stream) {
@@ -143,6 +145,7 @@ Summary: ${researchedSource.summary}`
     discovered_source: researchedSource?.url ? researchedSource : null,
     source,
     ai_call_id: aiCallId,
+    workspace_memory: workspaceMemory.unavailable ? { unavailable: true, error: workspaceMemory.error || null } : { count: workspaceMemory.memories?.length || 0 },
     research_job: researchJob ? {
       job_id: researchJob.job_id,
       status: researchJob.status,
@@ -515,7 +518,7 @@ function buildHistory(messages, userMessage) {
   return rows.join("\n\n");
 }
 
-function buildBrandMemory({ intake, facts, confidence, missing, researchedSource, factMemory = {}, agentPlan = null }) {
+function buildBrandMemory({ intake, facts, confidence, missing, researchedSource, factMemory = {}, agentPlan = null, workspaceMemory = null }) {
   const files = (intake.files || []).map(f => `${f.name}: ${f.status}. ${f.note || ""}`).join("\n");
   const reviewedFacts = Object.entries(factMemory)
     .map(([key, row]) => `${key}: ${row.status}${row.value ? ` -> ${JSON.stringify(row.value).slice(0, 300)}` : ""}`)
@@ -525,6 +528,7 @@ function buildBrandMemory({ intake, facts, confidence, missing, researchedSource
     intake.notes ? `User notes:\n${String(intake.notes).slice(-3000)}` : "",
     files ? `Files:\n${files}` : "",
     researchedSource?.url ? `Web research tool result:\n${researchedSource.url}\n${researchedSource.summary || ""}` : "",
+    workspaceMemory?.summary ? `Durable workspace memory:\n${workspaceMemory.summary}` : "",
     reviewedFacts ? `User-reviewed fact memory:\n${reviewedFacts}` : "",
     agentPlan ? `Planner state:\n${JSON.stringify({
       stage: agentPlan.stage,

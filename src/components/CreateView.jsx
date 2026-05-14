@@ -283,7 +283,7 @@ function TemplateTaskSection({ story, step, onUpdate }) {
   );
 }
 
-function ScriptWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, streaming, setStreaming, settings, stepLabel = "Script" }) {
+function ScriptWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, streaming, setStreaming, settings, tenant, stepLabel = "Script" }) {
   const languages = getBrandLanguages(settings);
   const secondaryLanguages = languages.filter(l => l.key !== "en");
   const template = getContentTemplate(settings, story?.content_template_id);
@@ -299,17 +299,17 @@ function ScriptWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, 
     setLocalScript(null);
     setInstruction("");
     if (!getScript(story, viewLang, localLangs, streaming)) setViewLang("en");
-  }, [story.id]);
+	  }, [story.id]);
 
-  const translateLang = async (lang, scriptText) => {
-    const { text } = await runPrompt({
-      type: "translate-script",
-      params: { script: scriptText, lang_key: lang, brand_config: brandConfigForPrompt(settings) },
-      context: { story_id: story.id },
-      parse: false,
-    });
-    return text;
-  };
+	  const translateLang = async (lang, scriptText) => {
+	    const { text } = await runPrompt({
+	      type: "translate-script",
+	      params: { script: scriptText, lang_key: lang, brand_config: brandConfigForPrompt(settings) },
+	      context: { story_id: story.id, workspace_id: tenant?.workspace_id, brand_profile_id: tenant?.brand_profile_id, task_type: "rewrite_script" },
+	      parse: false,
+	    });
+	    return text;
+	  };
 
   const generate = async (withTranslate = true, reviseInstruction = null) => {
     const currentForRevision = reviseInstruction
@@ -324,13 +324,13 @@ function ScriptWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, 
         params: {
           story,
           brand_config: brandConfigForPrompt(settings),
-          content_template: template,
-          instruction: reviseInstruction || null,
-          current_script: currentForRevision,
-        },
-        context: { story_id: story.id },
-        onChunk: (live) => setStreaming(prev => ({ ...prev, [story.id]: live })),
-      });
+	          content_template: template,
+	          instruction: reviseInstruction || null,
+	          current_script: currentForRevision,
+	        },
+	        context: { story_id: story.id, workspace_id: tenant?.workspace_id, brand_profile_id: tenant?.brand_profile_id, task_type: "rewrite_script" },
+	        onChunk: (live) => setStreaming(prev => ({ ...prev, [story.id]: live })),
+	      });
       setStreaming(prev => { const next = { ...prev }; delete next[story.id]; return next; });
       setLocalScript(null);
       if (reviseInstruction) setInstruction("");
@@ -524,7 +524,7 @@ function ScriptWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, 
   );
 }
 
-function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, settings }) {
+function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, settings, tenant }) {
   const languages          = getBrandLanguages(settings);
   const secondaryLanguages = languages.filter(l => l.key !== "en");
   const enScript           = getStoryScript(story, "en") || "";
@@ -551,17 +551,17 @@ function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLa
     onSaved?.(story.id, { ...story, ...patch });
   };
 
-  const retranslate = async (langKey) => {
-    if (!enScript) return;
-    setLoading(p => ({ ...p, [langKey]: "translating" }));
-    setErrors(p => ({ ...p, [langKey]: null }));
-    try {
-      const { text } = await runPrompt({
-        type: "translate-script",
-        params: { script: enScript, lang_key: langKey, brand_config: brandConfigForPrompt(settings) },
-        context: { story_id: story.id },
-        parse: false,
-      });
+	  const retranslate = async (langKey) => {
+	    if (!enScript) return;
+	    setLoading(p => ({ ...p, [langKey]: "translating" }));
+	    setErrors(p => ({ ...p, [langKey]: null }));
+	    try {
+	      const { text } = await runPrompt({
+	        type: "translate-script",
+	        params: { script: enScript, lang_key: langKey, brand_config: brandConfigForPrompt(settings) },
+	        context: { story_id: story.id, workspace_id: tenant?.workspace_id, brand_profile_id: tenant?.brand_profile_id, task_type: "rewrite_script" },
+	        parse: false,
+	      });
       await persistTranslation(langKey, text);
       setLocalEdits(p => { const n = { ...p }; delete n[langKey]; return n; });
     } catch (err) {
@@ -575,15 +575,15 @@ function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLa
     const instr   = instructions[langKey];
     const current = getTranslation(langKey);
     if (!instr || !current) return;
-    setLoading(p => ({ ...p, [langKey]: "revising" }));
-    setErrors(p => ({ ...p, [langKey]: null }));
-    try {
-      const { text } = await runPrompt({
-        type: "translate-script",
-        params: { script: enScript, lang_key: langKey, brand_config: brandConfigForPrompt(settings), instruction: instr, current_translation: current },
-        context: { story_id: story.id },
-        parse: false,
-      });
+	    setLoading(p => ({ ...p, [langKey]: "revising" }));
+	    setErrors(p => ({ ...p, [langKey]: null }));
+	    try {
+	      const { text } = await runPrompt({
+	        type: "translate-script",
+	        params: { script: enScript, lang_key: langKey, brand_config: brandConfigForPrompt(settings), instruction: instr, current_translation: current },
+	        context: { story_id: story.id, workspace_id: tenant?.workspace_id, brand_profile_id: tenant?.brand_profile_id, task_type: "rewrite_script" },
+	        parse: false,
+	      });
       setLocalEdits(p => ({ ...p, [langKey]: text }));
       setInstructions(p => ({ ...p, [langKey]: "" }));
     } catch (err) {
@@ -966,9 +966,9 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                   </div>
                 </div>
 
-                {["brief", "assets", "voice", "visuals", "assembly"].includes(activeStep) && <ReadinessStrip story={selected} />}
-                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} stepLabel={steps.find(step => step.key === "script")?.label || "Draft"} />}
-                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} settings={settings} />}
+	                {["brief", "assets", "voice", "visuals", "assembly"].includes(activeStep) && <ReadinessStrip story={selected} />}
+	                {activeStep === "script" && <ScriptWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} streaming={streaming} setStreaming={setStreaming} settings={settings} tenant={tenant} stepLabel={steps.find(step => step.key === "script")?.label || "Draft"} />}
+	                {activeStep === "translations" && <TranslationWorkspace story={selected} onUpdate={onUpdate} onSaved={rerunGate} localLangs={localLangs} setLocalLangs={setLocalLangs} settings={settings} tenant={tenant} />}
                 {activeStep === "brief" && <BriefSection story={selected} brand_profile_id={brandProfileId} onSaved={saveProductionUpdate} onApproved={handleBriefApproved} />}
                 {activeStep === "assets" && <AssetMatchesSection story={selected} brand_profile_id={brandProfileId} />}
                 {activeStep === "voice" && <VoiceSection story={selected} brand_profile_id={brandProfileId} languages={getBrandLanguages(settings)} onSaved={saveProductionUpdate} />}

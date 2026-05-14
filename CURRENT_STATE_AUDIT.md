@@ -1,7 +1,7 @@
 # Current State Audit — Creative Engine / Uncle Carter Pipeline
-**Date:** 2026-05-13  
-**Version audited:** 3.48.0  
-**Scope:** Current repo state after Document OCR Jobs sprint.
+**Date:** 2026-05-14
+**Version audited:** 3.53.0
+**Scope:** Current repo state after Intelligence Trust hardening sprint.
 
 ## Executive Summary
 - Creative Engine is now a multi-workspace content operations app with Home, Strategy, Ideas, Pipeline, Create, Calendar, Analyze, Settings, onboarding, privacy, compliance, approval, and export foundations.
@@ -16,6 +16,14 @@
 - Generic intelligence job scaffolding now exists with a workspace-scoped `intelligence_jobs` table, helper library, API route, and eval checks.
 - Onboarding image OCR can now run through OpenAI vision when `OPENAI_API_KEY` is configured, with raw image data used transiently and not persisted.
 - PDF/image sources that cannot be analyzed synchronously now enqueue `ocr_extraction` jobs in the generic intelligence job system.
+- Workspace Intelligence Memory V1 now persists approved strategy learnings in `intelligence_insights` and retrieves them into onboarding agent context.
+- Adaptive Generic Scoring now adapts content scoring to the user's brand strategy, market/industry, audience, platforms, programmes, and compliance context while keeping legacy scores for compatibility.
+- Workspace memory now flows into operational assistant, Ideas/Research, adaptive scoring, Create generation, translation, and reach scoring as advisory context.
+- Workspace memory retrieval is now hardened with candidate widening, effective confidence weighting, status/recency/source weighting, dedupe, prompt caps, and source-group metadata.
+- AI call logs now include safe memory-use metadata (`workspace_memory_used`, counts, IDs, source groups) without raw memory/source payloads.
+- Runtime intelligence evals now include a governed workspace-memory retrieval scenario and GET/path placeholder support.
+- Privacy export/delete manifest scaffolds now include intelligence and memory tables so intelligence-layer data is represented in privacy reviews.
+- Settings now has a Workspace Memory governance section. Brand Profile, Strategy, and Programmes are no longer primary Settings sections; they live in the Strategy tab.
 
 ## Current Navigation
 - Home: calm cockpit and next action/readiness surface.
@@ -51,7 +59,7 @@
 - Runtime scenario catalog: `evals/intelligence-runtime-scenarios.json`.
 - Combined script: `npm run eval:intelligence`.
 - Runtime live evals are optional and require `INTELLIGENCE_EVAL_BASE_URL`, `INTELLIGENCE_EVAL_TOKEN`, `INTELLIGENCE_EVAL_WORKSPACE_ID`, and `INTELLIGENCE_EVAL_SESSION_ID`.
-- Current runtime suites cover onboarding conversation behavior, source tracking, gateway streaming, and D4 secret blocking.
+- Current runtime suites cover onboarding conversation behavior, source tracking, gateway streaming, governed workspace-memory retrieval, and D4 secret blocking.
 
 ## Intelligence Job State
 - SQL migration: `supabase-sprint11-intelligence-jobs.sql`.
@@ -74,6 +82,34 @@
 - Raw base64 image data is not stored in onboarding source metadata.
 - Scanned PDF rendering and multi-page OCR are not implemented yet.
 - Queued OCR jobs do not persist raw base64 media; async image OCR needs a durable file reference/storage path before it can process images after the initial request.
+
+## Workspace Intelligence Memory State
+- Helper: `src/lib/workspaceMemory.js`.
+- API: `/api/workspace-memory`.
+- Eval: `scripts/workspace-memory-eval.mjs`.
+- Storage: existing `intelligence_insights` table with `category = memory` and `source = workspace_memory`.
+- Onboarding approval writes memory for Brand Profile, Content Strategy, Programmes, and Risk/Claims Guidance.
+- Onboarding agent step retrieves durable workspace memory and injects it into the prompt as source-aware context.
+- The main assistant route retrieves durable workspace memory and appends it to the system context after workspace membership verification.
+- `src/lib/ai/runner.js` can retrieve memory through `/api/workspace-memory` for memory-aware operational prompts when `workspace_id` and `brand_profile_id` are present.
+- Memory-aware prompt types include Research/Ideas, adaptive scoring, script generation, translation, reach scoring, and passthrough agent calls.
+- Settings Workspace Memory lets users keep, edit, archive, or mark memory wrong.
+- Archived/wrong/dismissed/rejected memory is not active memory and is excluded from retrieval because retrieval only uses open, reviewed, and applied rows.
+- Retrieval uses a wider candidate window, excludes inactive statuses, calculates effective confidence from base confidence/status/recency/source, dedupes near-identical memory, caps prompt memory, and returns `source_groups` plus `memory_context`.
+- Runner and assistant logs include memory-use metadata only: used flag, count, IDs, and source groups. They do not log full raw memory rows.
+- No embeddings/vector search yet.
+- No automatic strategy/content/scoring mutation from memory. Memory is advisory prompt context only.
+
+## Adaptive Generic Scoring State
+- Helper: `src/lib/adaptiveScoring.js`.
+- Eval: `scripts/adaptive-scoring-eval.mjs`.
+- Research scoring prompt now returns adaptive dimensions: idea quality, brand fit, market fit, production readiness, compliance readiness, and adaptive total.
+- Reach scoring prompt now evaluates adaptive reach potential for the user's market/audience/platform context instead of UC/sports recognition.
+- Research persists adaptive details under `metadata.adaptive_score` when AI scoring runs.
+- Pipeline sorting and visible score display use `getAdaptiveScore(story, settings)` so scores adapt to current brand settings and fall back deterministically when saved adaptive metadata is missing.
+- Detail modal foregrounds adaptive score, Brand fit, Market fit, Production, and Compliance while leaving legacy score rows available as compatibility metadata.
+- No database migration is required; adaptive scoring is stored in existing JSON metadata and existing legacy score columns remain untouched.
+- Adaptive scores do not change generation, ranking policy beyond UI sort/display, or workspace strategy automatically.
 
 ## Onboarding State
 - Route: `/onboarding`.
@@ -148,14 +184,16 @@
 ## Privacy / Compliance
 - Sprint 7 privacy helpers and policy direction still apply.
 - Do not log raw full prompts, full model responses, raw uploaded content, provider secrets, or base64 media unnecessarily.
+- Privacy export/delete manifests now cover onboarding agent memory, onboarding research jobs, intelligence insights/jobs, performance snapshots, agent feedback, and privacy requests.
 - Compliance checks are warnings/support tools only. Users remain responsible for claims, rights, publishing, advertising, and legal/platform compliance.
 - No ZDR/no-retention claims should be made unless verified contractually and technically.
 
 ## Build / Validation
 - Last validation run:
+  - `npm run eval:intelligence`: passed
   - `npm run lint --if-present`: passed
   - `npm run build`: passed
-- Current version: `3.40.0`
+- Current version: `3.53.0`
 
 ## Known Remaining Risks
 - `supabase-sprint10-onboarding-agent-memory.sql` must be applied before session memory persistence is live in production.
@@ -164,10 +202,12 @@
 - Session memory recovery restores latest active memory/state snapshots but is not yet a full replayable state machine.
 - PDF/image understanding is still not implemented.
 - Image OCR and scanned-PDF OCR are still not implemented.
-- Automated agent evaluation is documented but not yet runnable as a CI test harness.
-- Runtime LLM evals are not implemented yet; the current eval runner is static/contract-based.
+- Automated agent evaluation is documented but not yet installed as a CI gate.
+- Runtime LLM evals are optional and environment-gated; local evals remain mostly static/contract-based.
 - Research jobs currently run inline in the request; a true durable worker/queue remains future work.
 - Queued jobs require an external caller/cron/worker to invoke `action: "process"`; no automatic scheduler is installed.
 - OCR provider status is explicit, but real OCR/vision provider integration remains future work.
 - Strategy quality review is deterministic. It improves trust and review, but it is not a substitute for expert legal/claims review.
+- Adaptive scoring is V1 and rule/AI hybrid. It is more generic and market-aware, but it is not a validated performance predictor.
+- Workspace memory retrieval is still lexical/rule-scored rather than semantic/vector-based.
 - Some legacy UC/story metadata may remain in lower-level constants/data paths for backward compatibility; generic UI should keep hiding or scoping it.

@@ -1,10 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { assertGatewayBudget } from "@/lib/ai/gatewayBudget";
 import { estimateCost } from "@/lib/ai/costs";
-import { getAuthenticatedUser } from "@/lib/apiAuth";
+import { getAuthenticatedUser, requireWorkspaceMember } from "@/lib/apiAuth";
 import { prepareGatewayMessageCall } from "@/lib/ai/gateway";
 import { DEFAULT_DATA_CLASS, DEFAULT_PRIVACY_MODE } from "@/lib/privacy/privacyTypes";
 import { summarizeError } from "@/lib/privacy/safeLogging";
+import { retrieveWorkspaceMemory } from "@/lib/workspaceMemory";
 
 async function authenticate(request) {
   return getAuthenticatedUser(request);
@@ -470,16 +471,25 @@ export async function POST(request) {
   if (await rateLimit(user.id)) return Response.json({ error: "Rate limited. Wait a moment." }, { status: 429 });
 
   const { provider = "anthropic", model = "claude-sonnet-4-6", messages = [], system = "", maxTokens = 700, brand_profile_id, workspace_id, task_type, source_view, source_entity_type, source_entity_id, data_class = DEFAULT_DATA_CLASS, privacy_mode = DEFAULT_PRIVACY_MODE } = await request.json();
-  const profileId   = brand_profile_id || null;
+  const profileId = brand_profile_id || null;
   const workspaceId = workspace_id || null;
 
   try {
+    const svc = serviceClient();
+    if (workspaceId) {
+      const member = await requireWorkspaceMember(svc, user, workspaceId);
+      if (member.error) return Response.json({ error: member.error }, { status: member.status });
+    }
+    const workspaceMemory = workspaceId
+      ? await retrieveWorkspaceMemory({ svc, workspaceId, brandProfileId: profileId, limit: 8 })
+      : null;
+    const systemWithMemory = appendWorkspaceMemoryToSystem(system, workspaceMemory);
     const gateway = await prepareGatewayMessageCall({
       type: "agent-call",
       providerKey: provider,
       model,
       messages,
-      system,
+      system: systemWithMemory,
       maxTokens,
       dataClass: data_class,
       privacyMode: privacy_mode,
@@ -496,11 +506,17 @@ export async function POST(request) {
       },
     });
     await assertGatewayBudget({
-      svc: serviceClient(),
+      svc,
       workspaceId,
       operationType: gateway.taskType || task_type || "agent-call",
     });
     const key = await loadLLMKey(provider, profileId);
+    const memoryMetadata = workspaceMemory?.summary ? {
+      workspace_memory_used: true,
+      workspace_memory_count: workspaceMemory.memories?.length || 0,
+      workspace_memory_ids: (workspaceMemory.memories || []).map(item => item.id).filter(Boolean).slice(0, 12),
+      workspace_memory_source_groups: workspaceMemory.source_groups || {},
+    } : {};
     const common = {
       model: gateway.model,
       system: gateway.system,
@@ -517,7 +533,7 @@ export async function POST(request) {
       privacyMode: gateway.privacyMode,
       providerPrivacyProfile: gateway.providerPrivacyProfile,
       payloadHash: gateway.payloadHash,
-      gatewayMetadata: gateway.metadata,
+      gatewayMetadata: { ...(gateway.metadata || {}), ...memoryMetadata },
     };
     if (provider === "openai") return await callOpenAI(common);
     return await callAnthropic({ ...common, tools: [WRITE_INSIGHT_SCHEMA, DB_READ_SCHEMA, AUDIT_READ_SCHEMA] });
@@ -530,4 +546,14 @@ export async function POST(request) {
       : 500;
     return Response.json({ error: safe.error_message, error_type: safe.error_type }, { status });
   }
+}
+
+function appendWorkspaceMemoryToSystem(system, memory) {
+  if (!memory?.summary) return system;
+  return `${system || ""}
+
+Durable workspace memory:
+${memory.summary}
+
+Use this memory as advisory context about approved strategy, repeated corrections, programme intent, and risk patterns. Current user instructions and current screen context outrank memory. Do not claim memory as a live external source.`;
 }

@@ -1,7 +1,7 @@
 # Content Pipeline — AI Agent Context
 
 ## Current Version
-- App badge/package target: v3.37.3
+- App badge/package target: v3.53.0
 - Repo: `peek15/uc-pipeline`
 - Push to `main` when work is complete; Vercel auto-deploys.
 - Always run `npm run build` before committing.
@@ -112,6 +112,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Prompt minimization and redaction are rule-based for now; preserve utility, redact obvious secrets/PII, truncate large payloads, and send selected snippets rather than whole files.
 - Privacy Settings are owner/admin writable only. Editor/viewer may read current mode if workspace policy allows.
 - Export/delete routes are request/manifest scaffolds only; destructive deletion requires a separate reviewed job.
+- Export manifests should include intelligence and memory surfaces (`intelligence_insights`, `intelligence_jobs`, `onboarding_agent_memory`, `onboarding_research_jobs`, `agent_feedback`, `performance_snapshots`, and `privacy_requests`) so privacy reviews do not miss the intelligence layer.
 
 ## Compliance / Approval / Export (v3.29.0+)
 - Creative Engine compliance checks are warnings and workflow support, not legal advice or guarantees.
@@ -362,6 +363,7 @@ scheduling, provider operations, quality gates, and analytics.
 - Run `npm run eval:intelligence` after intelligence-layer changes.
 - Live runtime evals require `INTELLIGENCE_EVAL_BASE_URL`, `INTELLIGENCE_EVAL_TOKEN`, `INTELLIGENCE_EVAL_WORKSPACE_ID`, and `INTELLIGENCE_EVAL_SESSION_ID`.
 - Add golden scenarios when changing onboarding, gateway policy, agent behavior, privacy blocking, or provider routing.
+- Runtime scenarios should also cover governed workspace memory retrieval so memory regressions are caught alongside onboarding/gateway checks.
 - Evals should check behavior and safety signals, not raw chain-of-thought or raw provider payloads.
 
 ## Intelligence Jobs
@@ -383,6 +385,31 @@ scheduling, provider operations, quality gates, and analytics.
 - Readable-text PDFs can use the lightweight parser; scanned PDF rendering is not implemented yet.
 - OCR output is assistive evidence only; users still review and approve final strategy.
 - Queued OCR jobs provide lifecycle tracking for pending PDF/image sources, but scanned PDF rendering and durable async image OCR still need a storage/rendering layer.
+
+## Workspace Intelligence Memory
+- Workspace memory helper: `src/lib/workspaceMemory.js`.
+- Workspace memory API: `/api/workspace-memory`.
+- V1 memory uses existing `intelligence_insights` rows with `category = memory` and `source = workspace_memory`; do not add a second memory table without a clear migration plan.
+- Onboarding approval writes approved Brand Profile, Content Strategy, Programmes, and Risk/Claims memory.
+- Onboarding, assistant, Research/Ideas, adaptive scoring, Create generation, translation, and reach scoring can retrieve durable workspace memory and include it as advisory context.
+- Retrieval should stay governed: rank by effective confidence, status, recency, and source group; dedupe near-identical memory; cap prompt memory; and return source-group metadata for review/logging.
+- Memory must remain source-aware and advisory. It can guide prompts and explanations, but must not directly mutate strategy, content, scoring, ranking, approvals, or exports without an explicit user action.
+- Always pass `workspace_id` and `brand_profile_id` into memory-aware AI calls when available so retrieval stays workspace-scoped.
+- Current user instructions, current content, and current source evidence outrank durable memory if they conflict.
+- Settings includes Workspace Memory governance. Users can keep, edit, archive, or mark memory wrong; archived/wrong memory must not be injected into prompts.
+- AI call logs may record memory metadata such as `workspace_memory_used`, count, memory IDs, and source groups. Do not log full raw memory rows or raw source payloads unnecessarily.
+- Settings must not be the primary place for Brand Profile, Content Strategy, or Programmes. Those live in the Strategy tab; Settings remains admin/technical configuration.
+- Future memory work should add semantic retrieval, deeper memory review UX, and periodic memory compaction.
+
+## Adaptive Generic Scoring
+- Adaptive scoring helper: `src/lib/adaptiveScoring.js`.
+- Research scoring prompts should adapt to Brand Profile, market/industry, audience, target platforms, content goals, active programmes, and compliance sensitivities.
+- Store adaptive scoring detail under `story.metadata.adaptive_score`; keep legacy `score_total`, emotional, visual, hook, and reach fields for compatibility.
+- Pipeline and Detail should foreground adaptive score/readiness for generic Creative Engine UI. Legacy UC/storytelling dimensions belong in detailed/expanded metadata, not the primary client-facing row.
+- Adaptive scoring must remain content/market aware and generic. Do not hardcode Uncle Carter, NBA, or emotional archetype dimensions as the default scoring model.
+- Scoring should support deterministic fallback from saved content fields and quality gate state. Do not require a new AI call merely to display an adaptive score.
+- Adaptive scoring changes must not silently mutate content, ranking policy, strategy, or generation behavior beyond the explicit score metadata being saved when research scoring runs.
+- Run `npm run eval:scoring` or `npm run eval:intelligence` after changing scoring prompts, score persistence, or Pipeline/Detail score rendering.
 
 ## Supabase
 - Canonical schema file: `supabase-schema.sql`

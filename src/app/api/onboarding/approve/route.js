@@ -1,6 +1,7 @@
 import { getAuthenticatedUser, makeServiceClient, requireWorkspaceMember } from "@/lib/apiAuth";
 import { attachBrandMemoryToSettings } from "@/lib/onboardingBrandMemory";
 import { mergeDraftIntoSettings } from "@/lib/onboarding";
+import { buildStrategyMemoryItems, writeWorkspaceMemoryBatch } from "@/lib/workspaceMemory";
 
 function ok(payload) { return Response.json(payload); }
 function err(message, status = 400) { return Response.json({ error: message }, { status }); }
@@ -67,7 +68,22 @@ export async function POST(request) {
     .eq("session_id", sessionId)
     .eq("status", "draft");
 
-  return ok({ profile: saved, settings: next });
+  const memory = await writeWorkspaceMemoryBatch({
+    svc,
+    workspaceId,
+    brandProfileId,
+    entityId: brandProfileId,
+    items: buildStrategyMemoryItems({
+      settings: next,
+      draft,
+      sessionId,
+      approvedBy: user.id,
+      approvedAt,
+    }),
+    agentName: "onboarding-approval",
+  });
+
+  return ok({ profile: saved, settings: next, memory });
 }
 
 function parseSettings(value) {

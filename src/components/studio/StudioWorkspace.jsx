@@ -24,6 +24,8 @@ function dbBlockToLocal(b) {
     editable: b.editable !== false,
     lockedReason: b.locked_reason || null,
     status: b.status || "ok",
+    text: b.metadata_json?.text || null,
+    derivedFrom: b.metadata_json?.derived_from || null,
   };
 }
 
@@ -229,7 +231,7 @@ function StudioPlayer({ story, aspect, isPlaying, currentTime, duration, onToggl
             <div style={{ fontSize: 12, color: "var(--t3)", textAlign: "center", padding: "0 24px", lineHeight: 1.4 }}>
               {story?.title || "Preview unavailable"}
             </div>
-            <div style={{ fontSize: 10, color: "var(--t4)" }}>Preview not rendered in Sprint 11A</div>
+            <div style={{ fontSize: 10, color: "var(--t4)" }}>Video preview not yet available</div>
           </div>
           <div style={{ position: "absolute", top: 12, left: 12, fontSize: 11, fontFamily: "var(--font-mono)", color: "rgba(255,255,255,0.5)", background: "rgba(0,0,0,0.4)", padding: "2px 7px", borderRadius: 4 }}>
             {secondsToTimecode(currentTime)}
@@ -658,6 +660,12 @@ export default function StudioWorkspace({ story, storyId, loading = false }) {
                       </span>
                     </div>
                     {modInfo?.hint && <div style={{ fontSize: 10, color: "var(--t4)", marginTop: 5, lineHeight: 1.4 }}>{modInfo.hint}</div>}
+                    {selectedBlock.text && (
+                      <div style={{ marginTop: 8, padding: "7px 9px", borderRadius: 6, background: "var(--fill2)", border: "0.5px solid var(--border2)" }}>
+                        <div style={{ fontSize: 9, fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Content</div>
+                        <div style={{ fontSize: 11, color: "var(--t2)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{selectedBlock.text}</div>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
                     <div style={{ fontSize: 9, color: "var(--t4)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>Interval</div>

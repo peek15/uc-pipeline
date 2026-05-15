@@ -1723,6 +1723,10 @@ function questionKey(question) {
 
 function friendlyOnboardingError(message) {
   const text = String(message || "");
+  if (/api.?key|not configured|ANTHROPIC|OPENAI/i.test(text)) return "No AI provider is configured. Add a key in Settings → Providers, then return here.";
+  if (/rate.?limit|429/i.test(text)) return "Rate limit reached. Wait a moment and try again.";
+  if (/timeout|timed out|ETIMEDOUT/i.test(text)) return "The request timed out. Try again or provide a shorter context.";
+  if (/network|ECONNREFUSED|failed to fetch/i.test(text)) return "Network error. Check your connection and try again.";
   if (/url|website|fetch|access/i.test(text)) return "I couldn't access this page. You can paste key text, upload a document, try another URL, or continue manually.";
   if (/pdf|image|parse/i.test(text)) return "This file was uploaded, but deep analysis is not available yet. You can paste relevant text or continue with other sources.";
   return text || "I couldn't complete this analysis. You can retry or continue manually.";

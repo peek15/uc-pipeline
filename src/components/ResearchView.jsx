@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Check, X, Star, Plus, Play, Pause, Trash2, Target, RefreshCw } from "lucide-react";
 import { suggestFormat } from "@/lib/constants";
 import { runPrompt, runPromptStream } from "@/lib/ai/runner";
+import { friendlyAiError } from "@/lib/errorMessages";
 import { auditStoryQuality, qualityGatePatch } from "@/lib/qualityGate";
 import { brandConfigForPrompt, getContentTemplate, getBrandTaxonomy, subjectText } from "@/lib/brandConfig";
 import { tenantStorageKey, normalizeTenant } from "@/lib/brand";
@@ -182,7 +183,7 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
           });
         } catch {} finally { setScoring(false); }
       }
-    } catch(err) { setError(err.message); }
+    } catch(err) { setError(friendlyAiError(err.message)); }
   }, [topic, count, era, team, archetype, format, templateId, runSearch, stories, settings, tenant]);
 
   // Add to queue
@@ -559,7 +560,12 @@ export default function ResearchView({ stories, onAddStories, prefill, onPrefill
         </div>
       )}
 
-      {error && <div style={{ padding:"10px 14px", borderRadius:8, marginBottom:16, background:"var(--fill2)", border:"1px solid var(--border)", color:"var(--t2)", fontSize:12 }}>{error}</div>}
+      {error && (
+        <div style={{ padding:"10px 14px", borderRadius:8, marginBottom:16, background:"var(--error-bg)", border:"0.5px solid var(--error-border)", color:"var(--error)", fontSize:12, display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10 }}>
+          <span>{error}</span>
+          <button onClick={() => setError(null)} style={{ background:"none", border:"none", cursor:"pointer", color:"var(--error)", padding:0, flexShrink:0, lineHeight:1 }}>✕</button>
+        </div>
+      )}
 
       {/* Results */}
       {results.length > 0 && (

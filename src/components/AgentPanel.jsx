@@ -7,6 +7,7 @@ import { getAiCalls } from "@/lib/ai/audit";
 import { auditRead } from "@/lib/ai/tools/audit-read";
 import { formatCost } from "@/lib/ai/costs";
 import { getBrandName, getContentType, contentObjective, contentChannel } from "@/lib/brandConfig";
+import { friendlyAiError } from "@/lib/errorMessages";
 import { getContextSummary, getViewLabel } from "@/lib/agent/agentContext";
 import { TASK_TYPES } from "@/lib/agent/taskTypes";
 
@@ -537,7 +538,7 @@ export default function AgentPanel({
       }
       runActions(full);
     } catch (err) {
-      setMessages(m => { const n = [...m]; n[n.length - 1] = { role: "assistant", content: `Error: ${err.message}` }; return n; });
+      setMessages(m => { const n = [...m]; n[n.length - 1] = { role: "assistant", content: friendlyAiError(err.message) }; return n; });
     } finally { setStreaming(false); }
   }, [input, pending, messages, streaming, modelId, selectedModel, stories, tab, metrics, settings, ctxActive, extraCtx, agent_context, tenant, runActions]);
 

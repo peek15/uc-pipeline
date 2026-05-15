@@ -321,6 +321,7 @@ export default function StudioWorkspace({ story, storyId, loading = false }) {
   const [showVersions, setShowVersions] = useState(false);
   const [sessionData, setSessionData] = useState(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [regenError, setRegenError] = useState(null);
 
   const authTokenRef = useRef(null);
   const playIntervalRef = useRef(null);
@@ -528,7 +529,7 @@ export default function StudioWorkspace({ story, storyId, loading = false }) {
         // 2. Run AI regeneration — revises script, replaces blocks, marks revisions applied
         const actionable = revisions.filter(r => ["pending", "ready"].includes(r.status) && r.id && !r.id.startsWith("rev_local_"));
         if (actionable.length) {
-          await fetch("/api/studio/regenerate", {
+          const regenRes = await fetch("/api/studio/regenerate", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: JSON.stringify({
@@ -537,7 +538,13 @@ export default function StudioWorkspace({ story, storyId, loading = false }) {
               version_id: versionData.version.id,
               revision_ids: actionable.map(r => r.id),
             }),
-          }).catch(() => null);
+          }).then(r => r.json()).catch(() => null);
+          if (regenRes?.error) {
+            const msg = /api.?key|not configured/i.test(regenRes.error)
+              ? "No AI provider configured. Add a key in Settings → Providers."
+              : regenRes.error;
+            setRegenError(msg);
+          }
         }
 
         // 3. Reload session (new blocks derived from regenerated script)
@@ -720,6 +727,14 @@ export default function StudioWorkspace({ story, storyId, loading = false }) {
               </button>
             ))}
           </div>
+
+          {/* Regeneration error banner */}
+          {regenError && (
+            <div style={{ flexShrink: 0, margin: "0 14px", marginTop: 10, padding: "9px 11px", borderRadius: 7, background: "var(--error-bg, #fff0f0)", border: "0.5px solid var(--error-border, #f5c6c6)", color: "var(--error, #c0392b)", fontSize: 12, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+              <span style={{ lineHeight: 1.4 }}>{regenError}</span>
+              <button onClick={() => setRegenError(null)} style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: 13, padding: 0, lineHeight: 1, opacity: 0.7 }}>✕</button>
+            </div>
+          )}
 
           {/* Tab content */}
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 14px" }}>

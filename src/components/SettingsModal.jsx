@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { X, Check, AlertCircle, ChevronRight, Plus, Trash2, GripVertical, Zap, RefreshCw, ArrowRight } from "lucide-react";
-import { CONTENT_TYPES, FORMATS, FORMAT_MAP, ARCHETYPES, ERAS } from "@/lib/constants";
+import { CONTENT_TYPES, FORMATS, FORMAT_MAP, ARCHETYPES } from "@/lib/constants";
 import { getWorkspaceBilling, normalizeBilling } from "@/lib/billing/db";
 import { ORDERED_PLANS } from "@/lib/billing/plans";
 import { getPlanLabel, entitlementLabel } from "@/lib/billing/entitlements";
@@ -42,10 +42,8 @@ const DEFAULT_SETTINGS = {
   },
   strategy: {
     weekly_cadence: 4,
-    format_mix: { standard:60, classics:25, performance_special:15, special_edition:0 },
+    format_mix: {},
     sequence_rules: {
-      no_consecutive_classics: true,
-      no_consecutive_performance_special: true,
       no_consecutive_same_format: false,
     },
     rules: [],
@@ -73,7 +71,7 @@ const DEFAULT_SETTINGS = {
     content_templates: [],
   },
   taxonomy: {
-    eras: ERAS,
+    eras: [],
     subjects: [],
     research_angles: [],
   },
@@ -1650,8 +1648,6 @@ export default function SettingsModal({ isOpen, onClose, stories=[], onSettingsC
   const addRule = () => upd("strategy.rules", [...rules, { id:crypto.randomUUID(), type:"", active:true }]);
   const delRule = (i) => upd("strategy.rules", rules.filter((_,idx)=>idx!==i));
 
-  const fmtTotal = Object.values(settings.strategy?.format_mix||{}).reduce((a,b)=>a+b,0);
-
   const programmes = settings.strategy?.programmes || [];
   const contentTemplates = settings.strategy?.content_templates || [];
 
@@ -2428,7 +2424,7 @@ ${fileText.slice(0,3000)}` : text };
                   <input type="number" min="1" max="14" value={settings.strategy?.weekly_cadence||4}
                     onChange={e=>upd("strategy.weekly_cadence", Math.min(14,Math.max(1,parseInt(e.target.value)||1)))}
                     style={{ width:72, padding:"8px 12px", borderRadius:8, background:"var(--fill2)", border:"0.5px solid var(--border)", color:"var(--t1)", fontSize:16, outline:"none", textAlign:"center", fontFamily:"ui-monospace,'SF Mono',Menlo,monospace" }}/>
-                  <span style={{ fontSize:12, color:"var(--t3)" }}>episodes per week</span>
+                  <span style={{ fontSize:12, color:"var(--t3)" }}>items per week</span>
                 </div>
               </div>
               {/* Content defaults */}

@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { Home as HomeIcon, Layers, Search, CalendarDays, BarChart3, Download, Upload, LogOut, User, ChevronDown, Wrench, PanelLeft, Settings, Bot, Target, Briefcase } from "lucide-react";
+import { Download, Upload, LogOut, ChevronDown } from "lucide-react";
+import { IconHome, IconStrategy, IconIdeas, IconCreate, IconPipeline, IconCalendar, IconAnalyze, IconSearch, IconSettings, IconCampaigns } from "@/components/CEIcons";
 import { STAGES } from "@/lib/constants";
 import { supabase, getStories, upsertStory, deleteStory as dbDelete, bulkUpsertStories, syncToAirtable, getBrandProfiles, createBrandProfile, getCampaigns, upsertCampaign, deleteCampaign as dbDeleteCampaign, getWorkspaces, createWorkspace, linkInvites } from "@/lib/db";
 import { batchPredict } from "@/lib/prediction";
@@ -28,20 +29,20 @@ import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 import { CEMark as CEMarkInline } from "@/components/CEMark";
 
-const VERSION = "3.56.0";
+const VERSION = "3.57.0";
 const PIPELINE_DISPLAY_STORAGE_KEY = "ce_pipeline_display_mode";
 
 const PRIMARY_TABS = [
-  { key: "home",       label: "Home",      Icon: HomeIcon },
-  { key: "strategy",   label: "Strategy",  Icon: Target },
-  { key: "research",   label: "Ideas",     Icon: Search },
-  { key: "pipeline",   label: "Pipeline",  Icon: Layers },
-  { key: "create",     label: "Create",    Icon: Wrench },
-  { key: "calendar",   label: "Calendar",  Icon: CalendarDays },
-  { key: "analyze",    label: "Analyze",   Icon: BarChart3 },
+  { key: "home",       label: "Home",      Icon: IconHome },
+  { key: "strategy",   label: "Strategy",  Icon: IconStrategy },
+  { key: "research",   label: "Ideas",     Icon: IconIdeas },
+  { key: "pipeline",   label: "Pipeline",  Icon: IconPipeline },
+  { key: "create",     label: "Create",    Icon: IconCreate },
+  { key: "calendar",   label: "Calendar",  Icon: IconCalendar },
+  { key: "analyze",    label: "Analyze",   Icon: IconAnalyze },
 ];
 const SECONDARY_TABS = [
-  { key: "campaigns",  label: "Campaigns", Icon: Briefcase },
+  { key: "campaigns",  label: "Campaigns", Icon: IconCampaigns },
 ];
 const TABS = [...PRIMARY_TABS, ...SECONDARY_TABS];
 const TAB_KEYS = TABS.map(t => t.key);
@@ -720,6 +721,23 @@ export default function Home() {
             </div>
           )}
 
+          {/* ⌘K Search bar — expanded only */}
+          {sidebarOpen && (
+            <div style={{ padding:"0 10px 8px", flexShrink:0 }}>
+              <button onClick={() => {}} title="Search or command (⌘K)" style={{
+                display:"flex", alignItems:"center", gap:8,
+                width:"100%", padding:"6px 9px", borderRadius:6,
+                background:"var(--ce-fill)", border:"0.5px solid var(--ce-line)",
+                color:"var(--ce-text-4)", cursor:"pointer", fontFamily:"inherit", fontSize:12,
+                transition:"border-color var(--ce-dur-1) var(--ce-ease)",
+              }}>
+                <IconSearch size={12} style={{ flexShrink:0 }} />
+                <span style={{ flex:1, textAlign:"left" }}>Search or command</span>
+                <span style={{ fontFamily:"var(--font-mono)", fontSize:10, color:"var(--ce-text-5)", letterSpacing:0 }}>⌘K</span>
+              </button>
+            </div>
+          )}
+
           {/* Nav items */}
           <nav style={{ flex:1, padding: sidebarOpen ? "0 10px" : "0", overflowY:"auto", display:"flex", flexDirection:"column", gap:1, alignItems: sidebarOpen ? "stretch" : "center" }}>
             {PRIMARY_TABS.map(t => {
@@ -740,7 +758,7 @@ export default function Home() {
                   fontSize:12.5, fontWeight: active ? 550 : 400,
                   transition:"background var(--ce-dur-1) var(--ce-ease), color var(--ce-dur-1) var(--ce-ease)",
                 }}>
-                  <t.Icon size={14} strokeWidth={active ? 2 : 1.5} style={{ flexShrink:0 }} />
+                  <t.Icon size={14} style={{ flexShrink:0 }} />
                   {sidebarOpen && <span style={{ flex:1 }}>{t.label}</span>}
                 </button>
               );
@@ -767,15 +785,26 @@ export default function Home() {
                   fontSize:12, fontWeight: active ? 550 : 400,
                   transition:"background var(--ce-dur-1) var(--ce-ease), color var(--ce-dur-1) var(--ce-ease)",
                 }}>
-                  <t.Icon size={13} strokeWidth={active ? 2 : 1.5} style={{ flexShrink:0 }} />
+                  <t.Icon size={13} style={{ flexShrink:0 }} />
                   {sidebarOpen && <span style={{ flex:1 }}>{t.label}</span>}
                 </button>
               );
             })}
           </nav>
 
-          {/* Bottom — settings + user */}
+          {/* Bottom — task status + settings + user */}
           <div style={{ padding: sidebarOpen ? "8px 10px" : "8px 0", flexShrink:0, borderTop:"0.5px solid var(--ce-line)", display:"flex", flexDirection:"column", gap:1, alignItems: sidebarOpen ? "stretch" : "center" }}>
+
+            {/* Live task status — visible when engine is working */}
+            {runningPredictions && sidebarOpen && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 9px", borderRadius:6, background:"var(--ce-fill)", border:"0.5px solid var(--ce-line)", marginBottom:4 }}>
+                <CEMarkInline size={12} strokeWidth={1.1} color="var(--ce-live)" breathe />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:11, color:"var(--ce-text-2)", fontWeight:550 }}>Running predictions…</div>
+                </div>
+              </div>
+            )}
+
             <button className={`ce-sidebar-item${showSettings ? " is-active" : ""}`} onClick={() => setShowSettings(s=>!s)} title="Settings" style={{
               width: sidebarOpen ? "100%" : 32, height: sidebarOpen ? "auto" : 32,
               display:"flex", alignItems:"center",
@@ -788,7 +817,7 @@ export default function Home() {
               background: showSettings ? "var(--ce-fill-2)" : "transparent",
               color:"var(--ce-text-3)", fontSize:12,
             }}>
-              <Settings size={14} strokeWidth={1.5} style={{ flexShrink:0 }} />
+              <IconSettings size={14} style={{ flexShrink:0 }} />
               {sidebarOpen && <span style={{ flex:1 }}>Settings</span>}
             </button>
 
@@ -813,7 +842,7 @@ export default function Home() {
                 }
                 {sidebarOpen && <>
                   <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textAlign:"left", fontSize:12 }}>{user.user_metadata?.full_name || user.email}</span>
-                  <Settings size={12} color="var(--ce-text-4)" style={{ flexShrink:0 }} />
+                  <IconSettings size={12} style={{ flexShrink:0, color:"var(--ce-text-4)" }} />
                 </>}
               </button>
               {showUserMenu==="user" && (
@@ -823,7 +852,7 @@ export default function Home() {
                     <div style={{ fontSize:11, color:"var(--ce-text-3)", marginTop:1 }}>{user.email}</div>
                   </div>
                   <div style={{ height:"0.5px", background:"var(--ce-line)", margin:"0 4px 4px" }}/>
-                  <button className="ce-menu-item" onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={menuBtn}><Settings size={12}/> Settings</button>
+                  <button className="ce-menu-item" onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={menuBtn}><IconSettings size={12}/> Settings</button>
                   <button className="ce-menu-item" onClick={()=>{importCSV();setShowUserMenu(null);}} style={menuBtn}><Upload size={12}/> Import CSV</button>
                   <button className="ce-menu-item" onClick={()=>{exportCSV();setShowUserMenu(null);}} style={menuBtn}><Download size={12}/> Export CSV</button>
                   <div style={{ height:"0.5px", background:"var(--ce-line)", margin:"4px 4px" }}/>
@@ -838,26 +867,26 @@ export default function Home() {
       {/* ── Main column ── */}
       <div style={{ flex:1, display:"flex", flexDirection:"column", minWidth:0, overflow:"hidden" }}>
 
-        {/* Header — slim strip */}
-        <header style={{ flexShrink:0, height:48, display:"flex", alignItems:"center", gap:10, padding:"0 16px", background:"var(--nav)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", borderBottom:"0.5px solid var(--border)", zIndex:20, position:"sticky", top:0 }}>
-
-          {/* Sidebar toggle */}
-          <button className="ce-icon-button" onClick={()=>setSidebarOpen(s=>!s)} title="Toggle sidebar (⌘\\)" style={{ width:30, height:30, borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--t3)", flexShrink:0 }}>
-            <PanelLeft size={14} />
-          </button>
-
-          <div style={{ width:"0.5px", height:16, background:"var(--border)", flexShrink:0 }} />
-
+        {/* Topbar — CE design, breadcrumb + agent toggle */}
+        <header style={{ flexShrink:0, height:44, display:"flex", alignItems:"center", gap:12, padding:"0 18px", background:"var(--ce-bg)", borderBottom:"0.5px solid var(--ce-line)", zIndex:20, position:"sticky", top:0 }}>
+          {/* Breadcrumb */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:12.5, color:"var(--ce-text-3)" }}>
+            <span style={{ color:"var(--ce-text)", fontWeight:550 }}>
+              {TABS.find(t=>t.key===tab)?.label}
+            </span>
+          </div>
           <div style={{ flex:1 }} />
-
-          {/* Current section label */}
-          <span style={{ fontSize:12, fontWeight:500, color:"var(--t3)", flexShrink:0 }}>
-            {TABS.find(t=>t.key===tab)?.label}
-          </span>
-
-          {/* Agent toggle */}
-          <button onClick={() => setAgentOpen(s=>!s)} title="Agent (⌘⌥A)" style={{ width:30, height:30, borderRadius:7, border:`0.5px solid ${agentOpen ? "var(--ce-live-2)" : "var(--ce-line)"}`, background: agentOpen ? "var(--ce-live-3)" : "transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color: agentOpen ? "var(--ce-live)" : "var(--ce-text-3)", flexShrink:0, transition:"border-color 0.12s, background 0.12s, color 0.12s" }}>
-            <Bot size={14} />
+          {/* Agent toggle — CEMark breathes when open */}
+          <button onClick={() => setAgentOpen(s=>!s)} title="Engine (⌘⌥A)" style={{
+            width:30, height:30, borderRadius:7,
+            border:`0.5px solid ${agentOpen ? "var(--ce-live-2)" : "var(--ce-line)"}`,
+            background: agentOpen ? "var(--ce-live-3)" : "transparent",
+            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+            flexShrink:0, transition:"border-color var(--ce-dur-1) var(--ce-ease), background var(--ce-dur-1) var(--ce-ease)",
+          }}>
+            <CEMarkInline size={13} strokeWidth={1.1}
+              color={agentOpen ? "var(--ce-live)" : "var(--ce-text-3)"}
+              breathe={agentOpen} />
           </button>
         </header>
 

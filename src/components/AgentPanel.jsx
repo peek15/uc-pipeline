@@ -206,15 +206,10 @@ function Markdown({ text }) {
   return <>{output}</>;
 }
 
-// ── Typing dots ───────────────────────────────────────────
-function TypingDots() {
-  return (
-    <span style={{ display: "inline-flex", gap: 4, alignItems: "center", padding: "2px 0" }}>
-      {[0, 1, 2].map(i => (
-        <span key={i} style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--ce-text-4)", display: "inline-block", animation: "pulse 1.2s ease infinite", animationDelay: `${i * 0.18}s` }} />
-      ))}
-    </span>
-  );
+// ── Time formatter ────────────────────────────────────────
+function fmtTime(at) {
+  if (!at) return "";
+  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 // ── Image helpers ─────────────────────────────────────────
@@ -239,7 +234,7 @@ function MessageRow({ m, streaming }) {
         fontSize: 9.5, fontFamily: "var(--font-mono)", color: "var(--ce-text-4)",
         textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, marginBottom: 5,
       }}>
-        {isUser ? "You" : "Engine"}
+        {isUser ? "You" : "Engine"}{m.at ? <span style={{ fontWeight: 400, opacity: 0.6 }}> · {fmtTime(m.at)}</span> : null}
       </div>
       {imgs.length > 0 && (
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
@@ -251,7 +246,7 @@ function MessageRow({ m, streaming }) {
       )}
       <div style={{ fontSize: 12.5, color: isUser ? "var(--ce-text)" : "var(--ce-text-2)", lineHeight: 1.55 }}>
         {m.role === "assistant" && !text && streaming
-          ? <TypingDots />
+          ? <span className="ce-caret" style={{ display: "inline-block" }} />
           : isUser
             ? <span style={{ whiteSpace: "pre-wrap" }}>{text}</span>
             : <Markdown text={text} />}
@@ -470,9 +465,10 @@ export default function AgentPanel({
       ? [...pending.map(img => ({ type: "image", data: img.data, mimeType: img.mimeType })), ...(text ? [{ type: "text", text }] : [])]
       : text;
 
-    const history = [...messages, { role: "user", content }];
+    const now = Date.now();
+    const history = [...messages, { role: "user", content, at: now }];
     const apiHistory = history.length > 20 ? history.slice(-20) : history;
-    setMessages([...history, { role: "assistant", content: "" }]);
+    setMessages([...history, { role: "assistant", content: "", at: now }]);
     setStreaming(true);
 
     const extraCtxForSystem = ctxActive.all_scores

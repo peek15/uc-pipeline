@@ -33,7 +33,7 @@ const labelStyle = { fontSize: 10, fontWeight: 600, color: "var(--t3)", textTran
 
 function ConfidenceBar({ value }) {
   if (value == null) return null;
-  const color = value >= 75 ? "#4A9B7F" : value >= 50 ? "var(--gold)" : "#C0666A";
+  const color = value >= 75 ? "#4A9B7F" : value >= 50 ? "var(--ce-live)" : "#C0666A";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ width: 60, height: 3, background: "var(--bg3)", borderRadius: 2, overflow: "hidden" }}>
@@ -192,7 +192,7 @@ export function PipelineProgress({ story }) {
         const isRunning = status === "running";
         const isError   = status === "error";
         const isDone    = stage.done || status === "done";
-        const dotColor  = isError ? "#C0666A" : isRunning ? "var(--gold)" : isDone ? "#4A9B7F" : "var(--t4)";
+        const dotColor  = isError ? "#C0666A" : isRunning ? "var(--ce-live)" : isDone ? "#4A9B7F" : "var(--t4)";
 
         return (
           <div key={stage.key} style={{ display: "flex", alignItems: "flex-start", flex: i < stages.length - 1 ? 1 : "none" }}>
@@ -316,7 +316,7 @@ export function BriefSection({ story, brand_profile_id, onSaved, onApproved }) {
             <button onClick={addRef} style={{ ...btnGhost, fontSize: 11, padding: "4px 10px" }}>+ add reference</button>
           </div>
           <Field label="Avoid" value={draft.avoid} onChange={(v) => updateField("avoid", v)} multiline />
-          {reasoning && <div style={{ fontSize: 11, color: "var(--t3)", fontStyle: "italic", padding: "8px 12px", borderRadius: 6, background: "var(--fill)", borderLeft: "2px solid var(--gold)" }}>{reasoning}</div>}
+          {reasoning && <div style={{ fontSize: 11, color: "var(--t3)", fontStyle: "italic", padding: "8px 12px", borderRadius: 6, background: "var(--fill)", borderLeft: "2px solid var(--ce-live)" }}>{reasoning}</div>}
           {running && <StreamPreview text={streamText} />}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={approve} style={btnPrimary}><Check size={12} />{wasEdited ? "Save edits" : "Approve as-is"}</button>
@@ -448,7 +448,7 @@ export function VoiceSection({ story, brand_profile_id, onSaved, languages = nul
               }}>
                 <div style={{
                   width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                  background: lerr ? "#C0666A" : (lstat === "done" || hasRef) ? "#4A9B7F" : lstat === "running" ? "var(--gold)" : "var(--t4)",
+                  background: lerr ? "#C0666A" : (lstat === "done" || hasRef) ? "#4A9B7F" : lstat === "running" ? "var(--ce-live)" : "var(--t4)",
                   ...(lstat === "running" ? { animation: "pulse 1s ease infinite" } : {}),
                 }} />
                 {hasRef
@@ -597,7 +597,7 @@ export function VisualSection({ story, brand_profile_id, onSaved, autoStart = fa
       {allAssets.length > 0 && (
         <div>
           {result?.ranking_reasoning && (
-            <div style={{ fontSize: 11, color: "var(--t3)", fontStyle: "italic", padding: "8px 12px", borderRadius: 6, background: "var(--fill)", borderLeft: "2px solid var(--gold)", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--t3)", fontStyle: "italic", padding: "8px 12px", borderRadius: 6, background: "var(--fill)", borderLeft: "2px solid var(--ce-live)", marginBottom: 12 }}>
               {result.ranking_reasoning}
             </div>
           )}

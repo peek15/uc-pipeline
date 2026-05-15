@@ -1,19 +1,7 @@
 import "./globals.css";
-import { IBM_Plex_Mono, Instrument_Sans, Instrument_Serif } from "next/font/google";
-
-const instrumentSans = Instrument_Sans({
-  subsets:  ["latin"],
-  variable: "--font-instrument-sans",
-  display:  "swap",
-  weight:   ["400", "500", "600", "700"],
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets:  ["latin"],
-  variable: "--font-ibm-plex-mono",
-  display:  "swap",
-  weight:   ["400", "500", "600"],
-});
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
+import { Instrument_Serif } from "next/font/google";
 
 const instrumentSerif = Instrument_Serif({
   subsets:  ["latin"],
@@ -39,7 +27,7 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${instrumentSans.variable} ${ibmPlexMono.variable} ${instrumentSerif.variable}`}>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} ${instrumentSerif.variable}`}>
       <body>{children}</body>
     </html>
   );

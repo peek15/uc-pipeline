@@ -198,8 +198,8 @@ export default function HomeView({ stories = [], settings = null, tenant = null,
                   { label: "Weak",   value: scores.low,  note: "<40" },
                 ].map(({ label, value, note }) => (
                   <div key={label} style={{ padding: "8px 10px", borderRadius: 7, background: "var(--fill2)", border: "0.5px solid var(--border)" }}>
-                    <div style={{ fontSize: 10, color: "var(--t4)", marginBottom: 2 }}>{label} <span style={{ color: "var(--t4)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{note}</span></div>
-                    <div style={{ fontSize: 17, fontWeight: 650, color: "var(--t1)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{value}</div>
+                    <div style={{ fontSize: 10, color: "var(--t4)", marginBottom: 2 }}>{label} <span style={{ color: "var(--t4)", fontFamily: "var(--font-mono)" }}>{note}</span></div>
+                    <div style={{ fontSize: 17, fontWeight: 650, color: "var(--t1)", fontFamily: "var(--font-mono)" }}>{value}</div>
                   </div>
                 ))}
               </div>
@@ -239,7 +239,7 @@ export default function HomeView({ stories = [], settings = null, tenant = null,
                     <div style={{ fontSize: 11, color: "var(--t3)" }}>{item.status}{item.content_type ? ` · ${item.content_type}` : ""}</div>
                   </div>
                   {score.total > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--t3)", fontFamily: "ui-monospace,'SF Mono',Menlo,monospace" }}>{score.total}</span>
+                    <span style={{ fontSize: 11, color: "var(--t3)", fontFamily: "var(--font-mono)" }}>{score.total}</span>
                   )}
                 </div>
               );

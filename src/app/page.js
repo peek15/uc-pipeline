@@ -26,6 +26,7 @@ import { matches, shouldIgnoreFromInput, SHORTCUTS } from "@/lib/shortcuts";
 import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
+import { CEMark as CEMarkInline } from "@/components/CEMark";
 
 const VERSION = "3.56.0";
 const PIPELINE_DISPLAY_STORAGE_KEY = "ce_pipeline_display_mode";
@@ -658,165 +659,175 @@ export default function Home() {
 
       {/* ── Sidebar ── */}
       <aside style={{
-        width: sidebarOpen ? 200 : 44,
+        width: sidebarOpen ? 220 : 52,
         flexShrink: 0,
         overflow: "hidden",
-        transition: "width 0.22s cubic-bezier(0.4,0,0.2,1)",
-        background: "var(--bg2)",
-        borderRight: "0.5px solid var(--border)",
+        transition: "width 200ms var(--ce-ease)",
+        background: "var(--ce-bg-2)",
+        borderRight: "0.5px solid var(--ce-line)",
         display: "flex",
         flexDirection: "column",
         position: "relative",
         zIndex: 15,
       }}>
-        {/* Inner wrapper — full width so content adapts to collapsed/expanded */}
-        <div style={{ width:"100%", display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
+        <div style={{ width: sidebarOpen ? 220 : 52, display:"flex", flexDirection:"column", height:"100%", overflow:"hidden", transition:"width 200ms var(--ce-ease)" }}>
 
-          {/* Brand — hidden in icon-only mode */}
-          {sidebarOpen
-            ? <div style={{ padding:"18px 14px 12px", flexShrink:0 }}>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                  <span className="font-display" style={{ fontSize:14, fontWeight:700, letterSpacing:0, color:"var(--t1)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Creative Engine</span>
-                  <span style={{ fontSize:9, fontWeight:600, fontFamily:"ui-monospace,'SF Mono',Menlo,monospace", color:"var(--t4)", padding:"1px 4px", borderRadius:3, border:"0.5px solid var(--border)", background:"var(--fill2)", flexShrink:0 }}>v{VERSION}</span>
-                </div>
-                {workspaces.length > 1 && (
-                  <select
-                    className="ce-select-control"
-                    value={activeTenant.workspace_id}
-                    onChange={(e) => setTenant({ workspace_id: e.target.value, brand_profile_id: e.target.value })}
-                    title="Workspace"
-                    style={{ width:"100%", height:26, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t2)", fontSize:11, fontFamily:"inherit", padding:"0 6px", outline:"none", marginBottom:5 }}
-                  >
-                    {workspaces.map(ws => (
-                      <option key={ws.id} value={ws.id}>{ws.name}</option>
-                    ))}
-                  </select>
-                )}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 26px", gap:5 }}>
-                  <select
-                    className="ce-select-control"
-                    value={activeTenant.brand_profile_id}
-                    onChange={(e) => setTenant({ ...activeTenant, brand_profile_id: e.target.value })}
-                    title="Brand profile"
-                    style={{ minWidth:0, width:"100%", height:26, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t2)", fontSize:11, fontFamily:"inherit", padding:"0 6px", outline:"none" }}
-                  >
-                    {brandProfiles.length === 0 && <option value={activeTenant.brand_profile_id}>{currentBrandLabel}</option>}
-                    {brandProfiles.map(profile => (
-                      <option key={profile.id} value={profile.id}>{profile.name || "Untitled brand"}</option>
-                    ))}
-                  </select>
-                  <button className="ce-icon-button" onClick={createBrand} title="Create brand" style={{ height:26, borderRadius:7, border:"0.5px solid var(--border)", background:"var(--fill2)", color:"var(--t3)", cursor:"pointer", fontSize:16, lineHeight:"20px", padding:0 }}>+</button>
-                </div>
+          {/* Workspace block / logo — click to toggle */}
+          <button onClick={() => setSidebarOpen(s=>!s)} style={{
+            display:"flex", alignItems:"center", gap: sidebarOpen ? 9 : 0,
+            padding: sidebarOpen ? "14px 10px 10px" : "14px 0 10px",
+            justifyContent: sidebarOpen ? "flex-start" : "center",
+            background:"transparent", border:"none", cursor:"pointer",
+            color:"var(--ce-text)", flexShrink:0, width:"100%",
+            transition:"padding 200ms var(--ce-ease)",
+          }}>
+            <div style={{
+              width:22, height:22, borderRadius:6, flexShrink:0,
+              background:"var(--ce-fill-3)",
+              border:"0.5px solid var(--ce-line-2)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+            }}>
+              <CEMarkInline size={12} />
+            </div>
+            {sidebarOpen && (
+              <div style={{ flex:1, minWidth:0, textAlign:"left" }}>
+                <div style={{ fontSize:12, fontWeight:600, letterSpacing:"-0.01em", color:"var(--ce-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{currentBrandLabel}</div>
+                <div style={{ fontSize:10, color:"var(--ce-text-4)", fontFamily:"var(--font-mono)", marginTop:1 }}>workspace</div>
               </div>
-            : <div style={{ height:16, flexShrink:0 }} />
-          }
+            )}
+          </button>
+
+          {/* Brand/workspace selectors — expanded only */}
+          {sidebarOpen && (
+            <div style={{ padding:"0 10px 10px", flexShrink:0, display:"flex", flexDirection:"column", gap:5 }}>
+              {workspaces.length > 1 && (
+                <select className="ce-select-control" value={activeTenant.workspace_id}
+                  onChange={(e) => setTenant({ workspace_id: e.target.value, brand_profile_id: e.target.value })}
+                  style={{ width:"100%", height:26, borderRadius:6, border:"0.5px solid var(--ce-line-2)", background:"var(--ce-fill)", color:"var(--ce-text-2)", fontSize:11, fontFamily:"inherit", padding:"0 6px", outline:"none" }}>
+                  {workspaces.map(ws => <option key={ws.id} value={ws.id}>{ws.name}</option>)}
+                </select>
+              )}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 26px", gap:5 }}>
+                <select className="ce-select-control" value={activeTenant.brand_profile_id}
+                  onChange={(e) => setTenant({ ...activeTenant, brand_profile_id: e.target.value })}
+                  style={{ minWidth:0, width:"100%", height:26, borderRadius:6, border:"0.5px solid var(--ce-line-2)", background:"var(--ce-fill)", color:"var(--ce-text-2)", fontSize:11, fontFamily:"inherit", padding:"0 6px", outline:"none" }}>
+                  {brandProfiles.length === 0 && <option value={activeTenant.brand_profile_id}>{currentBrandLabel}</option>}
+                  {brandProfiles.map(p => <option key={p.id} value={p.id}>{p.name || "Untitled brand"}</option>)}
+                </select>
+                <button className="ce-icon-button" onClick={createBrand} title="New brand"
+                  style={{ height:26, borderRadius:6, border:"0.5px solid var(--ce-line-2)", background:"var(--ce-fill)", color:"var(--ce-text-3)", cursor:"pointer", fontSize:16, lineHeight:"20px", padding:0, display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>
+              </div>
+            </div>
+          )}
 
           {/* Nav items */}
-          <nav style={{ flex:1, padding: sidebarOpen ? "0 8px" : "0 4px", overflowY:"auto" }}>
+          <nav style={{ flex:1, padding: sidebarOpen ? "0 10px" : "0", overflowY:"auto", display:"flex", flexDirection:"column", gap:1, alignItems: sidebarOpen ? "stretch" : "center" }}>
             {PRIMARY_TABS.map(t => {
               const active = tab === t.key;
               return (
                 <button key={t.key} className={`ce-sidebar-item${active ? " is-active" : ""}`} onClick={() => setTab(t.key)} title={t.label} style={{
-                  width:"100%", display:"flex", alignItems:"center",
+                  width: sidebarOpen ? "100%" : 32,
+                  height: sidebarOpen ? "auto" : 32,
+                  display:"flex", alignItems:"center",
                   justifyContent: sidebarOpen ? "flex-start" : "center",
                   gap: sidebarOpen ? 10 : 0,
-                  padding: sidebarOpen ? "8px 10px" : "9px 0",
-                  borderRadius:8, border:"none", cursor:"pointer",
-                  background: active ? "var(--fill2)" : "transparent",
-                  color: active ? "var(--t1)" : "var(--t3)",
-                  fontSize:13, fontWeight: active ? 600 : 400,
-                  marginBottom:2,
-                  boxShadow: sidebarOpen ? (active ? "inset 2px 0 0 var(--gold)" : "inset 2px 0 0 transparent") : "none",
-                  transition:"background 0.12s, color 0.12s",
+                  padding: sidebarOpen ? "6.5px 9px" : 0,
+                  borderRadius: sidebarOpen ? 6 : 7,
+                  border: "0.5px solid " + (active ? "var(--ce-line-2)" : "transparent"),
+                  cursor:"pointer",
+                  background: active ? "var(--ce-fill-2)" : "transparent",
+                  color: active ? "var(--ce-text)" : "var(--ce-text-2)",
+                  fontSize:12.5, fontWeight: active ? 550 : 400,
+                  transition:"background var(--ce-dur-1) var(--ce-ease), color var(--ce-dur-1) var(--ce-ease)",
                 }}>
-                  <t.Icon size={sidebarOpen ? 15 : 16} strokeWidth={active ? 2.5 : 1.8} style={{ flexShrink:0 }} />
-                  {sidebarOpen && t.label}
+                  <t.Icon size={14} strokeWidth={active ? 2 : 1.5} style={{ flexShrink:0 }} />
+                  {sidebarOpen && <span style={{ flex:1 }}>{t.label}</span>}
                 </button>
               );
             })}
-            <div style={{ height:1, background:"var(--border2)", margin: sidebarOpen ? "10px 6px 8px" : "10px 6px" }} />
-            {sidebarOpen && <div style={{ fontSize:10, color:"var(--t4)", textTransform:"uppercase", letterSpacing:"0.06em", fontWeight:700, padding:"0 10px 6px" }}>Planning</div>}
+
+            <div style={{ height:"0.5px", background:"var(--ce-line)", margin: sidebarOpen ? "8px 0" : "8px 8px" }} />
+
+            {sidebarOpen && <div style={{ fontSize:10, color:"var(--ce-text-5)", textTransform:"uppercase", letterSpacing:"0.06em", fontWeight:600, padding:"0 9px 4px", fontFamily:"var(--font-mono)" }}>Planning</div>}
             {SECONDARY_TABS.map(t => {
               const active = tab === t.key;
               return (
-                <button key={t.key} className={`ce-sidebar-item ce-sidebar-item-secondary${active ? " is-active" : ""}`} onClick={() => setTab(t.key)} title={`${t.label} (legacy planning)`} style={{
-                  width:"100%", display:"flex", alignItems:"center",
+                <button key={t.key} className={`ce-sidebar-item${active ? " is-active" : ""}`} onClick={() => setTab(t.key)} title={t.label} style={{
+                  width: sidebarOpen ? "100%" : 32,
+                  height: sidebarOpen ? "auto" : 32,
+                  display:"flex", alignItems:"center",
                   justifyContent: sidebarOpen ? "flex-start" : "center",
                   gap: sidebarOpen ? 10 : 0,
-                  padding: sidebarOpen ? "7px 10px" : "8px 0",
-                  borderRadius:8, border:"none", cursor:"pointer",
-                  background: active ? "var(--fill2)" : "transparent",
-                  color: active ? "var(--t1)" : "var(--t4)",
-                  fontSize:12, fontWeight: active ? 600 : 400,
-                  marginBottom:2,
-                  boxShadow: sidebarOpen ? (active ? "inset 2px 0 0 var(--accent)" : "inset 2px 0 0 transparent") : "none",
-                  transition:"background 0.12s, color 0.12s",
+                  padding: sidebarOpen ? "6px 9px" : 0,
+                  borderRadius: sidebarOpen ? 6 : 7,
+                  border: "0.5px solid " + (active ? "var(--ce-line-2)" : "transparent"),
+                  cursor:"pointer",
+                  background: active ? "var(--ce-fill-2)" : "transparent",
+                  color: active ? "var(--ce-text)" : "var(--ce-text-3)",
+                  fontSize:12, fontWeight: active ? 550 : 400,
+                  transition:"background var(--ce-dur-1) var(--ce-ease), color var(--ce-dur-1) var(--ce-ease)",
                 }}>
-                  <t.Icon size={sidebarOpen ? 14 : 16} strokeWidth={active ? 2.4 : 1.7} style={{ flexShrink:0 }} />
-                  {sidebarOpen && t.label}
+                  <t.Icon size={13} strokeWidth={active ? 2 : 1.5} style={{ flexShrink:0 }} />
+                  {sidebarOpen && <span style={{ flex:1 }}>{t.label}</span>}
                 </button>
               );
             })}
           </nav>
 
           {/* Bottom — settings + user */}
-          <div style={{ padding: sidebarOpen ? "8px" : "8px 4px", flexShrink:0, borderTop:"0.5px solid var(--border2)" }}>
+          <div style={{ padding: sidebarOpen ? "8px 10px" : "8px 0", flexShrink:0, borderTop:"0.5px solid var(--ce-line)", display:"flex", flexDirection:"column", gap:1, alignItems: sidebarOpen ? "stretch" : "center" }}>
             <button className={`ce-sidebar-item${showSettings ? " is-active" : ""}`} onClick={() => setShowSettings(s=>!s)} title="Settings" style={{
-              width:"100%", display:"flex", alignItems:"center",
+              width: sidebarOpen ? "100%" : 32, height: sidebarOpen ? "auto" : 32,
+              display:"flex", alignItems:"center",
               justifyContent: sidebarOpen ? "flex-start" : "center",
               gap: sidebarOpen ? 10 : 0,
-              padding: sidebarOpen ? "8px 10px" : "9px 0",
-              borderRadius:8, border:"none", cursor:"pointer",
-              background: showSettings ? "var(--fill2)" : "transparent",
-              color:"var(--t3)", fontSize:13, marginBottom:4,
+              padding: sidebarOpen ? "6.5px 9px" : 0,
+              borderRadius: sidebarOpen ? 6 : 7,
+              border:"0.5px solid transparent",
+              cursor:"pointer",
+              background: showSettings ? "var(--ce-fill-2)" : "transparent",
+              color:"var(--ce-text-3)", fontSize:12,
             }}>
-              <Settings size={sidebarOpen ? 15 : 16} strokeWidth={1.8} style={{ flexShrink:0 }} />
-              {sidebarOpen && "Settings"}
+              <Settings size={14} strokeWidth={1.5} style={{ flexShrink:0 }} />
+              {sidebarOpen && <span style={{ flex:1 }}>Settings</span>}
             </button>
 
             {/* User row */}
             <div style={{ position:"relative" }}>
               <button className={`ce-sidebar-item${showUserMenu==="user" ? " is-active" : ""}`} onClick={() => setShowUserMenu(m=>m==="user"?null:"user")} title={user.user_metadata?.full_name || user.email} style={{
-                width:"100%", display:"flex", alignItems:"center",
+                width: sidebarOpen ? "100%" : 32, height: sidebarOpen ? "auto" : 32,
+                display:"flex", alignItems:"center",
                 justifyContent: sidebarOpen ? "flex-start" : "center",
                 gap: sidebarOpen ? 8 : 0,
-                padding: sidebarOpen ? "7px 10px" : "7px 0",
-                borderRadius:8, border:"none", cursor:"pointer",
-                background:"transparent", color:"var(--t2)", fontSize:12,
+                padding: sidebarOpen ? "6px 9px" : 0,
+                borderRadius: sidebarOpen ? 6 : 999,
+                border:"0.5px solid transparent",
+                cursor:"pointer",
+                background:"transparent", color:"var(--ce-text-2)", fontSize:12,
               }}>
                 {user.user_metadata?.avatar_url
-                  ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:22, height:22, borderRadius:99, objectFit:"cover", flexShrink:0 }} />
-                  : <div style={{ width:22, height:22, borderRadius:99, background:"var(--bg3)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><User size={11} color="var(--t3)" /></div>
+                  ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:20, height:20, borderRadius:999, objectFit:"cover", flexShrink:0, border:"0.5px solid var(--ce-line-2)" }} />
+                  : <div style={{ width:20, height:20, borderRadius:999, background:"var(--ce-fill-3)", border:"0.5px solid var(--ce-line-2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:600, color:"var(--ce-text-2)", flexShrink:0 }}>
+                      {(user.user_metadata?.full_name || user.email || "?").slice(0,2).toUpperCase()}
+                    </div>
                 }
                 {sidebarOpen && <>
-                  <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textAlign:"left" }}>{user.user_metadata?.full_name || user.email}</span>
-                  <ChevronDown size={11} color="var(--t4)" style={{ flexShrink:0 }} />
+                  <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textAlign:"left", fontSize:12 }}>{user.user_metadata?.full_name || user.email}</span>
+                  <Settings size={12} color="var(--ce-text-4)" style={{ flexShrink:0 }} />
                 </>}
               </button>
               {showUserMenu==="user" && (
-                <div style={{ position:"absolute", bottom:"100%", left:0, right:0, zIndex:40, background:"var(--sheet)", borderRadius:10, padding:4, border:"0.5px solid var(--border)", boxShadow:"var(--shadow-lg)", marginBottom:4 }}>
+                <div style={{ position:"absolute", bottom:"100%", left:0, right:0, zIndex:40, background:"var(--ce-elevated)", borderRadius:10, padding:4, border:"0.5px solid var(--ce-line-2)", boxShadow:"var(--ce-shadow-3)", marginBottom:4 }}>
                   <div style={{ padding:"8px 10px 6px" }}>
-                    <div style={{ fontSize:12, fontWeight:500, color:"var(--t1)" }}>{user.user_metadata?.full_name||"User"}</div>
-                    <div style={{ fontSize:11, color:"var(--t3)", marginTop:1 }}>{user.email}</div>
+                    <div style={{ fontSize:12, fontWeight:500, color:"var(--ce-text)" }}>{user.user_metadata?.full_name||"User"}</div>
+                    <div style={{ fontSize:11, color:"var(--ce-text-3)", marginTop:1 }}>{user.email}</div>
                   </div>
-                  <div style={{ height:"0.5px", background:"var(--border2)", margin:"0 4px 4px" }}/>
-                  <button className="ce-menu-item" onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={menuBtn}
-                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <Settings size={12}/> Settings
-                  </button>
-                  <button className="ce-menu-item" onClick={()=>{importCSV();setShowUserMenu(null);}} style={menuBtn}
-                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <Upload size={12}/> Import CSV
-                  </button>
-                  <button className="ce-menu-item" onClick={()=>{exportCSV();setShowUserMenu(null);}} style={menuBtn}
-                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <Download size={12}/> Export CSV
-                  </button>
-                  <div style={{ height:"0.5px", background:"var(--border2)", margin:"4px 4px" }}/>
-                  <button className="ce-menu-item" onClick={handleSignOut} style={menuBtn}
-                    onMouseEnter={e=>e.currentTarget.style.background="var(--fill2)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <LogOut size={12}/> Sign out
-                  </button>
+                  <div style={{ height:"0.5px", background:"var(--ce-line)", margin:"0 4px 4px" }}/>
+                  <button className="ce-menu-item" onClick={()=>{setShowSettings(true);setShowUserMenu(null);}} style={menuBtn}><Settings size={12}/> Settings</button>
+                  <button className="ce-menu-item" onClick={()=>{importCSV();setShowUserMenu(null);}} style={menuBtn}><Upload size={12}/> Import CSV</button>
+                  <button className="ce-menu-item" onClick={()=>{exportCSV();setShowUserMenu(null);}} style={menuBtn}><Download size={12}/> Export CSV</button>
+                  <div style={{ height:"0.5px", background:"var(--ce-line)", margin:"4px 4px" }}/>
+                  <button className="ce-menu-item" onClick={handleSignOut} style={menuBtn}><LogOut size={12}/> Sign out</button>
                 </div>
               )}
             </div>
@@ -845,7 +856,7 @@ export default function Home() {
           </span>
 
           {/* Agent toggle */}
-          <button onClick={() => setAgentOpen(s=>!s)} title="Agent (⌘⌥A)" style={{ width:30, height:30, borderRadius:7, border:`0.5px solid ${agentOpen ? "var(--gold)" : "var(--border)"}`, background: agentOpen ? "rgba(196,154,60,0.10)" : "transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color: agentOpen ? "var(--gold)" : "var(--t3)", flexShrink:0, transition:"border-color 0.12s, background 0.12s, color 0.12s" }}>
+          <button onClick={() => setAgentOpen(s=>!s)} title="Agent (⌘⌥A)" style={{ width:30, height:30, borderRadius:7, border:`0.5px solid ${agentOpen ? "var(--ce-live-2)" : "var(--ce-line)"}`, background: agentOpen ? "var(--ce-live-3)" : "transparent", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color: agentOpen ? "var(--ce-live)" : "var(--ce-text-3)", flexShrink:0, transition:"border-color 0.12s, background 0.12s, color 0.12s" }}>
             <Bot size={14} />
           </button>
         </header>
@@ -969,7 +980,7 @@ export default function Home() {
             </label>
             <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
               <button onClick={() => setNewBrand(s => ({ ...s, show: false }))} style={{ padding:"6px 14px", borderRadius:7, border:"0.5px solid var(--border)", background:"transparent", color:"var(--t2)", fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>Cancel</button>
-              <button onClick={submitNewBrand} disabled={!newBrand.name.trim()} style={{ padding:"6px 14px", borderRadius:7, border:"none", background:"var(--gold)", color:"#000", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", opacity: newBrand.name.trim() ? 1 : 0.4 }}>Create</button>
+              <button onClick={submitNewBrand} disabled={!newBrand.name.trim()} style={{ padding:"6px 14px", borderRadius:7, border:"none", background:"var(--ce-text)", color:"var(--ce-bg)", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit", opacity: newBrand.name.trim() ? 1 : 0.4 }}>Create</button>
             </div>
           </div>
         </div>

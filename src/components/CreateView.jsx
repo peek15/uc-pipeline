@@ -452,7 +452,7 @@ function ScriptWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLangs, 
               rows={10}
               style={{
                 width: "100%", padding: "16px 18px", borderRadius: 8,
-                background: "var(--bg2)", border: `0.5px solid ${isDirty ? "var(--gold)" : "var(--border)"}`,
+                background: "var(--bg2)", border: `0.5px solid ${isDirty ? "var(--ce-live-2)" : "var(--border)"}`,
                 color: "var(--t2)", fontSize: 14, lineHeight: 1.85,
                 fontFamily: "inherit", resize: "vertical", outline: "none",
                 boxSizing: "border-box",
@@ -667,12 +667,12 @@ function TranslationWorkspace({ story, onUpdate, onSaved, localLangs, setLocalLa
               const err       = errors[lang.key];
 
               return (
-                <div key={lang.key} style={{ borderRadius: 8, border: `0.5px solid ${isDirty ? "var(--gold)" : "var(--border)"}`, overflow: "hidden" }}>
+                <div key={lang.key} style={{ borderRadius: 8, border: `0.5px solid ${isDirty ? "var(--ce-live-2)" : "var(--border)"}`, overflow: "hidden" }}>
                   {/* Header */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 12px", background: "var(--fill)", borderBottom: "0.5px solid var(--border)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "var(--t1)" }}>{lang.label}</span>
-                      {isDirty  && <span style={{ fontSize: 10, color: "var(--gold)" }}>edited</span>}
+                      {isDirty  && <span style={{ fontSize: 10, color: "var(--ce-live)" }}>edited</span>}
                       {isBusy   && <span style={{ fontSize: 10, color: "var(--t3)" }}>{loading[lang.key]}…</span>}
                       {!text && !isBusy && <span style={{ fontSize: 10, color: "var(--t4)" }}>not translated</span>}
                       {text && !isDirty && !isBusy && wc(text) > 0 && <span style={{ fontSize: 10, color: "var(--t4)", fontFamily: "var(--font-mono)" }}>{wc(text)}w</span>}

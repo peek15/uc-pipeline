@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, Send, Trash2, Bot, Paperclip, ChevronDown, Database } from "lucide-react";
+import { Send, Trash2, Paperclip, ChevronDown, Database, Link, FileText, Image, AtSign } from "lucide-react";
 import { supabase } from "@/lib/db";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { getAiCalls } from "@/lib/ai/audit";
@@ -10,6 +10,7 @@ import { getBrandName, getContentType, contentObjective, contentChannel } from "
 import { friendlyAiError } from "@/lib/errorMessages";
 import { getContextSummary, getViewLabel } from "@/lib/agent/agentContext";
 import { TASK_TYPES } from "@/lib/agent/taskTypes";
+import { CEMark } from "@/components/CEMark";
 
 // ── Model registry ────────────────────────────────────────
 const MODELS = [
@@ -161,7 +162,7 @@ function fmt(text, keyPrefix = "") {
     if (m.index > last) parts.push(text.slice(last, m.index));
     if (m[1] != null) parts.push(<strong key={keyPrefix + m.index} style={{ fontWeight: 600 }}>{m[1]}</strong>);
     else if (m[2] != null) parts.push(
-      <code key={keyPrefix + m.index} style={{ fontFamily: "var(--font-mono)", fontSize: "0.85em", background: "rgba(128,128,128,0.15)", padding: "1px 5px", borderRadius: 3, letterSpacing: 0 }}>{m[2]}</code>
+      <code key={keyPrefix + m.index} style={{ fontFamily: "var(--font-mono)", fontSize: "0.85em", background: "var(--ce-fill-2)", padding: "1px 5px", borderRadius: 3, letterSpacing: 0 }}>{m[2]}</code>
     );
     last = m.index + m[0].length;
   }
@@ -205,12 +206,12 @@ function Markdown({ text }) {
   return <>{output}</>;
 }
 
-// ── Typing indicator ──────────────────────────────────────
+// ── Typing dots ───────────────────────────────────────────
 function TypingDots() {
   return (
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center", padding: "2px 0" }}>
       {[0, 1, 2].map(i => (
-        <span key={i} style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--t4)", display: "inline-block", animation: "pulse 1.2s ease infinite", animationDelay: `${i * 0.18}s` }} />
+        <span key={i} style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--ce-text-4)", display: "inline-block", animation: "pulse 1.2s ease infinite", animationDelay: `${i * 0.18}s` }} />
       ))}
     </span>
   );
@@ -220,40 +221,35 @@ function TypingDots() {
 async function toBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      const base64 = result.split(",")[1];
-      resolve({ data: base64, mimeType: file.type });
-    };
+    reader.onload = () => { resolve({ data: reader.result.split(",")[1], mimeType: file.type }); };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
 
-// ── Bubble ────────────────────────────────────────────────
-function Bubble({ m, streaming }) {
+// ── Message row — flat CE style ───────────────────────────
+function MessageRow({ m, streaming }) {
   const isUser = m.role === "user";
   const imgs   = Array.isArray(m.content) ? m.content.filter(p => p.type === "image") : [];
   const text   = Array.isArray(m.content) ? (m.content.find(p => p.type === "text")?.text ?? "") : (m.content ?? "");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start", gap: 4 }}>
+    <div className="ce-slide-up" style={{ marginBottom: 18 }}>
+      <div style={{
+        fontSize: 9.5, fontFamily: "var(--font-mono)", color: "var(--ce-text-4)",
+        textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, marginBottom: 5,
+      }}>
+        {isUser ? "You" : "Engine"}
+      </div>
       {imgs.length > 0 && (
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: isUser ? "flex-end" : "flex-start" }}>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
           {imgs.map((img, i) => (
             <img key={i} src={`data:${img.mimeType};base64,${img.data}`}
-              style={{ maxWidth: 130, maxHeight: 100, borderRadius: 5, objectFit: "cover", border: "0.5px solid rgba(0,0,0,0.12)" }} />
+              style={{ maxWidth: 120, maxHeight: 90, borderRadius: 5, objectFit: "cover", border: "0.5px solid var(--ce-line-2)" }} />
           ))}
         </div>
       )}
-      <div style={{
-        maxWidth: "86%", padding: isUser ? "7px 11px" : "8px 12px",
-        borderRadius: isUser ? "12px 12px 3px 12px" : "3px 12px 12px 12px",
-        background: isUser ? "var(--t1)" : "var(--fill2)",
-        color: isUser ? "var(--bg)" : "var(--t1)",
-        fontSize: 13, lineHeight: 1.5,
-        border: isUser ? "none" : "0.5px solid var(--border)",
-      }}>
+      <div style={{ fontSize: 12.5, color: isUser ? "var(--ce-text)" : "var(--ce-text-2)", lineHeight: 1.55 }}>
         {m.role === "assistant" && !text && streaming
           ? <TypingDots />
           : isUser
@@ -261,25 +257,26 @@ function Bubble({ m, streaming }) {
             : <Markdown text={text} />}
       </div>
       {m.role === "assistant" && m.memoryMeta?.count > 0 && (
-        <div style={{ fontSize: 10, color: "var(--t4)", display: "flex", alignItems: "center", gap: 4, paddingLeft: 2 }}>
-          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--t4)", flexShrink: 0, display: "inline-block" }} />
-          Guided by {m.memoryMeta.count} workspace {m.memoryMeta.count === 1 ? "memory" : "memories"}
+        <div style={{ fontSize: 10, color: "var(--ce-text-5)", display: "flex", alignItems: "center", gap: 4, marginTop: 5, fontFamily: "var(--font-mono)" }}>
+          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--ce-text-5)", flexShrink: 0, display: "inline-block" }} />
+          {m.memoryMeta.count} workspace {m.memoryMeta.count === 1 ? "memory" : "memories"}
         </div>
       )}
     </div>
   );
 }
 
-// ── Context toggle button ─────────────────────────────────
-function ContextToggle({ source, active, loading, onToggle }) {
+// ── Context toggle pill ───────────────────────────────────
+function ContextPill({ source, active, loading, onToggle }) {
   return (
     <button onClick={() => onToggle(source.key)} title={source.desc} style={{
-      padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 500, cursor: "pointer",
-      background: active ? "rgba(196,154,60,0.18)" : "var(--fill)",
-      color:      active ? "var(--gold)"           : "var(--t4)",
-      border:     active ? "0.5px solid rgba(196,154,60,0.4)" : "0.5px solid var(--border)",
+      padding: "2px 7px", borderRadius: 999, fontSize: 10, fontWeight: 500, cursor: "pointer",
+      background: active ? "var(--ce-fill-3)" : "var(--ce-fill)",
+      color:      active ? "var(--ce-text-2)" : "var(--ce-text-4)",
+      border:     active ? "0.5px solid var(--ce-line-3)" : "0.5px solid var(--ce-line-2)",
       opacity:    loading ? 0.5 : 1,
-      transition: "all 0.12s",
+      transition: "all var(--ce-dur-1) var(--ce-ease)",
+      fontFamily: "inherit",
     }}>
       {loading ? "…" : source.label}
     </button>
@@ -330,9 +327,7 @@ export default function AgentPanel({
     try {
       const toSave = messages.slice(-30).map(m => ({
         role: m.role,
-        content: Array.isArray(m.content)
-          ? m.content.filter(p => p.type === "text")
-          : m.content,
+        content: Array.isArray(m.content) ? m.content.filter(p => p.type === "text") : m.content,
       }));
       localStorage.setItem(historyKey(tenant), JSON.stringify(toSave));
     } catch {}
@@ -544,192 +539,258 @@ export default function AgentPanel({
 
   const handleKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
 
-  const btnIcon = { width: 24, height: 24, borderRadius: 5, border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
   const groups  = Object.entries(MODELS.reduce((acc, m) => { (acc[m.provider] = acc[m.provider] || []).push(m); return acc; }, {}));
   const canSend = (input.trim() || pending.length) && !streaming;
-  const activeCtxCount = Object.values(ctxActive).filter(Boolean).length;
 
-  // ── Determine suggestions to show in empty state
-  const contextSummary  = getContextSummary(agent_context);
+  const contextSummary   = getContextSummary(agent_context);
   const suggestedActions = agent_context?.suggested_actions;
   const emptyStateSuggestions = suggestedActions?.length
     ? suggestedActions
     : DEFAULT_SUGGESTIONS.map(s => ({ id: s, label: s }));
 
+  const iconBtn = {
+    width: 26, height: 26, borderRadius: 6, border: "none",
+    background: "transparent", cursor: "pointer",
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    color: "var(--ce-text-4)", transition: "color var(--ce-dur-1) var(--ce-ease)",
+    fontFamily: "inherit",
+  };
+
+  // ── Collapsed: 52px strip with CEMark
+  if (!isOpen) {
+    return (
+      <aside style={{
+        width: 52, flexShrink: 0, height: "100%",
+        borderLeft: "0.5px solid var(--ce-line)",
+        background: "var(--ce-bg-2)",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        padding: "14px 0", gap: 12, zIndex: 15,
+        transition: "width var(--ce-dur-3) var(--ce-ease)",
+      }}>
+        <button onClick={onClose} title="Expand Engine (⌘⌥A)" style={{
+          width: 32, height: 32, borderRadius: 7,
+          background: "transparent", border: "0.5px solid transparent",
+          color: "var(--ce-text)", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }} className="ce-hover">
+          <CEMark size={15} strokeWidth={1.2}
+            color={streaming ? "var(--ce-live)" : "var(--ce-text)"}
+            breathe={streaming} />
+        </button>
+        <div style={{ flex: 1 }} />
+        <span style={{
+          writingMode: "vertical-rl", fontSize: 9.5, color: "var(--ce-text-5)",
+          textTransform: "uppercase", letterSpacing: "0.08em",
+          fontFamily: "var(--font-mono)",
+        }}>Engine</span>
+      </aside>
+    );
+  }
+
+  // ── Expanded: 360px rail
   return (
     <aside
       ref={panelRef}
       onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}
       style={{
-        width: isOpen ? 320 : 0, flexShrink: 0, overflow: "hidden",
-        background: dragOver ? "var(--fill2)" : "var(--bg2)",
-        borderLeft: `0.5px solid ${dragOver ? "var(--gold)" : "var(--border)"}`,
+        width: 360, flexShrink: 0, height: "100%",
+        borderLeft: `0.5px solid ${dragOver ? "var(--ce-line-3)" : "var(--ce-line)"}`,
+        background: dragOver ? "var(--ce-fill)" : "var(--ce-bg-2)",
         display: "flex", flexDirection: "column", zIndex: 15,
-        transition: "width 0.22s cubic-bezier(0.4,0,0.2,1), background 0.1s, border-color 0.1s",
+        transition: "background var(--ce-dur-1) var(--ce-ease), border-color var(--ce-dur-1) var(--ce-ease)",
       }}
     >
-      <div style={{ width: 320, height: "100%", display: "flex", flexDirection: "column" }}>
-
-        {/* ── Header ── */}
-        <div style={{ padding: "12px 14px", borderBottom: "0.5px solid var(--border)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0, position: "relative" }}>
-          <Bot size={14} color="var(--gold)" style={{ flexShrink: 0 }} />
-
-          <button onClick={() => setShowPicker(s => !s)} style={{
-            display: "flex", alignItems: "center", gap: 4, padding: "3px 7px",
-            borderRadius: 6, border: "0.5px solid var(--border)", background: "var(--fill2)",
-            cursor: "pointer", color: "var(--t2)", fontSize: 11, fontWeight: 500,
-          }}>
-            {selectedModel.label}
-            <ChevronDown size={10} color="var(--t4)" />
-          </button>
-
-          <div style={{ flex: 1 }} />
-
-          {messages.length > 0 && (
-            <button onClick={clearHistory} title="Clear conversation" style={{ ...btnIcon, color: "var(--t4)" }}><Trash2 size={12} /></button>
-          )}
-          <button onClick={onClose} title="Close (⌘⌥A)" style={{ ...btnIcon, color: "var(--t3)" }}><X size={13} /></button>
-
-          {/* Model picker */}
-          {showPicker && (
-            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50, background: "var(--sheet)", border: "0.5px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-lg)", padding: "6px 0", margin: "4px 8px 0" }}>
-              {groups.map(([provider, models]) => (
-                <div key={provider}>
-                  <div style={{ padding: "6px 12px 3px", fontSize: 10, fontWeight: 700, color: "var(--t4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                    {PROVIDER_LABEL[provider] || provider}
-                    {!providers[provider] && <span style={{ marginLeft: 4, color: "var(--error)", fontWeight: 400 }}>· key not set</span>}
-                  </div>
-                  {models.map(m => {
-                    const active = m.id === modelId, disabled = !providers[m.provider];
-                    return (
-                      <button key={m.id} disabled={disabled} onClick={() => { setModelId(m.id); setShowPicker(false); }} style={{
-                        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-                        gap: 8, padding: "7px 12px", border: "none", cursor: disabled ? "not-allowed" : "pointer",
-                        background: active ? "var(--fill2)" : "transparent", opacity: disabled ? 0.4 : 1,
-                      }}>
-                        <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: "var(--t1)" }}>{m.label}</span>
-                        <span style={{ fontSize: 11, color: "var(--t3)" }}>{m.desc}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── Active context strip ── */}
-        {contextSummary && (
-          <div style={{
-            padding: "5px 12px", borderBottom: "0.5px solid var(--border)",
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            background: "rgba(91,143,185,0.07)", flexShrink: 0,
-          }}>
-            <span style={{ fontSize: 10, color: "var(--t3)", fontWeight: 500 }}>
-              {TASK_TYPES[agent_context?.task_type]?.label
-                ? `${TASK_TYPES[agent_context.task_type].label} · ${contextSummary}`
-                : contextSummary}
-            </span>
-            {onClearContext && (
-              <button onClick={onClearContext} title="Clear context" style={{ background: "none", border: "none", color: "var(--t4)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>×</button>
+      {/* ── Header ── */}
+      <div style={{
+        height: 44, flexShrink: 0, borderBottom: "0.5px solid var(--ce-line)",
+        display: "flex", alignItems: "center", padding: "0 12px", gap: 10, position: "relative",
+      }}>
+        <button onClick={onClose} title="Collapse Engine (⌘⌥A)" style={{
+          background: "transparent", border: "none", padding: 0,
+          cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
+          color: "var(--ce-text)", flex: 1,
+        }}>
+          <CEMark size={14} strokeWidth={1.1}
+            breathe={streaming}
+            color={streaming ? "var(--ce-live)" : "var(--ce-text)"} />
+          <div style={{ textAlign: "left" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ce-text)" }}>Engine</div>
+            {contextSummary && (
+              <div style={{ fontSize: 9.5, color: "var(--ce-text-4)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 1 }}>{contextSummary}</div>
             )}
           </div>
+        </button>
+
+        {/* Model picker trigger */}
+        <button onClick={() => setShowPicker(s => !s)} style={{
+          display: "flex", alignItems: "center", gap: 4, padding: "3px 7px",
+          borderRadius: 5, border: "0.5px solid var(--ce-line-2)", background: "var(--ce-fill)",
+          cursor: "pointer", color: "var(--ce-text-3)", fontSize: 10.5, fontWeight: 500,
+          fontFamily: "inherit",
+        }}>
+          {selectedModel.label}
+          <ChevronDown size={10} color="var(--ce-text-4)" />
+        </button>
+
+        {messages.length > 0 && (
+          <button onClick={clearHistory} title="Clear conversation" style={{ ...iconBtn }}>
+            <Trash2 size={12} />
+          </button>
         )}
 
-        {/* ── Context bar ── */}
-        <div style={{ padding: "6px 12px", borderBottom: "0.5px solid var(--border)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <Database size={10} style={{ color: "var(--t4)", flexShrink: 0 }} />
-          <span style={{ fontSize: 10, color: "var(--t4)", marginRight: 2 }}>Context:</span>
-          {CONTEXT_SOURCES.map(src => (
-            <ContextToggle key={src.key} source={src} active={!!ctxActive[src.key]} loading={!!ctxLoading[src.key]} onToggle={toggleContext} />
-          ))}
-        </div>
-
-        {/* ── Messages ── */}
-        <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {messages.length === 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 24, gap: 16 }}>
-              <div style={{ color: "var(--t4)", fontSize: 12, textAlign: "center", lineHeight: 1.8 }}>
-                {contextSummary
-                  ? <>Working on <strong style={{ color: "var(--t3)" }}>{contextSummary}</strong>.<br />How can I help?</>
-                  : <>Ask about the pipeline,<br />navigate views, or run bulk actions.</>
-                }
-                <div style={{ fontSize: 10, marginTop: 4, opacity: 0.6 }}>
-                  {activeCtxCount > 0 ? `${activeCtxCount} context source${activeCtxCount > 1 ? "s" : ""} active` : "Drop images · Enable context above for richer queries"}
+        {/* Model picker dropdown */}
+        {showPicker && (
+          <div style={{
+            position: "absolute", top: "100%", right: 8, zIndex: 50, width: 220,
+            background: "var(--ce-elevated)", border: "0.5px solid var(--ce-line-2)",
+            borderRadius: 10, boxShadow: "var(--ce-shadow-3)", padding: "6px 0", marginTop: 4,
+          }}>
+            {groups.map(([provider, models]) => (
+              <div key={provider}>
+                <div style={{ padding: "6px 12px 3px", fontSize: 9.5, fontWeight: 700, color: "var(--ce-text-4)", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--font-mono)" }}>
+                  {PROVIDER_LABEL[provider] || provider}
+                  {!providers[provider] && <span style={{ marginLeft: 4, color: "var(--ce-danger)", fontWeight: 400 }}> · key not set</span>}
                 </div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
-                {emptyStateSuggestions.map(s => {
-                  const label = typeof s === "string" ? s : s.label;
-                  const key   = typeof s === "string" ? s : (s.id || s.label);
-                  const msg   = typeof s === "string" ? s : (s.initial_message || s.label);
+                {models.map(m => {
+                  const active = m.id === modelId, disabled = !providers[m.provider];
                   return (
-                    <button key={key} onClick={() => send(msg)} style={{
-                      padding: "7px 12px", borderRadius: 8, fontSize: 12, textAlign: "left",
-                      background: "var(--fill)", border: "0.5px solid var(--border)",
-                      color: "var(--t2)", cursor: "pointer", transition: "background 0.1s",
-                    }}
-                      onMouseEnter={e => e.currentTarget.style.background = "var(--fill2)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "var(--fill)"}
-                    >{label}</button>
+                    <button key={m.id} disabled={disabled} onClick={() => { setModelId(m.id); setShowPicker(false); }} style={{
+                      width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                      gap: 8, padding: "7px 12px", border: "none", cursor: disabled ? "not-allowed" : "pointer",
+                      background: active ? "var(--ce-fill-2)" : "transparent", opacity: disabled ? 0.4 : 1,
+                      fontFamily: "inherit",
+                    }}>
+                      <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: "var(--ce-text)" }}>{m.label}</span>
+                      <span style={{ fontSize: 11, color: "var(--ce-text-3)" }}>{m.desc}</span>
+                    </button>
                   );
                 })}
-              </div>
-            </div>
-          ) : (
-            messages.map((m, i) => <Bubble key={i} m={m} streaming={streaming && i === messages.length - 1} />)
-          )}
-        </div>
-
-        {/* ── Pending images ── */}
-        {pending.length > 0 && (
-          <div style={{ display: "flex", gap: 6, padding: "6px 12px 0", flexWrap: "wrap" }}>
-            {pending.map((img, i) => (
-              <div key={i} style={{ position: "relative", flexShrink: 0 }}>
-                <img src={`data:${img.mimeType};base64,${img.data}`}
-                  style={{ width: 52, height: 52, borderRadius: 6, objectFit: "cover", border: "0.5px solid var(--border)", display: "block" }} />
-                <button onClick={() => setPending(p => p.filter((_, j) => j !== i))} style={{
-                  position: "absolute", top: -5, right: -5, width: 16, height: 16, borderRadius: 99,
-                  background: "var(--t1)", color: "var(--bg)", border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700,
-                }}>×</button>
               </div>
             ))}
           </div>
         )}
+      </div>
 
-        {/* ── Input ── */}
-        <div style={{ padding: "10px 12px", borderTop: "0.5px solid var(--border)", flexShrink: 0 }}>
-          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }}
-            onChange={e => { addImages(e.target.files); e.target.value = ""; }} />
-          <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleInput}
-              onKeyDown={handleKey}
-              onPaste={onPaste}
-              placeholder={contextSummary ? `Ask about ${contextSummary.toLowerCase()}…` : "Ask the assistant…"}
-              rows={1}
-              style={{
-                flex: 1, resize: "none", overflow: "hidden",
-                padding: "8px 10px", borderRadius: 8,
-                border: "0.5px solid var(--border-in)", background: "var(--bg)",
-                color: "var(--t1)", fontSize: 13, outline: "none",
-                fontFamily: "inherit", lineHeight: 1.4, minHeight: 36, maxHeight: 120,
-              }}
-            />
-            <button onClick={() => fileRef.current?.click()} title="Attach image" style={{ ...btnIcon, width: 32, height: 32, border: "0.5px solid var(--border)", color: "var(--t3)" }}><Paperclip size={13} /></button>
+      {/* ── Context strip (active task) ── */}
+      {contextSummary && onClearContext && (
+        <div style={{
+          padding: "5px 14px", borderBottom: "0.5px solid var(--ce-line)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "var(--ce-fill)", flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 10, color: "var(--ce-text-3)", fontWeight: 500 }}>
+            {TASK_TYPES[agent_context?.task_type]?.label
+              ? `${TASK_TYPES[agent_context.task_type].label} · ${contextSummary}`
+              : contextSummary}
+          </span>
+          <button onClick={onClearContext} title="Clear context" style={{ background: "none", border: "none", color: "var(--ce-text-4)", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>×</button>
+        </div>
+      )}
+
+      {/* ── Context bar ── */}
+      <div style={{ padding: "7px 14px", borderBottom: "0.5px solid var(--ce-line)", display: "flex", alignItems: "center", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+        <Database size={10} style={{ color: "var(--ce-text-5)", flexShrink: 0 }} />
+        <span style={{ fontSize: 10, color: "var(--ce-text-5)", fontFamily: "var(--font-mono)", marginRight: 2 }}>Context</span>
+        {CONTEXT_SOURCES.map(src => (
+          <ContextPill key={src.key} source={src} active={!!ctxActive[src.key]} loading={!!ctxLoading[src.key]} onToggle={toggleContext} />
+        ))}
+      </div>
+
+      {/* ── Messages ── */}
+      <div ref={scrollRef} className="ce-scroll" style={{ flex: 1, overflowY: "auto", padding: "16px 14px 8px" }}>
+        {messages.length === 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", paddingTop: 16, gap: 14 }}>
+            <div style={{ fontSize: 12, color: "var(--ce-text-4)", lineHeight: 1.7 }}>
+              {contextSummary
+                ? <>Working on <strong style={{ color: "var(--ce-text-3)" }}>{contextSummary}</strong>.<br />How can I help?</>
+                : <>Ask about the pipeline,<br />navigate views, or run bulk actions.</>
+              }
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {emptyStateSuggestions.map(s => {
+                const label = typeof s === "string" ? s : s.label;
+                const key   = typeof s === "string" ? s : (s.id || s.label);
+                const msg   = typeof s === "string" ? s : (s.initial_message || s.label);
+                return (
+                  <button key={key} onClick={() => send(msg)} style={{
+                    padding: "7px 10px", borderRadius: 7, fontSize: 11.5, textAlign: "left",
+                    background: "var(--ce-fill)", border: "0.5px solid var(--ce-line-2)",
+                    color: "var(--ce-text-3)", cursor: "pointer", fontFamily: "inherit",
+                    transition: "background var(--ce-dur-1) var(--ce-ease)",
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--ce-fill-2)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "var(--ce-fill)"}
+                  >{label}</button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          messages.map((m, i) => <MessageRow key={i} m={m} streaming={streaming && i === messages.length - 1} />)
+        )}
+      </div>
+
+      {/* ── Pending images ── */}
+      {pending.length > 0 && (
+        <div style={{ display: "flex", gap: 6, padding: "6px 14px 0", flexWrap: "wrap" }}>
+          {pending.map((img, i) => (
+            <div key={i} style={{ position: "relative", flexShrink: 0 }}>
+              <img src={`data:${img.mimeType};base64,${img.data}`}
+                style={{ width: 48, height: 48, borderRadius: 5, objectFit: "cover", border: "0.5px solid var(--ce-line-2)", display: "block" }} />
+              <button onClick={() => setPending(p => p.filter((_, j) => j !== i))} style={{
+                position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: 99,
+                background: "var(--ce-text)", color: "var(--ce-bg)", border: "none", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700,
+              }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Composer ── */}
+      <div style={{ padding: 12, borderTop: "0.5px solid var(--ce-line)", flexShrink: 0 }}>
+        <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }}
+          onChange={e => { addImages(e.target.files); e.target.value = ""; }} />
+        <div style={{
+          borderRadius: 10, border: "0.5px solid var(--ce-line-2)",
+          background: "var(--ce-surface-2)", padding: 10,
+          transition: "border-color var(--ce-dur-2) var(--ce-ease)",
+        }}>
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={handleInput}
+            onKeyDown={handleKey}
+            onPaste={onPaste}
+            placeholder={contextSummary ? `Ask about ${contextSummary.toLowerCase()}…` : "Ask, plan, or paste a source…"}
+            rows={2}
+            style={{
+              width: "100%", resize: "none", overflow: "hidden",
+              border: "none", outline: "none",
+              background: "transparent", color: "var(--ce-text)",
+              fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.5,
+              minHeight: 40, maxHeight: 120,
+            }}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+            <button title="Attach image" onClick={() => fileRef.current?.click()} style={iconBtn}><Paperclip size={12} /></button>
+            <button title="Source URL" style={iconBtn}><Link size={12} /></button>
+            <button title="Mention" style={iconBtn}><AtSign size={12} /></button>
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: 10, color: "var(--ce-text-5)", fontFamily: "var(--font-mono)" }}>⌘↵</span>
             <button onClick={() => send()} disabled={!canSend} style={{
-              width: 32, height: 32, borderRadius: 8, border: "none", flexShrink: 0,
-              background: canSend ? "var(--t1)" : "var(--fill2)",
-              color:      canSend ? "var(--bg)" : "var(--t4)",
-              cursor:     canSend ? "pointer"   : "not-allowed",
-              display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.12s",
-            }}><Send size={13} /></button>
+              padding: "5px 9px", borderRadius: 6, border: "none", flexShrink: 0,
+              background: canSend ? "var(--ce-text)" : "var(--ce-fill-2)",
+              color:      canSend ? "var(--ce-bg)" : "var(--ce-text-4)",
+              cursor:     canSend ? "pointer" : "default",
+              display: "inline-flex", alignItems: "center", gap: 5,
+              fontFamily: "inherit", fontSize: 11.5, fontWeight: 600,
+              transition: "background var(--ce-dur-1) var(--ce-ease)",
+            }}>
+              <Send size={11} />
+            </button>
           </div>
         </div>
-
       </div>
     </aside>
   );

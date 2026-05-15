@@ -7,6 +7,7 @@ import { defaultTenant, normalizeTenant, tenantStorageKey } from "@/lib/brand";
 import { applyClarificationAnswers, blankOnboardingIntake, buildClarifications } from "@/lib/onboarding";
 import { extractFileTextForOnboarding } from "@/lib/onboardingDocumentIntelligence";
 import { EmptyState, Panel, Pill, SectionHeader, SkeletonCard, SourceReviewButton, buttonStyle } from "@/components/OperationalUI";
+import { CEMark } from "@/components/CEMark";
 
 const UNSURE = "I'm not sure — suggest for me";
 
@@ -726,11 +727,41 @@ ${json.discovered_source.summary || ""}`].filter(Boolean).join("\n\n"),
 
   return (
     <OnboardingShell>
-      <header style={{ height:58, display:"flex", alignItems:"center", justifyContent:"space-between", gap:16, padding:"0 28px", borderBottom:"1px solid var(--border)", background:"var(--nav)", backdropFilter:"blur(18px)" }}>
-        <div>
-          <div style={{ fontSize:12, color:"var(--t3)", fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase" }}>Creative Engine onboarding</div>
+      <header style={{
+        padding: "18px 40px 16px", borderBottom: "0.5px solid var(--ce-line)",
+        display: "flex", alignItems: "center", gap: 18
+      }}>
+        <CEMark size={16} strokeWidth={1.2} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ce-text-4)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Setting up
+          </div>
         </div>
-        <button onClick={() => window.location.href = "/?tab=home"} style={buttonStyle("ghost")}><ArrowLeft size={14}/>Back to app</button>
+        {/* Stage progress dots */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {["Sources", "Understanding", "Programmes", "Approve"].map((s, i) => {
+            const stageIdx = { intake: 0, analyzing: 0, clarifying: 1, drafting: 2, reviewing: 2, approved: 3 }[phase] ?? 0;
+            const isDone   = i < stageIdx;
+            const isActive = i === stageIdx;
+            return (
+              <div key={s} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                {i > 0 && <span style={{ width: 14, height: 1, background: "var(--ce-line-2)" }} />}
+                <span style={{
+                  width: 5, height: 5, borderRadius: 999,
+                  background: isDone ? "var(--ce-text-2)" : isActive ? "var(--ce-live)" : "transparent",
+                  border: !isDone && !isActive ? "0.5px dashed var(--ce-line-3)" : "none",
+                  boxShadow: isActive ? "0 0 0 3px var(--ce-live-3)" : "none",
+                }} />
+                <span style={{ fontSize: 11, color: isDone ? "var(--ce-text-3)" : isActive ? "var(--ce-text)" : "var(--ce-text-4)", fontWeight: isActive ? 550 : 400 }}>{s}</span>
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={() => window.location.href = "/?tab=home"} style={{
+          padding: "5px 11px", borderRadius: "var(--ce-r-sm)",
+          background: "transparent", border: "0.5px solid var(--ce-line-2)",
+          color: "var(--ce-text-3)", fontFamily: "inherit", fontSize: 11.5, cursor: "pointer"
+        }}>Save & exit</button>
       </header>
 
       <ConversationFrame>
@@ -777,7 +808,7 @@ ${json.discovered_source.summary || ""}`].filter(Boolean).join("\n\n"),
 }
 
 function OnboardingShell({ children }) {
-  return <div style={{ minHeight:"100vh", background:"var(--bg)", color:"var(--t1)" }}>{children}</div>;
+  return <div style={{ minHeight:"100vh", background:"var(--ce-bg)", color:"var(--ce-text)" }}>{children}</div>;
 }
 
 function ConversationFrame({ children }) {

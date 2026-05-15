@@ -29,7 +29,7 @@ import { shouldPromptOnboarding } from "@/lib/onboarding";
 import { brandConfigForPrompt, contentAudience, contentChannel, contentObjective, getBrandName, getBrandLanguages, getStoryScript, storyScriptPatch, subjectText } from "@/lib/brandConfig";
 import { CEMark as CEMarkInline } from "@/components/CEMark";
 
-const VERSION = "3.57.0";
+const VERSION = "3.58.0";
 const PIPELINE_DISPLAY_STORAGE_KEY = "ce_pipeline_display_mode";
 
 const PRIMARY_TABS = [

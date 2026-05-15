@@ -248,33 +248,52 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
 
   return (
     <div ref={containerRef} className="animate-fade-in" tabIndex={-1} style={{outline:"none"}}>
-      <PageHeader
-        title="Pipeline"
-      />
-
-      {/* Controls */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:8,marginBottom:12,alignItems:"center"}}>
-        <div style={{position:"relative"}}>
-          <Search size={13} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--t3)",pointerEvents:"none"}} />
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title, subjects, objective, audience, campaign..."
-            style={{width:"100%",padding:"8px 12px 8px 32px",borderRadius:8,background:"var(--fill2)",border:"1px solid var(--border-in)",color:"var(--t1)",fontSize:13,outline:"none"}} />
+      {/* CE sub-header: filter chips + count + controls */}
+      <div style={{
+        marginBottom: 0, paddingBottom: 16,
+        borderBottom: "0.5px solid var(--ce-line)",
+        display: "flex", alignItems: "center", gap: 16
+      }}>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {allFilters.map(f => {
+            const ct = f.key==="all"
+              ? stories.filter(s=>!["rejected","archived"].includes(s.status)).length
+              : stories.filter(s=>s.status===f.key).length;
+            const isActive = stageFilter === f.key;
+            return (
+              <button key={f.key} onClick={()=>setStageFilter(f.key)} style={{
+                padding: "5px 11px", borderRadius: 999,
+                background: isActive ? "var(--ce-fill-2)" : "transparent",
+                border: "0.5px solid " + (isActive ? "var(--ce-line-2)" : "var(--ce-line)"),
+                color: isActive ? "var(--ce-text)" : "var(--ce-text-3)",
+                fontFamily: "inherit", fontSize: 11.5, cursor: "pointer"
+              }}>
+                {f.label}{ct > 0 ? " · " + ct : ""}
+              </button>
+            );
+          })}
         </div>
-        {detailedMode && <select value={sort} onChange={e=>setSort(e.target.value)} style={sel}>
-          {SORT_OPTS.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
-        </select>}
-        {detailedMode && <button onClick={reAuditVisible} disabled={auditing || !filtered.length} style={buttonStyle("secondary", {
-          height:34,padding:"0 12px", color:auditing || !filtered.length ? "var(--t4)" : "var(--t2)",
-          cursor:auditing || !filtered.length ? "not-allowed" : "pointer",
-        })}>
-          <RefreshCw size={13} className={auditing ? "spin" : ""}/> {auditing ? "Auditing..." : "Re-audit visible"}
-        </button>}
-        <button onClick={()=>setShowFilters(f=>!f)} style={buttonStyle(showFilters||activeFilterCount>0 ? "primary" : "secondary", {
-          height:34,padding:"0 14px",
-        })}>
-          <SlidersHorizontal size={13}/> Filters
-          {activeFilterCount>0&&<span style={{width:16,height:16,borderRadius:"50%",background:"var(--bg)",color:"var(--t1)",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{activeFilterCount}</span>}
-        </button>
-        {activeFilterCount>0&&<button onClick={clearFilters} style={buttonStyle("ghost", { height:34,padding:"0 10px" })}><X size={12}/> Clear</button>}
+        <div style={{ flex: 1 }} />
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ce-text-4)" }}>
+          {filtered.length} items{selected.size > 0 ? " · " + selected.size + " selected" : ""}
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ position: "relative" }}>
+            <Search size={12} style={{ position:"absolute", left:8, top:"50%", transform:"translateY(-50%)", color:"var(--ce-text-4)", pointerEvents:"none" }} />
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..."
+              style={{ padding:"5px 10px 5px 26px", borderRadius:6, background:"var(--ce-fill)", border:"0.5px solid var(--ce-line-2)", color:"var(--ce-text)", fontSize:12, outline:"none", width:180 }} />
+          </div>
+          {detailedMode && <select value={sort} onChange={e=>setSort(e.target.value)} style={{ padding:"5px 8px", borderRadius:6, fontSize:12, background:"var(--ce-fill)", border:"0.5px solid var(--ce-line-2)", color:"var(--ce-text-2)", outline:"none", cursor:"pointer" }}>
+            {SORT_OPTS.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>}
+          {detailedMode && <button onClick={reAuditVisible} disabled={auditing || !filtered.length} style={{ padding:"5px 10px", borderRadius:6, fontSize:11.5, background:"transparent", border:"0.5px solid var(--ce-line-2)", color:"var(--ce-text-2)", cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:4 }}>
+            <RefreshCw size={11} className={auditing ? "spin" : ""}/> {auditing ? "Auditing..." : "Re-audit"}
+          </button>}
+          <button onClick={()=>setShowFilters(f=>!f)} style={{ padding:"5px 10px", borderRadius:6, fontSize:11.5, background:showFilters||activeFilterCount>0?"var(--ce-fill-2)":"transparent", border:"0.5px solid var(--ce-line-2)", color:"var(--ce-text-2)", cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:4 }}>
+            <SlidersHorizontal size={11}/> Filters{activeFilterCount>0?" · "+activeFilterCount:""}
+          </button>
+          {activeFilterCount>0 && <button onClick={clearFilters} style={{ padding:"5px 8px", borderRadius:6, fontSize:11.5, background:"transparent", border:"0.5px solid var(--ce-line-2)", color:"var(--ce-text-3)", cursor:"pointer", fontFamily:"inherit" }}><X size={11}/></button>}
+        </div>
       </div>
 
       {/* Filter panel */}
@@ -338,18 +357,20 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         </div>
       )}
 
-      {/* Stage pills */}
-      <div style={{display:"flex",gap:2,marginBottom:20,flexWrap:"wrap"}}>
-        {allFilters.map(f=>{
-          const ct = f.key==="all"?stories.filter(s=>!["rejected","archived"].includes(s.status)).length:stories.filter(s=>s.status===f.key).length;
-          return (
-            <button key={f.key} onClick={()=>setStageFilter(f.key)} style={{ background:"transparent", border:"none", padding:0, cursor:"pointer" }}>
-              <Pill active={stageFilter===f.key} style={{ fontSize:12, fontWeight:stageFilter===f.key?600:500, padding:"6px 12px", borderRadius:7 }}>
-                {f.label}{ct>0?` · ${ct}`:""}
-              </Pill>
-            </button>
-          );
-        })}
+      {/* CE column headers */}
+      <div style={{
+        padding: "10px 12px",
+        display: "grid",
+        gridTemplateColumns: "24px minmax(0,1fr) 140px 140px 80px",
+        gap: 12, alignItems: "center",
+        borderBottom: "0.5px solid var(--ce-line)",
+        marginBottom: 4
+      }}>
+        <span />
+        <span style={{ fontFamily:"var(--font-mono)", fontSize:9.5, color:"var(--ce-text-4)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Title</span>
+        <span style={{ fontFamily:"var(--font-mono)", fontSize:9.5, color:"var(--ce-text-4)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Programme</span>
+        <span style={{ fontFamily:"var(--font-mono)", fontSize:9.5, color:"var(--ce-text-4)", textTransform:"uppercase", letterSpacing:"0.06em" }}>Next action</span>
+        <span style={{ fontFamily:"var(--font-mono)", fontSize:9.5, color:"var(--ce-text-4)", textTransform:"uppercase", letterSpacing:"0.06em", textAlign:"right" }}>Score</span>
       </div>
 
       {/* Bulk action bar */}
@@ -406,41 +427,23 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
         if (!items.length&&stageFilter==="all") return null;
         const st = STAGES[stKey];
         return (
-          <div key={stKey} style={{marginBottom:"var(--section-gap, 32px)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,paddingBottom:8,borderBottom:"1px solid var(--border)"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                {/* Select / deselect all in this group */}
-                {items.length>0&&(
-                  <div
-                    onClick={()=>{
-                      const groupIds=items.map(s=>s.id);
-                      const allSel=groupIds.every(id=>selected.has(id));
-                      setSelected(sel=>{
-                        const n=new Set(sel);
-                        if(allSel)groupIds.forEach(id=>n.delete(id));
-                        else groupIds.forEach(id=>n.add(id));
-                        return n;
-                      });
-                    }}
-                    style={{width:15,height:15,borderRadius:3,border:`1.5px solid ${items.every(s=>selected.has(s.id))?"var(--t2)":items.some(s=>selected.has(s.id))?"var(--t2)":"var(--border)"}`,background:items.every(s=>selected.has(s.id))?"var(--t2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
-                  >
-                    {items.every(s=>selected.has(s.id))&&<Check size={9} color="var(--bg)"/>}
-                    {items.some(s=>selected.has(s.id))&&!items.every(s=>selected.has(s.id))&&<div style={{width:7,height:1.5,background:"var(--t2)",borderRadius:1}}/>}
-                  </div>
-                )}
-                <span style={{fontSize:12,fontWeight:600,color:"var(--t1)",letterSpacing:"0.04em",textTransform:"uppercase"}}>{st.label}</span>
-                <span style={{fontSize:11,color:"var(--t3)",fontFamily:"var(--font-mono)"}}>{items.length}</span>
+          <div key={stKey} style={{marginBottom: 4}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 12px 10px",cursor:"pointer"}}
+              onClick={()=>setExpanded(ex=>{const n=new Set(ex);n.has("_grp_"+stKey)?n.delete("_grp_"+stKey):n.add("_grp_"+stKey);return n;})}>
+              <div style={{display:"flex",alignItems:"center",gap:9}}>
+                <ChevronRight size={11} style={{color:"var(--ce-text-4)", transform:expanded.has("_grp_"+stKey)?"none":"rotate(90deg)", transition:"transform 200ms var(--ce-ease)"}} />
+                <span style={{fontSize:13,fontWeight:600,color:"var(--ce-text)",letterSpacing:"-0.005em"}}>{st.label}</span>
+                <span style={{fontFamily:"var(--font-mono)",fontSize:10.5,color:"var(--ce-text-4)"}}>{items.length}</span>
               </div>
               {stKey==="accepted"&&items.length>0&&(
-                <button onClick={()=>onBulkAction("accepted","approved")} style={{padding:"4px 12px",borderRadius:6,fontSize:11,fontWeight:600,background:"var(--t1)",color:"var(--bg)",border:"none",cursor:"pointer"}}>
+                <button onClick={e=>{e.stopPropagation();onBulkAction("accepted","approved");}} style={{padding:"4px 12px",borderRadius:6,fontSize:11,fontWeight:600,background:"var(--ce-text)",color:"var(--ce-bg)",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
                   Approve all
                 </button>
               )}
             </div>
 
-            {!items.length&&filtered.length>0&&<div style={{padding:"24px 0",textAlign:"center",color:"var(--t4)",fontSize:12}}>No content items in this stage.</div>}
-
-            <div style={{display:"flex",flexDirection:"column",gap:"var(--card-gap, 2px)"}}>
+            {!expanded.has("_grp_"+stKey) && items.length > 0 && (
+            <div style={{display:"flex",flexDirection:"column",gap:0}}>
               {items.map(s=>{
                 const isSelected = selected.has(s.id);
                 const isExpanded = expanded.has(s.id);
@@ -461,77 +464,62 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 const gateScore = s.quality_gate?.score;
 
                 return (
-                  <div key={s.id} id={`story-${s.id}`}
+                  <div key={s.id} id={"story-"+s.id}
                     onClick={()=>setFocused(s.id)}
                     style={{
-                      borderRadius:8, marginBottom:2,
-                      borderTop:    isFocused?"0.5px solid var(--t2)":isSelected?"0.5px solid var(--t1)":"0.5px solid var(--border2)",
-                      borderRight:  isFocused?"0.5px solid var(--t2)":isSelected?"0.5px solid var(--t1)":"0.5px solid var(--border2)",
-                      borderBottom: isFocused?"0.5px solid var(--t2)":isSelected?"0.5px solid var(--t1)":"0.5px solid var(--border2)",
-	                      borderLeft:   "2px solid var(--border2)",
-                      background:   isSelected?"var(--fill2)":"var(--card)",
-                      transition:   "background 0.1s",
+                      borderTop: "0.5px solid var(--ce-line)",
+                      transition: "background 0.1s",
                     }}>
 
                     {/* Main row */}
-                    <div style={{display:"grid",gridTemplateColumns:"24px 1fr auto auto",alignItems:"center",gap:10,padding:"var(--card-padding-y, 10px) var(--card-padding-x, 12px)",cursor:"pointer"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"24px minmax(0,1fr) 140px 140px 80px",alignItems:"center",gap:12,padding:"13px 12px",cursor:"pointer"}}>
+
                       {/* Checkbox */}
                       <div onClick={e=>{e.stopPropagation();setSelected(sel=>{const n=new Set(sel);n.has(s.id)?n.delete(s.id):n.add(s.id);return n;})}}
-                        style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${isSelected?"var(--t1)":"var(--t4)"}`,background:isSelected?"var(--t1)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
-                        {isSelected&&<Check size={11} color="var(--bg)"/>}
+                        style={{width:18,height:18,borderRadius:4,border:"1.5px solid "+(isSelected?"var(--ce-text-2)":"var(--ce-line-3)"),background:isSelected?"var(--ce-text)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+                        {isSelected&&<Check size={11} color="var(--ce-bg)"/>}
                       </div>
 
-                      {/* Content */}
+                      {/* Title + gate dots */}
                       <div onClick={()=>setExpanded(ex=>{const n=new Set(ex);n.has(s.id)?n.delete(s.id):n.add(s.id);return n;})} style={{minWidth:0}}>
-                        <div style={{fontSize:14,fontWeight:500,color:"var(--t1)",letterSpacing:0,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</div>
-                        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--t3)",flexWrap:"wrap"}}>
-                          <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
-	                            <span style={{width:5,height:5,borderRadius:"50%",background:"var(--t4)",display:"inline-block",flexShrink:0}}/>
-	                            <span style={{color:"var(--t3)",fontWeight:500}}>{s.archetype || "No angle"}</span>
-	                          </span>
-	                          <span style={{color:"var(--t4)"}}>·</span><span>{getContentTypeLabel(s, settings)}</span>
-	                          {displayChannel&&<><span style={{color:"var(--t4)"}}>·</span><span>{displayChannel}</span></>}
-		                          {detailedMode&&s.era&&<><span style={{color:"var(--t4)"}}>·</span><span>{s.era}</span></>}
-		                          <span style={{color:"var(--t4)"}}>·</span><span>Next: {nextActionForContent(s)}</span>
-	                          {detailedMode&&subjects&&<><span style={{color:"var(--t4)"}}>·</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:200}}>{subjects}</span></>}
-	                          {detailedMode&&getStoryScript(s, "en")&&<><span style={{color:"var(--t4)"}}>·</span><FileText size={11} color="var(--t3)"/></>}
-	                          {detailedMode&&s.metrics_views&&<><span style={{color:"var(--t4)"}}>·</span><Eye size={11}/><span>{parseInt(s.metrics_views)>1000?`${(parseInt(s.metrics_views)/1000).toFixed(1)}k`:s.metrics_views}</span></>}
-                          {gateStatus!=="missing"&&<><span style={{color:"var(--t4)"}}>·</span><span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:3,background:gateBlockers?"var(--error-bg)":gateWarnings?"var(--warning-bg)":"var(--success-bg)",color:gateBlockers?"var(--error)":gateWarnings?"var(--warning)":"var(--success)",border:`0.5px solid ${gateBlockers?"var(--error-border)":gateWarnings?"rgba(196,154,60,0.30)":"rgba(74,155,127,0.24)"}`}}>Gate {gateBlockers ? `${gateBlockers} blocker` : gateWarnings ? `${gateWarnings} warning${gateWarnings===1?"":"s"}` : gateScore != null ? gateScore : "passed"}</span></>}
-	                          {detailedMode&&camp&&<><span style={{color:"var(--t4)"}}>·</span><span style={{fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:3,background:"var(--fill2)",color:"var(--t3)",border:"0.5px solid var(--border)",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block"}}>{camp.name}</span></>}
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                          {gateBlockers>0&&<span style={{width:5,height:5,borderRadius:999,background:"var(--error,#e5534b)",flexShrink:0}}/>}
+                          {!gateBlockers&&gateWarnings>0&&<span style={{width:5,height:5,borderRadius:999,background:"var(--ce-warning)",flexShrink:0}}/>}
+                          <span style={{fontSize:13.5,fontWeight:500,color:"var(--ce-text)",letterSpacing:"-0.005em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.title}</span>
                         </div>
-                        {/* Angle preview */}
-	                        {detailedMode&&(objective || s.angle)&&!isExpanded&&(
-                          <div style={{fontSize:12,color:"var(--t3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",opacity:0.7,marginTop:1}}>
-                            {objective || s.angle}
-                          </div>
-                        )}
+                        <div style={{fontSize:11,color:"var(--ce-text-4)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {getContentTypeLabel(s, settings)}{displayChannel?" · "+displayChannel:""}
+                        </div>
                       </div>
 
-                      {/* Score + readiness + date */}
-                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <span title={adaptive.explanation || "Adaptive score"} style={{fontSize:11,fontWeight:700,fontFamily:"var(--font-mono)",color:"var(--t1)",padding:"1px 4px",borderRadius:3,background:"var(--fill2)",border:"0.5px solid var(--border)"}}>{adaptive.total}</span>
-                          <span style={{fontSize:9,fontWeight:700,fontFamily:"var(--font-mono)",color:rColor,padding:"1px 4px",borderRadius:3,background:readiness.done===readiness.total?"rgba(74,155,127,0.1)":"transparent"}}>{readiness.done}/{readiness.total}</span>
-	                          {detailedMode&&hasScore&&<span title="Legacy score" style={{fontSize:10,fontWeight:600,fontFamily:"var(--font-mono)",color:"var(--t3)"}}>legacy {s.score_total}</span>}
-	                          {detailedMode&&!hasScore&&s.obscurity>0&&<ScoreDots score={s.obscurity}/>}
-                        </div>
-	                        {detailedMode&&s.reach_score!=null&&<span style={{fontSize:10,color:"var(--t4)",fontFamily:"var(--font-mono)"}}>reach {s.reach_score}</span>}
-	                        {detailedMode&&dateStr&&<span style={{fontSize:10,color:"var(--t4)",fontFamily:"var(--font-mono)"}}>{dateStr}</span>}
+                      {/* Programme */}
+                      <div style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {programmeMap[s.format]
+                          ? <span style={{fontFamily:"var(--font-mono)",fontSize:10.5,color:"var(--ce-text-3)",textTransform:"uppercase",letterSpacing:"0.04em"}}>{programmeMap[s.format].label}</span>
+                          : <span style={{fontFamily:"var(--font-mono)",fontSize:10.5,color:"var(--ce-text-5)"}}>-</span>
+                        }
                       </div>
 
-                      {/* Advance */}
-                      {st.next&&(
-                        <button onClick={e=>{e.stopPropagation();onStageChange(s.id,st.next);}} style={{
-                          padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:500,
-                          background:"var(--fill2)",border:"1px solid var(--border)",
-                          color:"var(--t2)",cursor:"pointer",display:"flex",alignItems:"center",gap:4,
-                          whiteSpace:"nowrap",transition:"all 0.1s",flexShrink:0,
-                        }}
-                        onMouseEnter={e=>{e.currentTarget.style.background="var(--t1)";e.currentTarget.style.color="var(--bg)";e.currentTarget.style.borderColor="var(--t1)";}}
-                        onMouseLeave={e=>{e.currentTarget.style.background="var(--fill2)";e.currentTarget.style.color="var(--t2)";e.currentTarget.style.borderColor="var(--border)";}}>
-	                          {advanceLabel(st.next)} <ArrowRight size={11}/>
-                        </button>
-                      )}
+                      {/* Next action + owner badge */}
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:11.5,color:"var(--ce-text-2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{nextActionForContent(s)}</span>
+                        <span style={{
+                          fontFamily:"var(--font-mono)",fontSize:9,textTransform:"uppercase",letterSpacing:"0.05em",
+                          padding:"2px 5px",borderRadius:3,flexShrink:0,
+                          background:["accepted","produced"].includes(s.status)?"var(--ce-fill-2)":"transparent",
+                          border:"0.5px solid "+(["accepted","produced"].includes(s.status)?"var(--ce-line-2)":"transparent"),
+                          color:["accepted","produced"].includes(s.status)?"var(--ce-text-2)":"var(--ce-text-5)"
+                        }}>{["accepted","produced"].includes(s.status)?"you":"engine"}</span>
+                      </div>
+
+                      {/* Score */}
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end"}}>
+                        {adaptive.total!=null
+                          ? <span title={adaptive.explanation||"Adaptive score"} style={{fontFamily:"var(--font-mono)",fontSize:12,fontWeight:600,color:adaptive.total>=70?"var(--ce-text)":adaptive.total>=40?"var(--ce-text-3)":"var(--ce-text-4)"}}>{adaptive.total}</span>
+                          : <span style={{fontFamily:"var(--font-mono)",fontSize:12,color:"var(--ce-text-5)"}}>-</span>
+                        }
+                      </div>
+
                     </div>
 
                     {/* Expanded view — editable metadata + angle, hook, subjects, scores */}
@@ -638,6 +626,7 @@ export default function PipelineView({ stories, onSelect, onStageChange, onBulkA
                 );
               })}
             </div>
+            )}
           </div>
         );
       })}

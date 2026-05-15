@@ -949,23 +949,40 @@ export default function CreateView({ stories, onUpdate, mode, onModeChange, tena
                   </div>
                   <CampaignStrip story={selected} campaigns={campaigns} stories={stories} />
                   <TemplateStrip story={selected} settings={settings} />
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))", gap: 6 }}>
-                    {steps.map(step => {
-                      const Icon = step.icon;
-                      const active = activeStep === step.key;
+                  {/* CE step strip */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", padding: "4px 0" }}>
+                    {steps.map((step, idx) => {
+                      const isActive  = activeStep === step.key;
+                      const isDone    = step.done;
+                      const isPending = !isActive && !isDone;
                       return (
-                        <button key={step.key} onClick={() => setActiveStep(step.key)}
-                          style={buttonStyle(active ? "primary" : "ghost", {
-                            justifyContent: "flex-start",
-                            padding: "7px 10px",
-                            border: active ? "0.5px solid var(--t1)" : "0.5px solid var(--border)",
-                          })}>
-                          <Icon size={12} />
-                          <span>{step.label}</span>
-                          {step.done && <Check size={11} style={{ marginLeft: "auto" }} />}
-                        </button>
+                        <div key={step.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          {idx > 0 && <span style={{ width: 12, height: 1, background: "var(--ce-line-2)" }} />}
+                          <button onClick={() => setActiveStep(step.key)} style={{
+                            display: "flex", alignItems: "center", gap: 7,
+                            padding: "5px 10px", borderRadius: 999,
+                            background: isActive ? "var(--ce-fill-2)" : "transparent",
+                            border: "0.5px solid " + (isActive ? "var(--ce-line-2)" : "transparent"),
+                            color: isActive ? "var(--ce-text)" : isDone ? "var(--ce-text-3)" : "var(--ce-text-4)",
+                            fontSize: 11.5, fontWeight: isActive ? 550 : 400,
+                            cursor: "pointer", fontFamily: "inherit",
+                            transition: "all var(--ce-dur-1) var(--ce-ease)"
+                          }}>
+                            <span style={{
+                              width: 6, height: 6, borderRadius: 999, flexShrink: 0,
+                              background: isDone ? "var(--ce-text-2)" : isActive ? "var(--ce-live)" : "transparent",
+                              border: isPending ? "0.5px dashed var(--ce-line-3)" : "none",
+                              boxShadow: isActive ? "0 0 0 3px var(--ce-live-3)" : "none",
+                            }} />
+                            {step.label}
+                          </button>
+                        </div>
                       );
                     })}
+                    <div style={{ flex: 1 }} />
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--ce-text-4)" }}>
+                      {selectedProgress.percent}% ready
+                    </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 10, color: "var(--t4)", fontSize: 10, flexWrap: "wrap" }}>
                     <span>Same content item, same workspace. Step through the whole creation chain without changing tabs.</span>
